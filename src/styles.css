@@ -1,0 +1,420 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Veloce Faturas — Design system "Ledger".
+ *
+ * Identidade: painel operacional claro, denso e sóbrio.
+ * Paleta: papel neutro quente + tinta grafite-azulada + verde pinho (marca).
+ * Tipografia: Bricolage Grotesque (títulos) / Inter Tight (corpo) / IBM Plex Mono (dados).
+ *
+ * Regras:
+ * - Todas as cores em oklch e SEMPRE via tokens semânticos.
+ * - Nenhum componente deve usar cor literal (bg-white, text-black, bg-[#...]).
+ * - Sem gradientes decorativos, sem glow, sombras curtas e discretas.
+ */
+
+@theme inline {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, sans-serif;
+  --font-sans: "Inter Tight", ui-sans-serif, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  /* alias legado, mantido para não quebrar estilos existentes */
+  --color-primary-glow: var(--primary-strong);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(0.9799 0.0031 145.55);
+  --foreground: oklch(0.2481 0.0187 253.09);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.9686 0.0035 145.55);
+  --surface-sunken: oklch(0.9481 0.0044 145.55);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2481 0.0187 253.09);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2481 0.0187 253.09);
+
+  --primary: oklch(0.4574 0.0863 167.53);
+  --primary-foreground: oklch(0.9899 0.0053 160);
+  --primary-strong: oklch(0.3854 0.0742 167.9);
+  --primary-soft: oklch(0.9469 0.0245 165.8);
+
+  --secondary: oklch(0.9481 0.0044 145.55);
+  --secondary-foreground: oklch(0.3216 0.0208 253.09);
+  --muted: oklch(0.9631 0.004 145.55);
+  --muted-foreground: oklch(0.5063 0.0169 253.09);
+  --subtle: oklch(0.6106 0.0139 253.09);
+  --accent: oklch(0.9469 0.0245 165.8);
+  --accent-foreground: oklch(0.3854 0.0742 167.9);
+
+  --destructive: oklch(0.5507 0.1885 23.11);
+  --destructive-foreground: oklch(0.9899 0.005 20);
+  --success: oklch(0.5382 0.1268 152.4);
+  --success-foreground: oklch(0.9899 0.005 150);
+  --warning: oklch(0.5951 0.1274 60.16);
+  --warning-foreground: oklch(0.9899 0.005 60);
+  --info: oklch(0.5133 0.1183 250.11);
+  --info-foreground: oklch(0.9899 0.005 250);
+
+  --border: oklch(0.9139 0.0055 253.09);
+  --border-strong: oklch(0.8532 0.0075 253.09);
+  --input: oklch(0.9139 0.0055 253.09);
+  --ring: oklch(0.4574 0.0863 167.53);
+
+  --chart-1: oklch(0.4574 0.0863 167.53);
+  --chart-2: oklch(0.5133 0.1183 250.11);
+  --chart-3: oklch(0.5951 0.1274 60.16);
+  --chart-4: oklch(0.5507 0.1885 23.11);
+  --chart-5: oklch(0.6106 0.0139 253.09);
+
+  --sidebar: oklch(0.2481 0.0187 253.09);
+  --sidebar-foreground: oklch(0.9139 0.0055 253.09);
+  --sidebar-primary: oklch(0.6449 0.1063 167.53);
+  --sidebar-primary-foreground: oklch(0.2 0.02 253);
+  --sidebar-accent: oklch(0.3216 0.0208 253.09);
+  --sidebar-accent-foreground: oklch(0.9799 0.0031 145.55);
+  --sidebar-border: oklch(0.3216 0.0208 253.09);
+  --sidebar-ring: oklch(0.6449 0.1063 167.53);
+  --sidebar-muted: oklch(0.6449 0.0169 253.09);
+
+  --shadow-panel: 0 1px 2px oklch(0.2481 0.0187 253.09 / 0.06);
+  --shadow-raised: 0 4px 14px -6px oklch(0.2481 0.0187 253.09 / 0.16);
+  --shadow-overlay: 0 18px 44px -20px oklch(0.2481 0.0187 253.09 / 0.28);
+  /* alias legado: sem glow no novo design, apenas sombra discreta */
+  --shadow-glow: var(--shadow-panel);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tema escuro — mesma identidade "Ledger", tinta grafite-azulada profunda.
+ * ------------------------------------------------------------------------ */
+
+.dark {
+  --background: oklch(0.1932 0.0154 253.09);
+  --foreground: oklch(0.9394 0.0048 253.09);
+  --surface: oklch(0.2318 0.0173 253.09);
+  --surface-raised: oklch(0.2712 0.019 253.09);
+  --surface-sunken: oklch(0.2094 0.0163 253.09);
+  --card: oklch(0.2318 0.0173 253.09);
+  --card-foreground: oklch(0.9394 0.0048 253.09);
+  --popover: oklch(0.2318 0.0173 253.09);
+  --popover-foreground: oklch(0.9394 0.0048 253.09);
+
+  --primary: oklch(0.6449 0.1063 167.53);
+  --primary-foreground: oklch(0.1723 0.0243 167.9);
+  --primary-strong: oklch(0.7231 0.1101 167.53);
+  --primary-soft: oklch(0.3049 0.0442 167.9);
+
+  --secondary: oklch(0.2712 0.019 253.09);
+  --secondary-foreground: oklch(0.8763 0.0072 253.09);
+  --muted: oklch(0.2519 0.018 253.09);
+  --muted-foreground: oklch(0.7106 0.0116 253.09);
+  --subtle: oklch(0.6106 0.0139 253.09);
+  --accent: oklch(0.3049 0.0442 167.9);
+  --accent-foreground: oklch(0.8449 0.0863 167.53);
+
+  --destructive: oklch(0.6739 0.1712 23.11);
+  --destructive-foreground: oklch(0.1723 0.0243 20);
+  --success: oklch(0.6884 0.1289 152.4);
+  --success-foreground: oklch(0.1723 0.0243 150);
+  --warning: oklch(0.7563 0.1266 74.16);
+  --warning-foreground: oklch(0.1723 0.0243 60);
+  --info: oklch(0.6767 0.1183 250.11);
+  --info-foreground: oklch(0.1723 0.0243 250);
+
+  --border: oklch(0.3116 0.0192 253.09);
+  --border-strong: oklch(0.3814 0.0206 253.09);
+  --input: oklch(0.3116 0.0192 253.09);
+  --ring: oklch(0.6449 0.1063 167.53);
+
+  --chart-1: oklch(0.6449 0.1063 167.53);
+  --chart-2: oklch(0.6767 0.1183 250.11);
+  --chart-3: oklch(0.7563 0.1266 74.16);
+  --chart-4: oklch(0.6739 0.1712 23.11);
+  --chart-5: oklch(0.7106 0.0116 253.09);
+
+  --sidebar: oklch(0.1614 0.0143 253.09);
+  --sidebar-foreground: oklch(0.9139 0.0055 253.09);
+  --sidebar-primary: oklch(0.6449 0.1063 167.53);
+  --sidebar-primary-foreground: oklch(0.1614 0.0143 253.09);
+  --sidebar-accent: oklch(0.2519 0.018 253.09);
+  --sidebar-accent-foreground: oklch(0.9799 0.0031 145.55);
+  --sidebar-border: oklch(0.2712 0.019 253.09);
+  --sidebar-ring: oklch(0.6449 0.1063 167.53);
+  --sidebar-muted: oklch(0.6449 0.0169 253.09);
+
+  --shadow-panel: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-raised: 0 4px 14px -6px oklch(0 0 0 / 0.55);
+  --shadow-overlay: 0 18px 44px -20px oklch(0 0 0 / 0.7);
+  --shadow-glow: var(--shadow-panel);
+
+  --chat-wallpaper: oklch(0.1793 0.0148 253.09);
+  --chat-bubble-out: oklch(0.3049 0.0509 167.9);
+  --chat-bubble-out-foreground: oklch(0.9227 0.0209 165.8);
+  --chat-bubble-in: oklch(0.2519 0.018 253.09);
+  --chat-bubble-in-foreground: oklch(0.9394 0.0048 253.09);
+  --chat-tick-read: oklch(0.6767 0.1183 250.11);
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.018em;
+  }
+
+  /* Números tabulares em dados operacionais */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Utilities do design system
+ * ------------------------------------------------------------------------ */
+
+/* Cartão base: fundo sólido, borda de 1px, sombra curtíssima. */
+@utility panel {
+  background-color: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
+}
+
+/* Variante sem sombra, para blocos aninhados. */
+@utility panel-flat {
+  background-color: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+/* Bloco levemente rebaixado (áreas de apoio, resumos, dropzones). */
+@utility panel-sunken {
+  background-color: var(--surface-sunken);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+@utility label-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--subtle);
+}
+
+/* Rótulo de métrica grande, tabular. */
+@utility metric-value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Cabeçalho de tabela padrão do sistema. */
+@utility th-cell {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+@utility td-cell {
+  padding: 0.6875rem 0.75rem;
+  font-size: 0.8125rem;
+  vertical-align: middle;
+}
+
+/* Barra de ferramentas (busca + filtros) acima das tabelas. */
+@utility toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@utility focus-ring {
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in oklab, var(--ring) 55%, transparent);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Chat (thread estilo mensageria, agora em tema claro)
+ * ------------------------------------------------------------------------ */
+
+:root {
+  --chat-wallpaper: oklch(0.9686 0.0055 145.55);
+  --chat-bubble-out: oklch(0.9227 0.0409 165.8);
+  --chat-bubble-out-foreground: oklch(0.2854 0.0442 167.9);
+  --chat-bubble-in: oklch(1 0 0);
+  --chat-bubble-in-foreground: oklch(0.2481 0.0187 253.09);
+  --chat-tick-read: oklch(0.5133 0.1183 250.11);
+}
+
+@theme inline {
+  --color-chat-wallpaper: var(--chat-wallpaper);
+  --color-chat-bubble-out: var(--chat-bubble-out);
+  --color-chat-bubble-out-foreground: var(--chat-bubble-out-foreground);
+  --color-chat-bubble-in: var(--chat-bubble-in);
+  --color-chat-bubble-in-foreground: var(--chat-bubble-in-foreground);
+  --color-chat-tick-read: var(--chat-tick-read);
+}
+
+@utility chat-wallpaper {
+  background-color: var(--chat-wallpaper);
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 5%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
+}
+
+@utility bubble-out {
+  position: relative;
+  background-color: var(--chat-bubble-out);
+  color: var(--chat-bubble-out-foreground);
+  border-radius: 0.5rem 0 0.5rem 0.5rem;
+  box-shadow: var(--shadow-panel);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -7px;
+    width: 8px;
+    height: 12px;
+    background-color: var(--chat-bubble-out);
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+  }
+}
+
+@utility bubble-in {
+  position: relative;
+  background-color: var(--chat-bubble-in);
+  color: var(--chat-bubble-in-foreground);
+  border-radius: 0 0.5rem 0.5rem 0.5rem;
+  box-shadow: var(--shadow-panel);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -7px;
+    width: 8px;
+    height: 12px;
+    background-color: var(--chat-bubble-in);
+    clip-path: polygon(100% 0, 100% 100%, 0 0);
+  }
+}
+
+@utility chat-daypill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.1875rem 0.6875rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
