@@ -228,10 +228,9 @@ function Historico() {
   const [loteSelecionado, setLoteSelecionado] = useState<EnvioResumo | null>(null);
 
   function buildParams() {
-    const p: { de?: string; ate?: string; status?: EnvioStatus | "todos"; slot?: WhatsappSlot | "todos"; busca?: string } = {
-      status,
-      slot,
-    };
+    const p: { de?: string; ate?: string; status?: EnvioStatus; slot?: WhatsappSlot; busca?: string } = {};
+    if (status !== "todos") p.status = status;
+    if (slot !== "todos") p.slot = slot;
     if (de) p.de = de;
     if (ate) p.ate = ate;
     if (busca) p.busca = busca;
