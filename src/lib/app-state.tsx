@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured, supabase } from "@/supabaseClient";
@@ -104,16 +104,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     supabase.auth.signOut();
   }, []);
 
+  // Contador de falhas seguidas -- usado tanto pro backoff do polling quanto pra
+  // decidir quando de fato mostrar "desconectado" (ver comentário abaixo).
+  const falhasSeguidasRef = useRef(0);
+
   const refreshConexoes = useCallback(async () => {
     try {
       const data = await api.whatsapp.conexoes();
       const lista = SLOTS.map(
         (slot) => data?.find?.((c) => Number(c.slot) === slot) ?? conexaoVazia(slot),
       );
+      falhasSeguidasRef.current = 0;
       setConexoes(lista);
       setConexoesErro(null);
     } catch (e) {
-      setConexoes(SLOTS.map(conexaoVazia));
+      falhasSeguidasRef.current += 1;
+      // Uma falha de rede/CORS isolada (ex: backend reiniciando, hiccup do Render)
+      // não significa que o WhatsApp desconectou de verdade -- só que não conseguimos
+      // perguntar pro backend agora. Sobrescrever pra "desconectado" na 1ª falha já
+      // dava um alarme falso enganoso durante picos de carga (ex: uma importação
+      // grande deixando o backend lento pra responder por alguns segundos). Só
+      // assume "desconectado" depois de falhas seguidas (backend realmente fora do ar).
+      if (falhasSeguidasRef.current >= 3) {
+        setConexoes(SLOTS.map(conexaoVazia));
+      }
       setConexoesErro((e as Error).message);
     } finally {
       setConexoesCarregando(false);
@@ -122,18 +136,36 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // Polling das conexões -- no nível raiz (não dentro da tela Conexões) para que o
   // badge e a permissão de disparo não "congelem" enquanto o usuário navega.
+  //
+  // Backoff quando o backend está fora do ar: martelar a cada 3s um backend que já
+  // está sobrecarregado/reiniciando (ex: durante uma importação pesada) só piora a
+  // situação, competindo por recursos com o próprio processamento que o derrubou.
+  // Em vez disso, o intervalo cresce a cada falha seguida (3s -> 6s -> 12s ... até
+  // um teto de 30s) e volta a 3s assim que uma checagem funcionar de novo.
   useEffect(() => {
     if (!session) return;
     let cancelado = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const INTERVALO_BASE_MS = 3000;
+    const INTERVALO_MAX_MS = 30000;
+
     async function verificar() {
       if (cancelado) return;
       await refreshConexoes();
+      if (cancelado) return;
+
+      const proximoIntervalo = Math.min(
+        INTERVALO_BASE_MS * 2 ** falhasSeguidasRef.current,
+        INTERVALO_MAX_MS,
+      );
+      timeoutId = setTimeout(verificar, proximoIntervalo);
     }
+
     verificar();
-    const interval = setInterval(verificar, 3000);
     return () => {
       cancelado = true;
-      clearInterval(interval);
+      clearTimeout(timeoutId);
     };
   }, [session, refreshConexoes]);
 

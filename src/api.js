@@ -105,6 +105,9 @@ export const api = {
     },
   },
   importacao: {
+    // Fluxo antigo: envia o zip inteiro (PDFs binários) pro servidor processar
+    // (renderizar em canvas, escanear QR). Mantido como fallback, mas pesado
+    // pro servidor em lotes grandes -- ver enviarLote() abaixo.
     enviar: ({ planilha, zip, mensagem }) => {
       const formData = new FormData();
       formData.append('planilha', planilha);
@@ -112,6 +115,16 @@ export const api = {
       if (mensagem) formData.append('mensagem', mensagem);
       return request('/importacao', { method: 'POST', body: formData });
     },
+    // Fluxo novo (recomendado): recebe o resultado já processado no navegador
+    // (parse de planilha/zip, extração de Pix e upload dos PDFs pro Storage já
+    // feitos ali -- ver src/lib/importacaoBrowser.ts). Manda só texto (nome,
+    // telefone, URLs, código Pix), nunca PDF -- por isso não pesa no servidor
+    // mesmo com 100+ clientes de uma vez.
+    enviarLote: ({ itens, mensagem }) =>
+      request('/importacao/lote', {
+        method: 'POST',
+        body: JSON.stringify({ itens, mensagem: mensagem || undefined }),
+      }),
     baixarModelo: () => download('/importacao/modelo', 'modelo-importacao.xlsx'),
   },
   chat: {

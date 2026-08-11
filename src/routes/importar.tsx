@@ -16,6 +16,7 @@ import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { api } from "@/api";
+import { processarImportacaoNoBrowser, type ProgressoImportacao } from "@/lib/importacaoBrowser";
 
 export const Route = createFileRoute("/importar")({
   head: () => ({
@@ -139,6 +140,7 @@ function Importar() {
   const [zip, setZip] = useState<File | null>(null);
   const [mensagem, setMensagem] = useState("");
   const [processando, setProcessando] = useState(false);
+  const [progresso, setProgresso] = useState<ProgressoImportacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [baixandoModelo, setBaixandoModelo] = useState(false);
@@ -161,9 +163,27 @@ function Importar() {
     }
     setProcessando(true);
     setErro(null);
+    setProgresso(null);
     try {
-      const data: Resultado = await api.importacao.enviar({ planilha, zip, mensagem });
-      setResultado(data);
+      // Etapa 1 -- roda no NAVEGADOR (RAM/CPU de quem está importando, não do
+      // servidor): parse da planilha e do zip, casamento PDF<->cliente,
+      // extração do código Pix de cada PDF e upload de cada um pro Storage.
+      // Pode levar alguns minutos com muitos PDFs -- por isso o progresso
+      // aparece na tela em vez de travar num spinner sem explicação.
+      const { itens, linhasSemDados } = await processarImportacaoNoBrowser(planilha, zip, setProgresso);
+
+      // Etapa 2 -- manda pro servidor só texto já pronto (nome, telefone, URLs,
+      // código Pix): upsert de cliente + criação do lote de envio. Isso é leve
+      // o bastante pra nunca chegar perto de estourar a RAM do servidor, mesmo
+      // com 100+ clientes de uma vez.
+      const data: Resultado = await api.importacao.enviarLote({ itens, mensagem });
+      setResultado({
+        ...data,
+        // o backend não vê as linhasSemDados que já ficaram de fora no navegador
+        // (ex: telefone inválido) -- soma aqui pra não sumir do resumo
+        semDadosObrigatorios: [...(data.semDadosObrigatorios as unknown[]), ...linhasSemDados],
+        total: data.total + linhasSemDados.length,
+      });
       await refreshClientes();
       if (data.envio?.id) {
         setEnvioAtivoId(data.envio.id);
@@ -173,6 +193,7 @@ function Importar() {
       setErro((e as Error).message);
     } finally {
       setProcessando(false);
+      setProgresso(null);
     }
   }
 
@@ -247,13 +268,38 @@ function Importar() {
 
               {erro && <Aviso tone="danger">{erro}</Aviso>}
 
+              {processando && progresso && (
+                <div className="bg-surface-sunken rounded-md px-3 py-2.5">
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Processando no seu navegador: {progresso.etapa}
+                    </span>
+                    <span className="text-subtle font-mono">
+                      {progresso.processados}/{progresso.total}
+                    </span>
+                  </div>
+                  <div className="bg-border h-1.5 w-full overflow-hidden rounded-full">
+                    <div
+                      className="bg-primary h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.round((progresso.processados / Math.max(progresso.total, 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end">
                 <Botao
                   variante="primary"
                   onClick={processar}
                   disabled={processando || !planilha || !zip}
                 >
-                  {processando ? "Processando…" : "Processar importação"}
+                  {processando
+                    ? progresso
+                      ? `Processando ${progresso.processados}/${progresso.total}…`
+                      : "Preparando…"
+                    : "Processar importação"}
                 </Botao>
               </div>
             </div>
@@ -308,8 +354,11 @@ function Importar() {
             <div className="flex gap-3">
               <TriangleAlert className="text-warning mt-0.5 size-4 shrink-0" />
               <p className="text-muted-foreground text-xs text-pretty">
-                Linhas com problema ficam destacadas e não travam o resto do lote. Ao processar, o
-                lote é criado já pronto e você é levado direto para a aba Disparo.
+                O processamento dos PDFs (achar o código Pix, montar o pacote de envio) roda no seu
+                navegador, não no servidor -- por isso pode levar alguns minutos com muitos arquivos,
+                mas não trava nem sobrecarrega o sistema para outros usuários. Linhas com problema
+                ficam destacadas e não travam o resto do lote. Ao processar, o lote é criado já pronto
+                e você é levado direto para a aba Disparo.
               </p>
             </div>
           </SectionCard>
