@@ -42,6 +42,7 @@ type Resultado = {
   sucesso: unknown[];
   semPdf: unknown[];
   semDadosObrigatorios: unknown[];
+  erroUpload: { nome: string; numero: string; motivoErro: string }[];
   envio: { id: string } | null;
 };
 
@@ -170,7 +171,11 @@ function Importar() {
       // extração do código Pix de cada PDF e upload de cada um pro Storage.
       // Pode levar alguns minutos com muitos PDFs -- por isso o progresso
       // aparece na tela em vez de travar num spinner sem explicação.
-      const { itens, linhasSemDados } = await processarImportacaoNoBrowser(planilha, zip, setProgresso);
+      const { itens, linhasSemDados, linhasComErroUpload } = await processarImportacaoNoBrowser(
+        planilha,
+        zip,
+        setProgresso,
+      );
 
       // Etapa 2 -- manda pro servidor só texto já pronto (nome, telefone, URLs,
       // código Pix): upsert de cliente + criação do lote de envio. Isso é leve
@@ -182,7 +187,12 @@ function Importar() {
         // o backend não vê as linhasSemDados que já ficaram de fora no navegador
         // (ex: telefone inválido) -- soma aqui pra não sumir do resumo
         semDadosObrigatorios: [...(data.semDadosObrigatorios as unknown[]), ...linhasSemDados],
-        total: data.total + linhasSemDados.length,
+        erroUpload: linhasComErroUpload.map((l) => ({
+          nome: l.nome,
+          numero: l.numero,
+          motivoErro: l.motivoErro,
+        })),
+        total: data.total + linhasSemDados.length + linhasComErroUpload.length,
       });
       await refreshClientes();
       if (data.envio?.id) {
@@ -320,6 +330,11 @@ function Importar() {
                       v: resultado.semDadosObrigatorios.length,
                       tone: "text-destructive",
                     },
+                    {
+                      k: "Erro no upload do PDF",
+                      v: resultado.erroUpload.length,
+                      tone: "text-destructive",
+                    },
                   ].map((row) => (
                     <div key={row.k} className="flex items-center justify-between gap-4">
                       <dt className="text-muted-foreground text-sm">{row.k}</dt>
@@ -329,6 +344,19 @@ function Importar() {
                     </div>
                   ))}
                 </dl>
+
+                {resultado.erroUpload.length > 0 && (
+                  <div className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-xs">
+                    <p className="mb-1 font-medium">Falha ao subir PDF (veja o console pro erro completo):</p>
+                    <ul className="space-y-1">
+                      {resultado.erroUpload.slice(0, 5).map((e, i) => (
+                        <li key={i} className="font-mono">
+                          {e.nome}: {e.motivoErro}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {resultado.sucesso.length > 0 && (
                   <div className="bg-success/10 text-success flex items-start gap-2 rounded-md px-3 py-2 text-xs">

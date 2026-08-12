@@ -147,6 +147,44 @@ export type ItemLotePronto = {
   pix_code: string | null;
 };
 
+// Igual LinhaPlanilha, mas com o motivo real da falha -- pra UI não jogar
+// erro de upload no mesmo balde de "sem nome/telefone".
+export type LinhaComErro = LinhaPlanilha & { motivoErro: string };
+
+// Sobe o PDF com retry -- só faz sentido re-tentar erro TRANSITÓRIO (rate
+// limit, timeout, 5xx). Erro 4xx (RLS negando, bucket/policy errada, mime
+// não permitido) é permanente: bater 3x no mesmo 400 só deixa a importação
+// mais lenta sem chance de dar certo. Nesse caso falha na primeira e retorna
+// o erro real pra aparecer na tela.
+function erroEhTransitorio(status: number | undefined): boolean {
+  if (!status) return true; // erro de rede sem status (fetch falhou) -- vale tentar de novo
+  return status === 429 || status >= 500;
+}
+
+async function uploadComRetry(
+  caminho: string,
+  blob: Blob,
+  tentativas = 3,
+): Promise<{ error: { message: string; status?: number } | null }> {
+  let ultimoErro: { message: string; status?: number } | null = null;
+  for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
+    const resultado = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, blob, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+    if (!resultado.error) return { error: null };
+    const status = (resultado.error as { status?: number }).status;
+    ultimoErro = { message: resultado.error.message, status };
+    console.error(
+      `[importacao] upload falhou (tentativa ${tentativa}/${tentativas}, status ${status}) ${caminho}:`,
+      resultado.error,
+    );
+    if (!erroEhTransitorio(status)) break; // 4xx permanente -- não adianta insistir
+    if (tentativa < tentativas) await new Promise((r) => setTimeout(r, 800 * tentativa));
+  }
+  return { error: ultimoErro };
+}
+
 // Roda `tarefa` para cada item de `itens`, no máximo `limite` em paralelo por vez.
 // Mesmo padrão usado no backend (importLote.js) -- aqui evita travar a aba
 // processando tudo de uma vez, sem abrir mão do ganho de rodar mais de 1 PDF
@@ -186,12 +224,28 @@ export async function processarImportacaoNoBrowser(
   planilhaArquivo: File,
   zipArquivo: File,
   onProgresso?: (p: ProgressoImportacao) => void,
-): Promise<{ itens: ItemLotePronto[]; linhasSemDados: LinhaPlanilha[] }> {
+): Promise<{
+  itens: ItemLotePronto[];
+  linhasSemDados: LinhaPlanilha[];
+  linhasComErroUpload: LinhaComErro[];
+}> {
+  // Falha rápido se não tiver sessão válida: sem isso, o RLS de
+  // migration-5-importacao-client-side.sql rejeita TODO upload com 400/403 --
+  // e sem essa checagem isso só aparece depois de processar o lote inteiro
+  // (minutos, com PDFs renderizados à toa).
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) {
+    throw new Error(
+      "Sessão expirada ou não autenticada. Faça login novamente antes de importar (o upload de PDF exige usuário logado no Supabase).",
+    );
+  }
+
   const linhas = await parsePlanilha(planilhaArquivo);
   const pdfsPorNome = await extrairPdfsDoZip(zipArquivo);
 
   const itens: ItemLotePronto[] = [];
   const linhasSemDados: LinhaPlanilha[] = [];
+  const linhasComErroUpload: LinhaComErro[] = [];
   let processados = 0;
 
   async function processarLinha(linha: LinhaPlanilha): Promise<void> {
@@ -236,14 +290,13 @@ export async function processarImportacaoNoBrowser(
     const caminho = `${telefoneNormalizado}/${Date.now()}-${pdfEncontrado.nomeOriginal}`;
     const [pixCode, uploadResultado] = await Promise.all([
       extrairPixDoPdfNoBrowser(pdfEncontrado.blob),
-      supabase.storage.from(BUCKET_FATURAS).upload(caminho, pdfEncontrado.blob, {
-        contentType: "application/pdf",
-        upsert: true,
-      }),
+      uploadComRetry(caminho, pdfEncontrado.blob),
     ]);
 
     if (uploadResultado.error) {
-      linhasSemDados.push({ ...linha });
+      // motivo real do Supabase (RLS, sessão expirada, etc) -- não cai mais
+      // junto com "sem nome/telefone", que é outro problema.
+      linhasComErroUpload.push({ ...linha, motivoErro: uploadResultado.error.message });
       processados++;
       onProgresso?.({ processados, total: linhas.length, etapa: linha.nome });
       return;
@@ -268,5 +321,5 @@ export async function processarImportacaoNoBrowser(
 
   await mapComConcorrencia(linhas, CONCORRENCIA_BROWSER, processarLinha);
 
-  return { itens, linhasSemDados };
+  return { itens, linhasSemDados, linhasComErroUpload };
 }
