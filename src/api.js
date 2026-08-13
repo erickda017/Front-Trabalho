@@ -125,6 +125,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ itens, mensagem: mensagem || undefined }),
       }),
+    // Repasse de 1 PDF já pronto pro Storage via backend (service_role, ignora
+    // RLS) -- ver comentário na rota no backend pro motivo. O navegador ainda
+    // faz o trabalho pesado (render/QR) antes de chamar isso.
+    uploadPdf: ({ caminho, blob, nomeArquivo }) => {
+      const formData = new FormData();
+      formData.append('caminho', caminho);
+      formData.append('pdf', blob, nomeArquivo);
+      return request('/importacao/upload-pdf', { method: 'POST', body: formData });
+    },
     baixarModelo: () => download('/importacao/modelo', 'modelo-importacao.xlsx'),
   },
   chat: {

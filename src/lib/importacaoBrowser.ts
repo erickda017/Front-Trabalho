@@ -117,8 +117,7 @@ export function casarPdf(linha: LinhaPlanilha, pdfsPorNome: Map<string, PdfDoZip
 // ==========================================================================
 import { supabase } from "@/supabaseClient";
 import { extrairPixDoPdfNoBrowser } from "@/lib/pixFromPdfBrowser";
-
-const BUCKET_FATURAS = "faturas";
+import { api } from "@/api";
 
 // Concorrência do processamento no navegador: cada item envolve renderizar até
 // 3 páginas de PDF em canvas + escanear QR + upload pro Storage. Mesmo
@@ -152,35 +151,36 @@ export type ItemLotePronto = {
 export type LinhaComErro = LinhaPlanilha & { motivoErro: string };
 
 // Sobe o PDF com retry -- só faz sentido re-tentar erro TRANSITÓRIO (rate
-// limit, timeout, 5xx). Erro 4xx (RLS negando, bucket/policy errada, mime
-// não permitido) é permanente: bater 3x no mesmo 400 só deixa a importação
-// mais lenta sem chance de dar certo. Nesse caso falha na primeira e retorna
-// o erro real pra aparecer na tela.
-function erroEhTransitorio(status: number | undefined): boolean {
-  if (!status) return true; // erro de rede sem status (fetch falhou) -- vale tentar de novo
-  return status === 429 || status >= 500;
-}
-
+// limit, timeout, 5xx). Erro 4xx é permanente: bater 3x sem chance de dar
+// certo só deixa a importação mais lenta.
+//
+// Passa pelo backend (POST /importacao/upload-pdf, service_role key) em vez de
+// subir direto pro Storage com a sessão do usuário: o upload direto ficou
+// bloqueado por RLS nesse projeto Supabase por uma causa que NÃO é do código
+// (bucket, grants e a policy em si conferem -- Postgres nega mesmo assim,
+// inclusive testado via SQL puro fora do supabase-js). O trabalho pesado
+// (render do PDF em canvas + leitura de QR pra achar o Pix) continua 100% no
+// navegador, só os bytes finais é que passam pelo backend agora -- não volta
+// o problema de RAM que a migration-5 resolvia.
 async function uploadComRetry(
   caminho: string,
   blob: Blob,
+  nomeArquivo: string,
   tentativas = 3,
-): Promise<{ error: { message: string; status?: number } | null }> {
+): Promise<{ error: { message: string; status?: number } | null; publicUrl?: string }> {
   let ultimoErro: { message: string; status?: number } | null = null;
   for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
-    const resultado = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, blob, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-    if (!resultado.error) return { error: null };
-    const status = (resultado.error as { status?: number }).status;
-    ultimoErro = { message: resultado.error.message, status };
-    console.error(
-      `[importacao] upload falhou (tentativa ${tentativa}/${tentativas}, status ${status}) ${caminho}:`,
-      resultado.error,
-    );
-    if (!erroEhTransitorio(status)) break; // 4xx permanente -- não adianta insistir
-    if (tentativa < tentativas) await new Promise((r) => setTimeout(r, 800 * tentativa));
+    try {
+      const resultado = await api.importacao.uploadPdf({ caminho, blob, nomeArquivo });
+      return { error: null, publicUrl: resultado.publicUrl };
+    } catch (err) {
+      // api.js não expõe o status HTTP na exceção -- transitório vira sempre
+      // "sem status" aqui, então sempre vale re-tentar (mais seguro: no pior
+      // caso re-tenta um erro permanente 2x à toa, não perde PDF nenhum).
+      ultimoErro = { message: err instanceof Error ? err.message : String(err) };
+      console.error(`[importacao] upload falhou (tentativa ${tentativa}/${tentativas}) ${caminho}:`, err);
+      if (tentativa < tentativas) await new Promise((r) => setTimeout(r, 800 * tentativa));
+    }
   }
   return { error: ultimoErro };
 }
@@ -229,10 +229,11 @@ export async function processarImportacaoNoBrowser(
   linhasSemDados: LinhaPlanilha[];
   linhasComErroUpload: LinhaComErro[];
 }> {
-  // Falha rápido se não tiver sessão válida: sem isso, o RLS de
-  // migration-5-importacao-client-side.sql rejeita TODO upload com 400/403 --
-  // e sem essa checagem isso só aparece depois de processar o lote inteiro
-  // (minutos, com PDFs renderizados à toa).
+  // Falha rápido se não tiver sessão válida: o upload passa pelo endpoint
+  // autenticado do backend (POST /importacao/upload-pdf), que exige o token
+  // do Supabase Auth (middleware requireAuth) mesmo usando a service_role key
+  // pro Storage por trás. Sem essa checagem aqui, o erro só aparece depois de
+  // processar o lote inteiro (minutos, com PDFs renderizados à toa).
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) {
     throw new Error(
@@ -290,19 +291,17 @@ export async function processarImportacaoNoBrowser(
     const caminho = `${telefoneNormalizado}/${Date.now()}-${pdfEncontrado.nomeOriginal}`;
     const [pixCode, uploadResultado] = await Promise.all([
       extrairPixDoPdfNoBrowser(pdfEncontrado.blob),
-      uploadComRetry(caminho, pdfEncontrado.blob),
+      uploadComRetry(caminho, pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
     ]);
 
     if (uploadResultado.error) {
-      // motivo real do Supabase (RLS, sessão expirada, etc) -- não cai mais
+      // motivo real do erro (backend loga o do Supabase) -- não cai mais
       // junto com "sem nome/telefone", que é outro problema.
       linhasComErroUpload.push({ ...linha, motivoErro: uploadResultado.error.message });
       processados++;
       onProgresso?.({ processados, total: linhas.length, etapa: linha.nome });
       return;
     }
-
-    const { data: publicUrlData } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(caminho);
 
     itens.push({
       linha: linha.linha,
@@ -311,7 +310,7 @@ export async function processarImportacaoNoBrowser(
       valor: linha.valor,
       vencimento: linha.vencimento,
       mensagem: linha.mensagem,
-      pdf_url: publicUrlData.publicUrl,
+      pdf_url: uploadResultado.publicUrl ?? null,
       pdf_path: caminho,
       pix_code: pixCode,
     });
