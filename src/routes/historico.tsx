@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Download, History, RefreshCcw } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Download, History, RefreshCcw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { useAppState } from "@/lib/app-state";
 import {
   Aviso,
   Botao,
@@ -84,6 +85,8 @@ type EnvioProgresso = {
 };
 
 function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChange: (v: boolean) => void }) {
+  const navigate = useNavigate();
+  const { setEnvioAtivoId } = useAppState();
   const [progresso, setProgresso] = useState<EnvioProgresso | null>(null);
   const [itens, setItens] = useState<Awaited<ReturnType<typeof api.envios.itens>>>([]);
   const [carregando, setCarregando] = useState(true);
@@ -117,9 +120,25 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
   return (
     <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
       <SheetHeader>
-        <SheetTitle>Detalhes do lote</SheetTitle>
+        <SheetTitle>{envio.lote || "Detalhes do lote"}</SheetTitle>
         <SheetDescription>Lote #{envio.id.slice(0, 8)} — {formatarData(envio.criado_em)}</SheetDescription>
       </SheetHeader>
+
+      {envio.status === "pendente" && (
+        <Botao
+          variante="primary"
+          tamanho="sm"
+          className="mt-4 w-full"
+          onClick={() => {
+            setEnvioAtivoId(envio.id);
+            onOpenChange(false);
+            navigate({ to: "/disparos" });
+          }}
+        >
+          <Send className="size-3.5" />
+          Disparar este pacote
+        </Botao>
+      )}
 
       <div className="mt-5 space-y-5">
         {erro && (

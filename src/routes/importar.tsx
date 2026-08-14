@@ -140,10 +140,12 @@ function Importar() {
   const [planilha, setPlanilha] = useState<File | null>(null);
   const [zip, setZip] = useState<File | null>(null);
   const [mensagem, setMensagem] = useState("");
+  const [nomePacote, setNomePacote] = useState("");
   const [processando, setProcessando] = useState(false);
   const [progresso, setProgresso] = useState<ProgressoImportacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [envioIdCriado, setEnvioIdCriado] = useState<string | null>(null);
   const [baixandoModelo, setBaixandoModelo] = useState(false);
 
   async function baixarModelo() {
@@ -165,6 +167,7 @@ function Importar() {
     setProcessando(true);
     setErro(null);
     setProgresso(null);
+    setEnvioIdCriado(null);
     try {
       // Etapa 1 -- roda no NAVEGADOR (RAM/CPU de quem está importando, não do
       // servidor): parse da planilha e do zip, casamento PDF<->cliente,
@@ -181,7 +184,7 @@ function Importar() {
       // código Pix): upsert de cliente + criação do lote de envio. Isso é leve
       // o bastante pra nunca chegar perto de estourar a RAM do servidor, mesmo
       // com 100+ clientes de uma vez.
-      const data: Resultado = await api.importacao.enviarLote({ itens, mensagem });
+      const data: Resultado = await api.importacao.enviarLote({ itens, mensagem, lote: nomePacote });
       setResultado({
         ...data,
         // o backend não vê as linhasSemDados que já ficaram de fora no navegador
@@ -195,9 +198,12 @@ function Importar() {
         total: data.total + linhasSemDados.length + linhasComErroUpload.length,
       });
       await refreshClientes();
+      // Não navega mais sozinho: o pacote já fica salvo (é um lote 'pendente'
+      // esperando no histórico, com o nome que você deu), e o botão "Disparar
+      // agora" abaixo leva pra aba Disparo só quando você quiser -- em vez de
+      // sair da tela de resultado antes de dar tempo de ler o resumo.
       if (data.envio?.id) {
-        setEnvioAtivoId(data.envio.id);
-        navigate({ to: "/" });
+        setEnvioIdCriado(data.envio.id);
       }
     } catch (e) {
       setErro((e as Error).message);
@@ -205,6 +211,12 @@ function Importar() {
       setProcessando(false);
       setProgresso(null);
     }
+  }
+
+  function dispararAgora() {
+    if (!envioIdCriado) return;
+    setEnvioAtivoId(envioIdCriado);
+    navigate({ to: "/disparos" });
   }
 
   return (
@@ -259,6 +271,22 @@ function Importar() {
                   arquivo={zip}
                   onSelecionar={setZip}
                 />
+              </div>
+
+              <div>
+                <label className="label-eyebrow mb-2 block">Nome do pacote (opcional)</label>
+                <input
+                  type="text"
+                  value={nomePacote}
+                  onChange={(e) => setNomePacote(e.target.value)}
+                  placeholder="Ex: Faturas agosto - safra nova"
+                  maxLength={120}
+                  className="focus-ring bg-surface text-foreground border-border placeholder:text-subtle w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <p className="text-subtle mt-2 text-xs">
+                  Identifica esse lote no Histórico, pra você achar e disparar depois sem precisar
+                  reimportar. Se deixar em branco, fica só com o número do lote.
+                </p>
               </div>
 
               <div>
@@ -362,9 +390,20 @@ function Importar() {
                   <div className="bg-success/10 text-success flex items-start gap-2 rounded-md px-3 py-2 text-xs">
                     <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
                     <span>
-                      {resultado.sucesso.length} cliente(s) importado(s) com sucesso. O lote de
-                      disparo foi criado quando aplicável.
+                      {resultado.sucesso.length} cliente(s) importado(s) com sucesso. O pacote já
+                      está salvo{nomePacote ? ` como "${nomePacote}"` : ""} e aparece no Histórico.
                     </span>
+                  </div>
+                )}
+
+                {envioIdCriado && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Botao variante="primary" onClick={dispararAgora} className="flex-1">
+                      Disparar agora
+                    </Botao>
+                    <Botao variante="outline" onClick={() => navigate({ to: "/historico" })} className="flex-1">
+                      Ver no histórico depois
+                    </Botao>
                   </div>
                 )}
               </div>
@@ -385,8 +424,8 @@ function Importar() {
                 O processamento dos PDFs (achar o código Pix, montar o pacote de envio) roda no seu
                 navegador, não no servidor -- por isso pode levar alguns minutos com muitos arquivos,
                 mas não trava nem sobrecarrega o sistema para outros usuários. Linhas com problema
-                ficam destacadas e não travam o resto do lote. Ao processar, o lote é criado já pronto
-                e você é levado direto para a aba Disparo.
+                ficam destacadas e não travam o resto do lote. Ao processar, o pacote já fica salvo
+                e pendente -- você escolhe se quer disparar na hora ou só depois, pelo Histórico.
               </p>
             </div>
           </SectionCard>

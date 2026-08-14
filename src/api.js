@@ -120,10 +120,10 @@ export const api = {
     // feitos ali -- ver src/lib/importacaoBrowser.ts). Manda só texto (nome,
     // telefone, URLs, código Pix), nunca PDF -- por isso não pesa no servidor
     // mesmo com 100+ clientes de uma vez.
-    enviarLote: ({ itens, mensagem }) =>
+    enviarLote: ({ itens, mensagem, lote }) =>
       request('/importacao/lote', {
         method: 'POST',
-        body: JSON.stringify({ itens, mensagem: mensagem || undefined }),
+        body: JSON.stringify({ itens, mensagem: mensagem || undefined, lote: lote || undefined }),
       }),
     // Repasse de 1 PDF já pronto pro Storage via backend (service_role, ignora
     // RLS) -- ver comentário na rota no backend pro motivo. O navegador ainda

@@ -392,8 +392,6 @@ type EnvioProgresso = {
   slot_atual: WhatsappSlot | null;
 };
 
-const ATIVOS = new Set(["pendente", "agendado", "em_andamento", "pausado"]);
-
 function ProgressoDisparo({
   envioAtivoId,
   setEnvioAtivoId,
@@ -403,18 +401,25 @@ function ProgressoDisparo({
 }) {
   const [envio, setEnvio] = useState<Awaited<ReturnType<typeof api.envios.buscar>> | null>(null);
   const [progresso, setProgresso] = useState<EnvioProgresso | null>(null);
+  const [itens, setItens] = useState<Awaited<ReturnType<typeof api.envios.itens>> | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [acao, setAcao] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [envioData, progressoData] = await Promise.all([
+      const [envioData, progressoData, itensData] = await Promise.all([
         api.envios.buscar(envioAtivoId),
         api.envios.progresso(envioAtivoId),
+        // GET /:id/itens é a fonte real da lista (com o join de clientes) --
+        // GET /:id (api.envios.buscar) só devolve o resumo/contadores, nunca
+        // mandou um campo "itens" -- lendo envio.itens direto sempre foi
+        // undefined, só não quebrava com lotes vazios de teste.
+        api.envios.itens(envioAtivoId),
       ]);
       setEnvio(envioData);
       setProgresso(progressoData);
+      setItens(itensData);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -437,13 +442,13 @@ function ProgressoDisparo({
       const p = await api.envios.progresso(envioAtivoId).catch(() => null);
       if (cancelado) return;
       if (p) setProgresso(p);
-      if (!p || !ATIVOS.has(p.status)) {
-        const e = await api.envios.buscar(envioAtivoId).catch(() => null);
-        if (!cancelado && e) setEnvio(e);
-        return;
-      }
-      const e = await api.envios.buscar(envioAtivoId).catch(() => null);
-      if (!cancelado && e) setEnvio(e);
+      const [e, i] = await Promise.all([
+        api.envios.buscar(envioAtivoId).catch(() => null),
+        api.envios.itens(envioAtivoId).catch(() => null),
+      ]);
+      if (cancelado) return;
+      if (e) setEnvio(e);
+      if (i) setItens(i);
     }, 3000);
 
     return () => {
@@ -538,7 +543,7 @@ function ProgressoDisparo({
             {progresso.proximo_slot != null && <span>Próximo slot: WhatsApp {progresso.proximo_slot}</span>}
           </div>
 
-          {envio && envio.itens.length > 0 ? (
+          {itens && itens.length > 0 ? (
             <div className="mt-6 max-h-96 overflow-y-auto rounded-md border border-border">
               <table className="w-full text-left text-sm">
                 <thead className="bg-surface-sunken sticky top-0">
@@ -549,7 +554,7 @@ function ProgressoDisparo({
                   </tr>
                 </thead>
                 <tbody>
-                  {envio.itens.map((item) => (
+                  {itens.map((item) => (
                     <tr key={item.id} className="border-border border-t">
                       <td className="td-cell">{item.clientes?.nome ?? "—"}</td>
                       <td className="td-cell font-mono text-xs">{item.clientes?.telefone ?? item.erro ?? "—"}</td>
@@ -561,7 +566,7 @@ function ProgressoDisparo({
                 </tbody>
               </table>
             </div>
-          ) : envio ? (
+          ) : itens ? (
             <EmptyState titulo="Este lote não tem itens." compacto className="mt-4" />
           ) : null}
         </>

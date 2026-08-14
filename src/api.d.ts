@@ -104,7 +104,8 @@ declare module "@/api" {
     };
     importacao: {
       enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;
-      enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined }) => Promise<any>;
+      enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;
+      uploadPdf: (args: { caminho: string; blob: Blob; nomeArquivo: string }) => Promise<{ path: string; publicUrl: string }>;
       baixarModelo: () => Promise<void>;
     };
     chat: {

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ClientesRouteImport } from './routes/clientes'
+import { Route as ConexaoRouteImport } from './routes/conexao'
 import { Route as ConexoesRouteImport } from './routes/conexoes'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as DisparosRouteImport } from './routes/disparos'
@@ -34,6 +35,11 @@ const ChatRoute = ChatRouteImport.update({
 const ClientesRoute = ClientesRouteImport.update({
   id: '/clientes',
   path: '/clientes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConexaoRoute = ConexaoRouteImport.update({
+  id: '/conexao',
+  path: '/conexao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConexoesRoute = ConexoesRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
+  '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
+  '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
+  '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/chat'
     | '/clientes'
+    | '/conexao'
     | '/conexoes'
     | '/configuracoes'
     | '/disparos'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/'
     | '/chat'
     | '/clientes'
+    | '/conexao'
     | '/conexoes'
     | '/configuracoes'
     | '/disparos'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/chat'
     | '/clientes'
+    | '/conexao'
     | '/conexoes'
     | '/configuracoes'
     | '/disparos'
@@ -163,6 +175,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
   ClientesRoute: typeof ClientesRoute
+  ConexaoRoute: typeof ConexaoRoute
   ConexoesRoute: typeof ConexoesRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   DisparosRoute: typeof DisparosRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/clientes'
       fullPath: '/clientes'
       preLoaderRoute: typeof ClientesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/conexao': {
+      id: '/conexao'
+      path: '/conexao'
+      fullPath: '/conexao'
+      preLoaderRoute: typeof ConexaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/conexoes': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChatRoute: ChatRoute,
   ClientesRoute: ClientesRoute,
+  ConexaoRoute: ConexaoRoute,
   ConexoesRoute: ConexoesRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   DisparosRoute: DisparosRoute,

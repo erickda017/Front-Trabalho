@@ -26,7 +26,14 @@ function normalizar(str: string | null | undefined): string {
 }
 
 function normalizarNomeArquivo(str: string | null | undefined): string {
-  return normalizar(str).replace(/\.pdf$/i, "");
+  return normalizar(str)
+    .replace(/\.pdf$/i, "")
+    // trata hífen/underscore como espaço (slug "joao-silva" == nome "João Silva"),
+    // e colapsa espaços repetidos -- sem isso, planilha com "arquivo" em slug só
+    // casava quando o nome do PDF usava exatamente o mesmo separador.
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function acharColuna(linha: Record<string, unknown>, candidatos: string[]): unknown {
