@@ -124,7 +124,7 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
         <SheetDescription>Lote #{envio.id.slice(0, 8)} — {formatarData(envio.criado_em)}</SheetDescription>
       </SheetHeader>
 
-      {envio.status === "pendente" && (
+      {(envio.status === "pendente" || envio.status === "pausado") && (
         <Botao
           variante="primary"
           tamanho="sm"
@@ -136,7 +136,7 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
           }}
         >
           <Send className="size-3.5" />
-          Disparar este pacote
+          {envio.status === "pausado" ? "Continuar disparo (pendentes)" : "Disparar este pacote"}
         </Botao>
       )}
 

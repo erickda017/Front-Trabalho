@@ -348,8 +348,10 @@ function Pix() {
                             <span className="truncate" title={e.arquivo}>{e.arquivo}</span>
                           </span>
                         </td>
-                        <td className="td-cell">
-                          {e.cliente_nome ?? <span className="text-subtle">Não vinculado</span>}
+                        <td className="td-cell max-w-[10rem]">
+                          <span className="block truncate" title={e.cliente_nome ?? undefined}>
+                            {e.cliente_nome ?? <span className="text-subtle">Não vinculado</span>}
+                          </span>
                         </td>
                         <td className="td-cell">
                           {e.pix_code ? (
@@ -372,21 +374,22 @@ function Pix() {
                           </div>
                         </td>
                         <td className="td-cell text-subtle whitespace-nowrap text-xs">{formatarData(e.criado_em)}</td>
-                        <td className="td-cell">
-                          <div className="flex justify-end gap-2">
+                        <td className="td-cell min-w-[9rem]">
+                          <div className="flex flex-wrap justify-end gap-2">
                             {(e.status === "erro" || e.status === "nao_encontrado") && (
                               <Botao
                                 tamanho="sm"
                                 variante="outline"
                                 onClick={() => reprocessar(e.id)}
                                 disabled={reprocessando === e.id}
+                                className="whitespace-nowrap"
                               >
                                 <RefreshCcw className={cn("size-3.5", reprocessando === e.id && "animate-spin")} />
                                 Tentar novamente
                               </Botao>
                             )}
                             {!e.cliente_id && (
-                              <Botao tamanho="sm" variante="ghost" onClick={() => abrirVinculo(e)}>
+                              <Botao tamanho="sm" variante="ghost" onClick={() => abrirVinculo(e)} className="whitespace-nowrap">
                                 <Link2 className="size-3.5" />
                                 Vincular cliente
                               </Botao>
