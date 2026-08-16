@@ -103,6 +103,8 @@ export const api = {
       formData.append('pdf', file);
       return request(`/clientes/${id}/pdf`, { method: 'POST', body: formData });
     },
+    converterLista: (texto) => request('/clientes/converter-lista', { method: 'POST', body: JSON.stringify({ texto }) }),
+    importarLista: (itens) => request('/clientes/importar-lista', { method: 'POST', body: JSON.stringify({ itens }) }),
   },
   importacao: {
     // Fluxo antigo: envia o zip inteiro (PDFs binários) pro servidor processar

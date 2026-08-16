@@ -291,7 +291,70 @@ function StatusBadgeSimples({ status }: { status: string }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 6. Agendamento                                                             */
+/* 6. Intervalo de disparo                                                   */
+/* -------------------------------------------------------------------------- */
+
+function EtapaIntervalo({
+  janelaHoras,
+  setJanelaHoras,
+  janelaMinutos,
+  setJanelaMinutos,
+}: {
+  janelaHoras: string;
+  setJanelaHoras: (v: string) => void;
+  janelaMinutos: string;
+  setJanelaMinutos: (v: string) => void;
+}) {
+  const horas = Number(janelaHoras) || 0;
+  const minutos = Number(janelaMinutos) || 0;
+  const ativo = horas > 0 || minutos > 0;
+
+  return (
+    <SectionCard
+      eyebrow="Etapa 6"
+      titulo="Intervalo de disparo"
+      descricao='Opcional: espalha o lote inteiro dentro de uma janela de tempo (ex: "5 horas" -- a primeira mensagem sai já, a última antes das 5h fecharem), em vez do intervalo padrão entre mensagens. Reduz risco de queda do WhatsApp em lotes grandes.'
+    >
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="label-eyebrow">Horas</span>
+          <input
+            type="number"
+            min={0}
+            value={janelaHoras}
+            onChange={(e) => setJanelaHoras(e.target.value)}
+            placeholder="0"
+            className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="label-eyebrow">Minutos</span>
+          <input
+            type="number"
+            min={0}
+            max={59}
+            value={janelaMinutos}
+            onChange={(e) => setJanelaMinutos(e.target.value)}
+            placeholder="0"
+            className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
+          />
+        </label>
+        <p className="text-subtle mb-2 text-xs">
+          {ativo
+            ? `Mensagens espalhadas ao longo de ${horas > 0 ? `${horas}h` : ""}${minutos > 0 ? `${minutos}min` : ""}.`
+            : "Sem janela definida: usa o intervalo padrão entre mensagens (comportamento atual)."}
+        </p>
+      </div>
+      <p className="text-subtle mt-3 text-xs">
+        Também vale ao continuar um lote pausado -- se sobrarem itens, eles dividem essa mesma
+        duração a partir do momento em que você continuar.
+      </p>
+    </SectionCard>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 7. Agendamento                                                             */
 /* -------------------------------------------------------------------------- */
 
 function EtapaAgendamento({
@@ -302,7 +365,7 @@ function EtapaAgendamento({
   setAgendarPara: (v: string) => void;
 }) {
   return (
-    <SectionCard eyebrow="Etapa 6" titulo="Agendamento" descricao="Opcional: defina uma data/hora para iniciar o disparo automaticamente.">
+    <SectionCard eyebrow="Etapa 7" titulo="Agendamento" descricao="Opcional: defina uma data/hora para iniciar o disparo automaticamente.">
       <label className="flex flex-col gap-1.5 sm:w-64">
         <span className="label-eyebrow flex items-center gap-1.5">
           <Calendar className="size-3.5" /> Data e hora
@@ -750,6 +813,8 @@ function Disparo() {
   );
   const [comPdf, setComPdf] = useState(true);
   const [estrategiaEscolhida, setEstrategiaEscolhida] = useState<EstrategiaEnvio>(estrategia?.estrategia ?? "qualquer");
+  const [janelaHoras, setJanelaHoras] = useState("");
+  const [janelaMinutos, setJanelaMinutos] = useState("");
   const [agendarPara, setAgendarPara] = useState("");
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -763,11 +828,19 @@ function Disparo() {
     setCriando(true);
     setErro(null);
     try {
+      const horas = Number(janelaHoras) || 0;
+      const minutos = Number(janelaMinutos) || 0;
+      const janela_ms = horas > 0 || minutos > 0 ? (horas * 60 + minutos) * 60 * 1000 : undefined;
+
       const envio = await api.envios.criar({
         cliente_ids: selecionados,
-        template_mensagem: template,
-        estrategia: estrategiaEscolhida,
-        com_pdf: comPdf,
+        // NOTA: o backend (POST /envios) espera "mensagem", não "template_mensagem"
+        // -- estava divergente aqui, o que fazia a criação sempre falhar com
+        // "mensagem é obrigatória" quando disparada direto por essa tela (fora
+        // do fluxo de Importar planilha+zip, que usa outro endpoint).
+        mensagem: template,
+        slot: estrategiaEscolhida === "slot_1" ? 1 : estrategiaEscolhida === "slot_2" ? 2 : undefined,
+        ...(janela_ms ? { janela_ms } : {}),
         ...(agendarPara ? { agendado_para: new Date(agendarPara).toISOString() } : {}),
       });
       limparSelecionados();
@@ -815,9 +888,15 @@ function Disparo() {
               estrategiaEscolhida={estrategiaEscolhida}
               setEstrategiaEscolhida={setEstrategiaEscolhida}
             />
+            <EtapaIntervalo
+              janelaHoras={janelaHoras}
+              setJanelaHoras={setJanelaHoras}
+              janelaMinutos={janelaMinutos}
+              setJanelaMinutos={setJanelaMinutos}
+            />
             <EtapaAgendamento agendarPara={agendarPara} setAgendarPara={setAgendarPara} />
 
-            <SectionCard eyebrow="Etapa 7" titulo="Confirmação">
+            <SectionCard eyebrow="Etapa 8" titulo="Confirmação">
               <Botao
                 variante="primary"
                 onClick={() => setConfirmarAberto(true)}

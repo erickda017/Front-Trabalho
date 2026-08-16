@@ -20,6 +20,7 @@ declare module "@/api" {
     retomar_em: string | null;
     template_mensagem: string;
     estrategia?: EstrategiaEnvio | null | undefined;
+    janela_ms?: number | null | undefined;
     itens: EnvioItem[];
   };
 
@@ -101,6 +102,8 @@ declare module "@/api" {
         }[]
       >;
       uploadPdf: (id: string, file: File) => Promise<Cliente>;
+      converterLista: (texto: string) => Promise<{ itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]; avisos: string[]; total: number }>;
+      importarLista: (itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
     };
     importacao: {
       enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;
@@ -136,10 +139,10 @@ declare module "@/api" {
     envios: {
       criar: (payload: {
         cliente_ids: string[];
-        template_mensagem: string;
+        mensagem: string;
+        slot?: WhatsappSlot | undefined;
+        janela_ms?: number | undefined;
         agendado_para?: string | undefined;
-        estrategia?: EstrategiaEnvio | undefined;
-        com_pdf?: boolean | undefined;
       }) => Promise<Envio>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       reenviarErros: (id: string) => Promise<{ ok: boolean; mensagem: string }>;

@@ -5,14 +5,17 @@ import {
   FileArchive,
   FileSpreadsheet,
   TriangleAlert,
+  Upload,
+  Wand2,
   X,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import * as XLSX from "xlsx";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { Aviso, Botao } from "@/components/shared/Controls";
+import { Aviso, Botao, TabelaWrap } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { api } from "@/api";
@@ -45,6 +48,8 @@ type Resultado = {
   erroUpload: { nome: string; numero: string; motivoErro: string }[];
   envio: { id: string } | null;
 };
+
+type ItemConvertido = { nome: string; numero: string; valor: number | null; arquivo: string };
 
 const COLUNAS_ESPERADAS = [
   "nome",
@@ -131,6 +136,174 @@ function DropzoneArquivo({
         onChange={(e) => onSelecionar(e.target.files?.[0] ?? null)}
       />
     </div>
+  );
+}
+
+// Converte texto cru (formato NOME/contrato/CPF/telefone(s)/Fatura/valor, ver
+// backend/src/lib/parseListaClientes.js) em linhas prontas pro layout da
+// planilha modelo. O parse roda no servidor (mais robusto/testado); aqui só
+// mostra o preview e oferece baixar o .xlsx ou já criar os clientes.
+function ConversorLista() {
+  const { refreshClientes } = useAppState();
+  const [texto, setTexto] = useState("");
+  const [convertendo, setConvertendo] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [itens, setItens] = useState<ItemConvertido[] | null>(null);
+  const [avisos, setAvisos] = useState<string[]>([]);
+  const [importado, setImportado] = useState<{ criados: number; erros: unknown[] } | null>(null);
+
+  async function converter() {
+    if (!texto.trim()) {
+      setErro("Cole a lista de clientes no campo de texto.");
+      return;
+    }
+    setConvertendo(true);
+    setErro(null);
+    setImportado(null);
+    try {
+      const data = await api.clientes.converterLista(texto);
+      setItens(data.itens);
+      setAvisos(data.avisos);
+      if (data.itens.length === 0) {
+        setErro("Nenhum cliente reconhecido nesse texto. Confira o formato (nome, telefone(s), valor).");
+      }
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setConvertendo(false);
+    }
+  }
+
+  function baixarPlanilha() {
+    if (!itens || itens.length === 0) return;
+    // Mesmas colunas do modelo (nome, numero, mensagem, valor, vencimento, arquivo)
+    const linhas = itens.map((i) => ({
+      nome: i.nome,
+      numero: i.numero,
+      mensagem: "",
+      valor: i.valor ?? "",
+      vencimento: "",
+      arquivo: i.arquivo,
+    }));
+    const planilha = XLSX.utils.json_to_sheet(linhas);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, planilha, "clientes");
+    XLSX.writeFile(workbook, "clientes-convertidos.xlsx");
+  }
+
+  async function importarAgora() {
+    if (!itens || itens.length === 0) return;
+    setImportando(true);
+    setErro(null);
+    try {
+      const data = await api.clientes.importarLista(itens);
+      setImportado({ criados: data.criados, erros: data.erros });
+      await refreshClientes();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  const clientesUnicos = itens ? new Set(itens.map((i) => i.nome)).size : 0;
+
+  return (
+    <SectionCard
+      titulo="0. Converter lista crua de clientes"
+      descricao='Cole o texto solto (nome, contrato, CPF, telefone(s), fatura, valor) -- vira planilha no formato do modelo, uma linha por telefone.'
+    >
+      <div className="space-y-4">
+        <textarea
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder={"IRANDIR GONCALVES ALVES\n1512993\nCPF 233.228.379-04\n41985083040\nFatura 2\nR$ 122,39\n\n..."}
+          rows={6}
+          className="focus-ring bg-surface text-foreground border-border placeholder:text-subtle w-full rounded-md border px-3 py-2 font-mono text-xs"
+        />
+
+        {erro && <Aviso tone="danger">{erro}</Aviso>}
+
+        <div className="flex justify-end">
+          <Botao variante="primary" tamanho="sm" onClick={converter} disabled={convertendo || !texto.trim()}>
+            <Wand2 className="size-3.5" />
+            {convertendo ? "Convertendo…" : "Converter"}
+          </Botao>
+        </div>
+
+        {itens && itens.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-muted-foreground text-xs">
+                <span className="text-foreground font-mono font-medium">{clientesUnicos}</span> cliente(s),{" "}
+                <span className="text-foreground font-mono font-medium">{itens.length}</span> linha(s) (1 por telefone)
+                {avisos.length > 0 && <span className="text-warning"> · {avisos.length} linha(s) ignorada(s)</span>}
+              </p>
+              <div className="flex gap-2">
+                <Botao variante="outline" tamanho="sm" onClick={baixarPlanilha}>
+                  <Download className="size-3.5" />
+                  Baixar planilha (.xlsx)
+                </Botao>
+                <Botao variante="primary" tamanho="sm" onClick={importarAgora} disabled={importando}>
+                  <Upload className="size-3.5" />
+                  {importando ? "Importando…" : "Importar clientes agora"}
+                </Botao>
+              </div>
+            </div>
+
+            {importado && (
+              <div className="bg-success/10 text-success flex items-start gap-2 rounded-md px-3 py-2 text-xs">
+                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  {importado.criados} cliente(s) criado(s)/atualizado(s) no cadastro.
+                  {importado.erros.length > 0 && ` ${importado.erros.length} com erro (veja o console).`}
+                </span>
+              </div>
+            )}
+
+            <TabelaWrap>
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-border text-subtle border-b">
+                    <th className="th-cell">Nome</th>
+                    <th className="th-cell">Telefone</th>
+                    <th className="th-cell">Valor</th>
+                    <th className="th-cell">Arquivo esperado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itens.slice(0, 30).map((i, idx) => (
+                    <tr key={idx} className="border-border border-t">
+                      <td className="td-cell max-w-[12rem] truncate">{i.nome}</td>
+                      <td className="td-cell font-mono">{i.numero}</td>
+                      <td className="td-cell font-mono">
+                        {i.valor != null ? i.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+                      </td>
+                      <td className="td-cell font-mono text-[11px]">{i.arquivo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TabelaWrap>
+            {itens.length > 30 && (
+              <p className="text-subtle text-xs">Mostrando 30 de {itens.length} linhas.</p>
+            )}
+
+            {avisos.length > 0 && (
+              <details className="text-subtle text-xs">
+                <summary className="cursor-pointer select-none">Ver linhas ignoradas</summary>
+                <ul className="mt-2 space-y-1">
+                  {avisos.map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -223,6 +396,8 @@ function Importar() {
     <AppShell title="Importar" subtitle="Planilha + ZIP de PDFs viram um lote pronto para disparo">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-8">
+          <ConversorLista />
+
           <SectionCard
             titulo="1. Baixar modelo"
             descricao="Use o modelo de planilha para garantir que as colunas fiquem no formato esperado."
