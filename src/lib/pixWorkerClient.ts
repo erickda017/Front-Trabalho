@@ -14,14 +14,21 @@
 //   responder com um Pix válido. Isso mantém cada requisição pequena (< 1MB
 //   na esmagadora maioria dos casos, já que sobra só 1 página) e evita
 //   deixar o Worker escanear páginas irrelevantes desnecessariamente.
+//
+// IMPORTANTE (fix 413 + fix SSR): quando uma página fatiada ainda passa de
+// 1MB (ex: boleto escaneado com imagem de alta resolução numa página só),
+// rasterizamos ela em JPEG comprimido antes de enviar (ver rasterizarComoJpeg)
+// em vez de mandar o PDF cru e estourar 413 no Worker/OCR.space.
+//
+// `pdfjs-dist` é importado dinamicamente (import() dentro da função, nunca no
+// topo do módulo) porque este projeto roda com SSR (TanStack Start/Nitro). Um
+// import estático de pdfjs-dist no topo do módulo executa
+// `pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(...)` durante o SSR
+// também -- no servidor não existe `Worker`/DOM, e isso derruba a rota
+// inteira com "Something went wrong on our end" mesmo com o build passando.
+// Import dinâmico + guard de `typeof document` garantem que esse código só
+// roda no navegador.
 import { PDFDocument } from "pdf-lib";
-import * as pdfjsLib from "pdfjs-dist";
-
-// Vite: aponta pro worker do pdfjs como asset via URL (funciona em dev e build).
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).href;
 
 const WORKER_URL =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ||
@@ -92,7 +99,23 @@ async function fatiarPdfEmPaginas(arquivo: File | Blob): Promise<Blob[]> {
 // reduzindo escala/qualidade em passos até caber no limite do Worker. Isso
 // substitui o antigo "manda cru e torce" -- que estourava 413 em boletos com
 // imagem de alta resolução (scan) numa página só.
+//
+// `pdfjsLib` é importado dinamicamente aqui dentro -- nunca no topo do
+// módulo -- pra não rodar em SSR (ver comentário no topo do arquivo).
 async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Promise<Blob | null> {
+  if (typeof document === "undefined") {
+    // Estamos em SSR/Node (sem DOM/canvas) -- não há como rasterizar aqui.
+    // Isso não deveria acontecer na prática (extrairDadosPixViaWorker já
+    // garante que só roda no navegador), mas é uma proteção extra.
+    return null;
+  }
+
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).href;
+
   const buffer = await paginaPdfBlob.arrayBuffer();
   const doc = await pdfjsLib.getDocument({ data: buffer }).promise;
   const pagina = await doc.getPage(1);
@@ -124,6 +147,7 @@ async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Pro
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob((b) => resolve(b), "image/jpeg", quality),
     );
+
     if (blob && blob.size <= limiteBytes) return blob;
     // Guarda o menor obtido até agora caso nenhuma tentativa entre no limite.
     if (blob && scale === tentativas[tentativas.length - 1].scale) return blob;
@@ -180,15 +204,24 @@ async function enviarPaginaParaWorker(
 // Ponto de entrada: fatia o PDF e testa página por página no Worker até achar
 // um Pix válido. Nunca lança -- um PDF problemático (corrompido, sem Pix,
 // Worker fora do ar) só resulta em `null`, sem travar o resto da importação.
+//
+// Só deve rodar no navegador (usa File/Blob/canvas/pdfjs) -- se por algum
+// motivo for chamado durante SSR, retorna null cedo em vez de quebrar a rota.
 export async function extrairDadosPixViaWorker(
   arquivo: File | Blob,
   nomeArquivo = "boleto.pdf",
 ): Promise<DadosPix | null> {
+  if (typeof document === "undefined") {
+    console.warn("[pixWorkerClient] chamado fora do navegador (SSR?) -- ignorando.");
+    return null;
+  }
+
   try {
     const paginas = await fatiarPdfEmPaginas(arquivo);
 
     for (let i = 0; i < paginas.length; i++) {
       const pagina = paginas[i];
+
       const nomePagina = nomeArquivo.replace(/\.pdf$/i, "") + `-pagina-${i + 1}.pdf`;
       const dados = await comTimeout(
         enviarPaginaParaWorker(pagina, nomePagina, i),
