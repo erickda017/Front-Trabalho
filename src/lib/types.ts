@@ -16,9 +16,10 @@ export type ItemStatus =
   | "entregue"
   | "lido"
   | "erro"
-  | "numero_invalido";
+  | "numero_invalido"
+  | "cancelado";
 
-export type EnvioStatus = "pendente" | "agendado" | "em_andamento" | "pausado" | "concluido";
+export type EnvioStatus = "pendente" | "agendado" | "em_andamento" | "pausado" | "concluido" | "cancelado";
 
 export type WhatsappStatus = "disconnected" | "connecting" | "qr" | "connected";
 
@@ -37,6 +38,16 @@ export type WhatsappConexao = {
 };
 
 export type EstrategiaEnvio = "slot_1" | "slot_2" | "round_robin" | "qualquer";
+
+/** Números de comportamento do disparo (delay, limite diário, pausa automática) --
+ *  vêm do backend (env vars) pra não ficarem hardcoded/desatualizados no front. */
+export type ConfigDisparo = {
+  min_delay_ms: number;
+  max_delay_ms: number;
+  daily_limit: number;
+  batch_size: number;
+  batch_pause_ms: number;
+};
 
 export type EstrategiaConfig = {
   estrategia: EstrategiaEnvio;
@@ -85,6 +96,9 @@ export type PixExtracao = {
   cliente_nome: string | null;
   status: PixExtracaoStatus;
   pix_code: string | null;
+  valor: string | null;
+  vencimento: string | null;
+  linha_digitavel: string | null;
   erro: string | null;
   criado_em: string;
 };
@@ -102,11 +116,12 @@ export type EnvioResumo = {
   falhas: number;
   numeros_invalidos: number;
   pendentes: number;
+  cancelados: number;
 };
 
 export type EnvioItem = {
   id: string;
-  status: "pendente" | "enviado" | "erro" | "numero_invalido";
+  status: "pendente" | "enviado" | "erro" | "numero_invalido" | "cancelado";
   status_entrega: "entregue" | "lido" | null;
   erro: string | null;
   slot: WhatsappSlot | null;
@@ -123,6 +138,7 @@ export type EnvioItem = {
 export function statusDoItem(item: Pick<EnvioItem, "status" | "status_entrega">): ItemStatus {
   if (item.status === "erro") return "erro";
   if (item.status === "numero_invalido") return "numero_invalido";
+  if (item.status === "cancelado") return "cancelado";
   if (item.status === "pendente") return "pendente";
   if (item.status_entrega === "lido") return "lido";
   if (item.status_entrega === "entregue") return "entregue";

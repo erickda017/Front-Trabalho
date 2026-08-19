@@ -57,6 +57,7 @@ houver slot em `connecting`/`qr`. O endpoint deve ser leve e idempotente.
 | --- | --- | --- |
 | GET | `/configuracoes/estrategia` | `EstrategiaConfig` |
 | PUT | `/configuracoes/estrategia` | `{ estrategia }` → `EstrategiaConfig` |
+| GET | `/configuracoes/disparo` | `ConfigDisparo` (delay, limite diário, pausa automática por lote) |
 
 ```ts
 EstrategiaConfig = {
@@ -74,7 +75,7 @@ O backend é responsável por escolher o slot de cada mensagem conforme a estrat
 | Método | Rota | Observações |
 | --- | --- | --- |
 | GET | `/pix/extracoes?busca&status&cliente_id&page&per_page` | `{ items: PixExtracao[], total }` |
-| POST | `/pix/extracoes` | `multipart`, campo repetido `arquivos` (PDFs) → `PixExtracao[]` |
+| POST | `/pix/extracoes` | `multipart`, campo repetido `arquivos` (PDFs, até 400 arquivos / 800MB por requisição — o front envia em lotes menores) → `PixExtracao[]` |
 | POST | `/pix/extracoes/:id/reprocessar` | `PixExtracao` |
 | POST | `/pix/extracoes/:id/aplicar` | `{ cliente_id }` → grava `pix_code` no cliente |
 | GET | `/pix/extracoes/exportar?formato=csv\|xlsx` | binário (download) |
@@ -125,6 +126,9 @@ Tag = { id, nome, cor }
 | --- | --- | --- |
 | POST | `/envios` | `{ mensagem, cliente_ids[], tag_ids[], intervalo_ms, agendado_para?, slot? }` → `EnvioResumo` |
 | POST | `/envios/:id/disparar` | inicia a fila |
+| POST | `/envios/:id/pausar` | pausa um envio em andamento (retomada só manual) |
+| POST | `/envios/:id/cancelar` | interrompe de vez (não é retomável) |
+| GET | `/envios/ativo` | `{ id, status }` do envio em_andamento/pausado mais recente (ou `{ id: null }`) |
 | POST | `/envios/:id/reenviar-erros` | novo lote apenas com falhas |
 | PATCH | `/envios/:id/agendar` | `{ agendado_para }` (ISO) |
 | GET | `/envios/:id` | `EnvioResumo` |

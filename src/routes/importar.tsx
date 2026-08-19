@@ -152,6 +152,7 @@ function ConversorLista() {
   const [itens, setItens] = useState<ItemConvertido[] | null>(null);
   const [avisos, setAvisos] = useState<string[]>([]);
   const [importado, setImportado] = useState<{ criados: number; erros: unknown[] } | null>(null);
+  const [progressoImportacao, setProgressoImportacao] = useState<{ processados: number; total: number } | null>(null);
 
   async function converter() {
     if (!texto.trim()) {
@@ -192,18 +193,43 @@ function ConversorLista() {
     XLSX.writeFile(workbook, "clientes-convertidos.xlsx");
   }
 
+  // Manda em pedaços de 100 (em vez de 1 requisição só com os até 1000 itens)
+  // pra dar progresso REAL: cada pedaço concluído é uma requisição que já
+  // terminou de verdade no servidor, não uma estimativa de tempo. Sem isso,
+  // uma lista grande ficava minutos presa em "Importando…" sem nenhuma pista
+  // de quanto faltava nem se estava travada.
+  const TAMANHO_LOTE_IMPORTACAO = 100;
+
   async function importarAgora() {
     if (!itens || itens.length === 0) return;
     setImportando(true);
     setErro(null);
+    setImportado(null);
+    setProgressoImportacao({ processados: 0, total: itens.length });
     try {
-      const data = await api.clientes.importarLista(itens);
-      setImportado({ criados: data.criados, erros: data.erros });
+      let criados = 0;
+      const erros: unknown[] = [];
+      for (let i = 0; i < itens.length; i += TAMANHO_LOTE_IMPORTACAO) {
+        const bloco = itens.slice(i, i + TAMANHO_LOTE_IMPORTACAO);
+        const data = await api.clientes.importarLista(bloco);
+        criados += data.criados;
+        erros.push(...data.erros);
+        setProgressoImportacao({ processados: Math.min(i + bloco.length, itens.length), total: itens.length });
+      }
+      setImportado({ criados, erros });
       await refreshClientes();
     } catch (e) {
-      setErro((e as Error).message);
+      // Erro no meio do caminho: o que já foi importado nos blocos
+      // anteriores continua salvo (cada bloco é sua própria transação no
+      // backend) -- por isso mantemos o progresso visível na mensagem em vez
+      // de escondê-lo, pra ficar claro que não é tudo-ou-nada.
+      const processadosAteAqui = progressoImportacao?.processados ?? 0;
+      setErro(
+        `${(e as Error).message} (${processadosAteAqui} de ${itens.length} linha(s) já haviam sido importadas antes do erro)`,
+      );
     } finally {
       setImportando(false);
+      setProgressoImportacao(null);
     }
   }
 
@@ -247,14 +273,46 @@ function ConversorLista() {
                 </Botao>
                 <Botao variante="primary" tamanho="sm" onClick={importarAgora} disabled={importando}>
                   <Upload className="size-3.5" />
-                  {importando ? "Importando…" : "Importar clientes agora"}
+                  {importando && progressoImportacao
+                    ? `Importando ${progressoImportacao.processados}/${progressoImportacao.total}…`
+                    : importando
+                      ? "Importando…"
+                      : "Importar clientes agora"}
                 </Botao>
               </div>
             </div>
 
+            {importando && progressoImportacao && (
+              <div className="bg-surface-sunken rounded-md px-3 py-2.5">
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Salvando clientes no cadastro…</span>
+                  <span className="text-subtle font-mono">
+                    {progressoImportacao.processados}/{progressoImportacao.total}
+                  </span>
+                </div>
+                <div className="bg-border h-1.5 w-full overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.round((progressoImportacao.processados / Math.max(progressoImportacao.total, 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             {importado && (
-              <div className="bg-success/10 text-success flex items-start gap-2 rounded-md px-3 py-2 text-xs">
-                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
+              <div
+                className={cn(
+                  "flex items-start gap-2 rounded-md px-3 py-2 text-xs",
+                  importado.erros.length > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success",
+                )}
+              >
+                {importado.erros.length > 0 ? (
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
+                )}
                 <span>
                   {importado.criados} cliente(s) criado(s)/atualizado(s) no cadastro.
                   {importado.erros.length > 0 && ` ${importado.erros.length} com erro (veja o console).`}

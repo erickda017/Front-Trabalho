@@ -16,6 +16,37 @@ export type { Cliente, Tag, WhatsappConexao, WhatsappStatus } from "@/lib/types"
 
 const SLOTS: WhatsappSlot[] = [1, 2];
 
+/**
+ * Perfil do operador (nome + foto) exibido na barra lateral. Não é dado de
+ * autenticação -- é só identificação de quem está operando o painel no
+ * momento (útil quando várias pessoas revezam no mesmo login). Guardado no
+ * navegador (localStorage): não existe tabela de "usuários" no backend, só a
+ * sessão do Supabase usada pra login.
+ */
+export type Perfil = {
+  nome: string;
+  /** Data URL (base64) da foto escolhida, ou null se nunca configurada. */
+  fotoUrl: string | null;
+};
+
+const PERFIL_KEY = "ui:perfilOperador";
+const perfilPadrao: Perfil = { nome: "", fotoUrl: null };
+
+function lerPerfilSalvo(): Perfil {
+  if (typeof window === "undefined") return perfilPadrao;
+  try {
+    const bruto = window.localStorage.getItem(PERFIL_KEY);
+    if (!bruto) return perfilPadrao;
+    const dados = JSON.parse(bruto);
+    return {
+      nome: typeof dados?.nome === "string" ? dados.nome : "",
+      fotoUrl: typeof dados?.fotoUrl === "string" ? dados.fotoUrl : null,
+    };
+  } catch {
+    return perfilPadrao;
+  }
+}
+
 /** Conexão "vazia" (não configurada) — placeholder de UI, não dado fictício. */
 function conexaoVazia(slot: WhatsappSlot): WhatsappConexao {
   return {
@@ -59,6 +90,9 @@ type AppStateValue = {
 
   envioAtivoId: string | null;
   setEnvioAtivoId: (id: string | null) => void;
+
+  perfil: Perfil;
+  atualizarPerfil: (perfil: Perfil) => void;
 };
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -77,9 +111,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [clientesErro, setClientesErro] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [envioAtivoId, setEnvioAtivoIdState] = useState<string | null>(null);
+  const [perfil, setPerfil] = useState<Perfil>(perfilPadrao);
 
   useEffect(() => {
     setEnvioAtivoIdState(window.sessionStorage.getItem(ENVIO_ATIVO_KEY));
+    setPerfil(lerPerfilSalvo());
+  }, []);
+
+  const atualizarPerfil = useCallback((novoPerfil: Perfil) => {
+    setPerfil(novoPerfil);
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PERFIL_KEY, JSON.stringify(novoPerfil));
   }, []);
 
   const setEnvioAtivoId = useCallback((id: string | null) => {
@@ -241,6 +283,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         limparSelecionados,
         envioAtivoId,
         setEnvioAtivoId,
+        perfil,
+        atualizarPerfil,
       }}
     >
       {children}

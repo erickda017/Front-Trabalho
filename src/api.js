@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { extrairDadosPixViaWorker } from './lib/pixWorkerClient';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api';
 
@@ -67,14 +68,11 @@ export const api = {
     salvar: (payload) =>
       request('/configuracoes/estrategia', { method: 'PUT', body: JSON.stringify(payload) }),
   },
+  configuracoes: {
+    disparo: () => request('/configuracoes/disparo'),
+  },
   pix: {
     listar: (params) => request(`/pix/extracoes${qs(params)}`),
-    enviarArquivos: (arquivos) => {
-      const formData = new FormData();
-      for (const arquivo of arquivos) formData.append('arquivos', arquivo);
-      return request('/pix/extracoes', { method: 'POST', body: formData });
-    },
-    reprocessar: (id) => request(`/pix/extracoes/${id}/reprocessar`, { method: 'POST' }),
     aplicarNoCliente: (id, clienteId) =>
       request(`/pix/extracoes/${id}/aplicar`, {
         method: 'POST',
@@ -85,6 +83,24 @@ export const api = {
         `/pix/extracoes/exportar${qs({ ...(params || {}), formato })}`,
         `pix-extracoes.${formato}`,
       ),
+  },
+  // Fluxo novo do extrator de PIX: o PDF NUNCA é enviado ao back-end pra
+  // processamento. O navegador (ver src/lib/pixWorkerClient.ts) fatia o PDF
+  // e manda cada página pro Cloudflare Worker de OCR; aqui só mandamos o
+  // resultado já pronto (JSON puro) pro back-end persistir.
+  boletos: {
+    // `arquivo` é opcional (usado pra casar com um cliente pelo nome quando
+    // `clienteId` não é informado). Retorna a extração salva (ver
+    // backend/src/routes/boletos.routes.js).
+    salvarPix: ({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId }) =>
+      request('/boletos/salvar-pix', {
+        method: 'POST',
+        body: JSON.stringify({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId }),
+      }),
+    // Processa 1 PDF inteiramente no navegador (fatia + chama o Worker) e
+    // devolve o resultado, sem persistir nada -- quem chama decide o que
+    // fazer com o resultado (salvar via salvarPix, mostrar na tela, etc).
+    extrairDoPdf: (file) => extrairDadosPixViaWorker(file, file.name),
   },
   faturas: {
     listar: (params) => request(`/faturas${qs(params)}`),
@@ -98,30 +114,32 @@ export const api = {
     atualizar: (id, payload) => request(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
     remover: (id) => request(`/clientes/${id}`, { method: 'DELETE' }),
     historico: (id) => request(`/clientes/${id}/historico`),
-    uploadPdf: (id, file) => {
+    uploadPdf: async (id, file) => {
+      // Nunca sobe um PDF "cru": fatia + extrai via Cloudflare Worker no
+      // navegador ANTES de mandar o arquivo pro back-end (que só guarda o
+      // PDF no Storage e persiste o que já veio pronto -- ver
+      // backend/src/routes/clientes.routes.js, POST /:id/pdf).
+      const dadosPix = await extrairDadosPixViaWorker(file, file.name);
       const formData = new FormData();
       formData.append('pdf', file);
+      if (dadosPix?.pixCopiaCola) formData.append('pixCode', dadosPix.pixCopiaCola);
+      if (dadosPix?.valor) formData.append('valor', dadosPix.valor);
+      if (dadosPix?.vencimento) formData.append('vencimento', dadosPix.vencimento);
+      if (dadosPix?.linhaDigitavel) formData.append('linhaDigitavel', dadosPix.linhaDigitavel);
       return request(`/clientes/${id}/pdf`, { method: 'POST', body: formData });
     },
     converterLista: (texto) => request('/clientes/converter-lista', { method: 'POST', body: JSON.stringify({ texto }) }),
     importarLista: (itens) => request('/clientes/importar-lista', { method: 'POST', body: JSON.stringify({ itens }) }),
   },
   importacao: {
-    // Fluxo antigo: envia o zip inteiro (PDFs binários) pro servidor processar
-    // (renderizar em canvas, escanear QR). Mantido como fallback, mas pesado
-    // pro servidor em lotes grandes -- ver enviarLote() abaixo.
-    enviar: ({ planilha, zip, mensagem }) => {
-      const formData = new FormData();
-      formData.append('planilha', planilha);
-      formData.append('zip', zip);
-      if (mensagem) formData.append('mensagem', mensagem);
-      return request('/importacao', { method: 'POST', body: formData });
-    },
-    // Fluxo novo (recomendado): recebe o resultado já processado no navegador
-    // (parse de planilha/zip, extração de Pix e upload dos PDFs pro Storage já
-    // feitos ali -- ver src/lib/importacaoBrowser.ts). Manda só texto (nome,
-    // telefone, URLs, código Pix), nunca PDF -- por isso não pesa no servidor
-    // mesmo com 100+ clientes de uma vez.
+    // [2026-08] Único fluxo suportado: recebe o resultado já processado no
+    // navegador (parse de planilha/zip, fatiamento do PDF + extração de Pix
+    // via Cloudflare Worker, upload dos PDFs pro Storage -- tudo em
+    // src/lib/importacaoBrowser.ts). Manda só texto (nome, telefone, URLs,
+    // código Pix, valor, vencimento, linha digitável), nunca PDF -- por isso
+    // não pesa no servidor mesmo com 100+ clientes de uma vez. O antigo
+    // POST /importacao (zip+PDF binário direto pro servidor) foi removido
+    // (backend responde 410 Gone).
     enviarLote: ({ itens, mensagem, lote }) =>
       request('/importacao/lote', {
         method: 'POST',
@@ -129,7 +147,7 @@ export const api = {
       }),
     // Repasse de 1 PDF já pronto pro Storage via backend (service_role, ignora
     // RLS) -- ver comentário na rota no backend pro motivo. O navegador ainda
-    // faz o trabalho pesado (render/QR) antes de chamar isso.
+    // faz o trabalho pesado (fatiar + Worker de OCR) antes de chamar isso.
     uploadPdf: ({ caminho, blob, nomeArquivo }) => {
       const formData = new FormData();
       formData.append('caminho', caminho);
@@ -172,6 +190,9 @@ export const api = {
   envios: {
     criar: (payload) => request('/envios', { method: 'POST', body: JSON.stringify(payload) }),
     disparar: (id) => request(`/envios/${id}/disparar`, { method: 'POST' }),
+    pausar: (id) => request(`/envios/${id}/pausar`, { method: 'POST' }),
+    cancelar: (id) => request(`/envios/${id}/cancelar`, { method: 'POST' }),
+    ativo: () => request('/envios/ativo'),
     reenviarErros: (id) => request(`/envios/${id}/reenviar-erros`, { method: 'POST' }),
     agendar: (id, agendado_para) => request(`/envios/${id}/agendar`, { method: 'PATCH', body: JSON.stringify({ agendado_para }) }),
     buscar: (id) => request(`/envios/${id}`),

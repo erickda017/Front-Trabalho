@@ -1,6 +1,7 @@
 declare module "@/api" {
   import type {
     Cliente,
+    ConfigDisparo,
     DashboardResumo,
     EnvioItem,
     EnvioResumo,
@@ -32,6 +33,7 @@ declare module "@/api" {
     falhas: number;
     numeros_invalidos: number;
     pendentes: number;
+    cancelados: number;
     status: EnvioStatus;
     ultimo_envio_em: string | null;
     proximo_slot: WhatsappSlot | null;
@@ -66,6 +68,9 @@ declare module "@/api" {
     estrategia: {
       buscar: () => Promise<EstrategiaConfig>;
       salvar: (payload: { estrategia: EstrategiaEnvio }) => Promise<EstrategiaConfig>;
+    };
+    configuracoes: {
+      disparo: () => Promise<ConfigDisparo>;
     };
     pix: {
       listar: (params?: {
@@ -140,11 +145,16 @@ declare module "@/api" {
       criar: (payload: {
         cliente_ids: string[];
         mensagem: string;
+        /** Até 5 variações do texto -- o backend sorteia uma pra cada mensagem enviada. */
+        mensagens?: string[] | undefined;
         slot?: WhatsappSlot | undefined;
         janela_ms?: number | undefined;
         agendado_para?: string | undefined;
       }) => Promise<Envio>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
+      pausar: (id: string) => Promise<{ ok: boolean; status: string }>;
+      cancelar: (id: string) => Promise<{ ok: boolean; status: string }>;
+      ativo: () => Promise<{ id: string | null; status: EnvioStatus | null }>;
       reenviarErros: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       agendar: (id: string, agendado_para: string) => Promise<Envio>;
       buscar: (id: string) => Promise<Envio>;

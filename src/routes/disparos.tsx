@@ -8,9 +8,11 @@ import {
   FlaskConical,
   Loader2,
   Paperclip,
+  Pause,
   Play,
   RotateCcw,
   Send,
+  StopCircle,
   Users,
   Wifi,
   X,
@@ -35,7 +37,7 @@ import {
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
-import { statusDoItem, VARIAVEIS_MENSAGEM, type EstrategiaEnvio, type WhatsappSlot } from "@/lib/types";
+import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo, type EstrategiaEnvio, type WhatsappSlot } from "@/lib/types";
 
 export const Route = createFileRoute("/disparos")({
   head: () => ({
@@ -128,25 +130,37 @@ function EtapaDestinatarios() {
 /* 2. Mensagem                                                                */
 /* -------------------------------------------------------------------------- */
 
-function EtapaMensagem({
-  template,
-  setTemplate,
+const MAX_VARIACOES = 5;
+
+/**
+ * Um textarea de variação de mensagem, com o botão de inserir variável focado
+ * NELE (cada variação tem seu próprio cursor/seleção).
+ */
+function CampoVariacao({
+  indice,
+  valor,
+  onChange,
+  onRemover,
+  removivel,
 }: {
-  template: string;
-  setTemplate: (v: string) => void;
+  indice: number;
+  valor: string;
+  onChange: (v: string) => void;
+  onRemover: () => void;
+  removivel: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function inserirToken(token: string) {
     const el = textareaRef.current;
     if (!el) {
-      setTemplate(template + token);
+      onChange(valor + token);
       return;
     }
-    const start = el.selectionStart ?? template.length;
-    const end = el.selectionEnd ?? template.length;
-    const proximo = template.slice(0, start) + token + template.slice(end);
-    setTemplate(proximo);
+    const start = el.selectionStart ?? valor.length;
+    const end = el.selectionEnd ?? valor.length;
+    const proximo = valor.slice(0, start) + token + valor.slice(end);
+    onChange(proximo);
     requestAnimationFrame(() => {
       el.focus();
       el.selectionStart = el.selectionEnd = start + token.length;
@@ -154,15 +168,33 @@ function EtapaMensagem({
   }
 
   return (
-    <SectionCard eyebrow="Etapa 2" titulo="Mensagem" descricao="Template usado para todos os destinatários do lote.">
+    <div className="border-border rounded-md border p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="label-eyebrow">
+          Variação {indice + 1}
+          {indice === 0 && <span className="text-subtle font-normal normal-case"> (principal)</span>}
+        </p>
+        {removivel && (
+          <button
+            type="button"
+            onClick={onRemover}
+            aria-label={`Remover variação ${indice + 1}`}
+            title="Remover esta variação"
+            className="text-subtle hover:text-destructive focus-ring shrink-0 rounded p-1"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
       <textarea
         ref={textareaRef}
-        value={template}
-        onChange={(e) => setTemplate(e.target.value)}
-        rows={5}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        rows={4}
+        placeholder={indice === 0 ? undefined : "Escreva uma variação com o mesmo sentido, mas com palavras diferentes…"}
         className="bg-surface text-foreground border-border focus-ring w-full rounded-md border px-3 py-2 text-sm"
       />
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {VARIAVEIS_MENSAGEM.map((v) => (
           <button
             key={v.token}
@@ -175,8 +207,63 @@ function EtapaMensagem({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function EtapaMensagem({
+  templates,
+  setTemplates,
+}: {
+  templates: string[];
+  setTemplates: (v: string[]) => void;
+}) {
+  function atualizar(indice: number, valor: string) {
+    setTemplates(templates.map((t, i) => (i === indice ? valor : t)));
+  }
+
+  function adicionarVariacao() {
+    if (templates.length >= MAX_VARIACOES) return;
+    setTemplates([...templates, ""]);
+  }
+
+  function removerVariacao(indice: number) {
+    setTemplates(templates.filter((_, i) => i !== indice));
+  }
+
+  return (
+    <SectionCard
+      eyebrow="Etapa 2"
+      titulo="Mensagem"
+      descricao={
+        templates.length > 1
+          ? `${templates.length} variações cadastradas — o sistema sorteia uma delas para cada mensagem enviada.`
+          : "Template usado para todos os destinatários do lote."
+      }
+      acoes={
+        templates.length < MAX_VARIACOES ? (
+          <Botao variante="ghost" tamanho="sm" onClick={adicionarVariacao}>
+            + Adicionar variação
+          </Botao>
+        ) : undefined
+      }
+    >
+      <div className="space-y-3">
+        {templates.map((valor, indice) => (
+          <CampoVariacao
+            key={indice}
+            indice={indice}
+            valor={valor}
+            onChange={(v) => atualizar(indice, v)}
+            onRemover={() => removerVariacao(indice)}
+            removivel={templates.length > 1}
+          />
+        ))}
+      </div>
       <p className="text-subtle mt-3 text-[11px]">
-        A substituição dos valores acima por dados reais de cada cliente é feita pelo backend no momento do envio.
+        Cadastre até {MAX_VARIACOES} pequenas variações do mesmo texto (mesmo sentido, palavras diferentes) para
+        reduzir o risco do WhatsApp derrubar o número por identificar mensagens idênticas em massa. A substituição
+        das variáveis acima por dados reais de cada cliente é feita pelo backend no momento do envio.
       </p>
     </SectionCard>
   );
@@ -449,6 +536,7 @@ type EnvioProgresso = {
   falhas: number;
   numeros_invalidos: number;
   pendentes: number;
+  cancelados: number;
   status: string;
   ultimo_envio_em: string | null;
   proximo_slot: WhatsappSlot | null;
@@ -468,6 +556,11 @@ function ProgressoDisparo({
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [acao, setAcao] = useState<string | null>(null);
+  const [configDisparo, setConfigDisparo] = useState<ConfigDisparo | null>(null);
+
+  useEffect(() => {
+    api.configuracoes.disparo().then(setConfigDisparo).catch(() => setConfigDisparo(null));
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
@@ -544,7 +637,35 @@ function ProgressoDisparo({
     }
   }
 
+  async function pausar() {
+    setAcao("pausar");
+    try {
+      await api.envios.pausar(envioAtivoId);
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setAcao(null);
+    }
+  }
+
+  async function cancelar() {
+    if (!window.confirm("Interromper este disparo? Os itens ainda não enviados não serão disparados e o lote não poderá ser retomado.")) {
+      return;
+    }
+    setAcao("cancelar");
+    try {
+      await api.envios.cancelar(envioAtivoId);
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setAcao(null);
+    }
+  }
+
   const podeIniciar = envio && (envio.status === "pendente" || envio.status === "pausado" || envio.status === "agendado");
+  const podePausarOuCancelar = envio && (envio.status === "em_andamento" || envio.status === "pausado");
   const temErros = (progresso?.falhas ?? 0) > 0 || (progresso?.numeros_invalidos ?? 0) > 0;
 
   return (
@@ -560,6 +681,18 @@ function ProgressoDisparo({
             <Botao variante="primary" tamanho="sm" onClick={iniciar} disabled={acao !== null}>
               {acao === "iniciar" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
               Iniciar lote
+            </Botao>
+          )}
+          {envio?.status === "em_andamento" && (
+            <Botao variante="secondary" tamanho="sm" onClick={pausar} disabled={acao !== null}>
+              {acao === "pausar" ? <Loader2 className="size-3.5 animate-spin" /> : <Pause className="size-3.5" />}
+              Pausar
+            </Botao>
+          )}
+          {podePausarOuCancelar && (
+            <Botao variante="outline" tamanho="sm" onClick={cancelar} disabled={acao !== null}>
+              {acao === "cancelar" ? <Loader2 className="size-3.5 animate-spin" /> : <StopCircle className="size-3.5" />}
+              Interromper
             </Botao>
           )}
           <Botao variante="ghost" tamanho="sm" onClick={() => setEnvioAtivoId(null)}>
@@ -605,6 +738,16 @@ function ProgressoDisparo({
             {progresso.slot_atual != null && <span>Slot atual: WhatsApp {progresso.slot_atual}</span>}
             {progresso.proximo_slot != null && <span>Próximo slot: WhatsApp {progresso.proximo_slot}</span>}
           </div>
+
+          {envio?.status === "em_andamento" && configDisparo && configDisparo.batch_size > 0 && (
+            <p className="text-subtle mt-2 text-xs">
+              Pausa automática de {Math.round(configDisparo.batch_pause_ms / 60000)} min a cada{" "}
+              {configDisparo.batch_size} mensagens (comportamento mais humano, reduz risco de bloqueio).
+            </p>
+          )}
+          {envio?.status === "em_andamento" && configDisparo && configDisparo.daily_limit > 0 && (
+            <p className="text-subtle mt-1 text-xs">Limite diário de disparo: {configDisparo.daily_limit} mensagens.</p>
+          )}
 
           {itens && itens.length > 0 ? (
             <div className="mt-6 max-h-96 overflow-y-auto rounded-md border border-border">
@@ -808,9 +951,9 @@ function TesteDisparo({ templateSugerido }: { templateSugerido?: string | undefi
 function Disparo() {
   const { envioAtivoId, setEnvioAtivoId, selecionados, limparSelecionados, estrategia } = useAppState();
 
-  const [template, setTemplate] = useState(
+  const [templates, setTemplates] = useState<string[]>([
     "Olá {{nome}}, tudo bem? Segue em anexo sua fatura no valor de {{valor}}, com vencimento em {{vencimento}}. Qualquer dúvida estou à disposição!",
-  );
+  ]);
   const [comPdf, setComPdf] = useState(true);
   const [estrategiaEscolhida, setEstrategiaEscolhida] = useState<EstrategiaEnvio>(estrategia?.estrategia ?? "qualquer");
   const [janelaHoras, setJanelaHoras] = useState("");
@@ -824,6 +967,30 @@ function Disparo() {
     if (estrategia?.estrategia) setEstrategiaEscolhida(estrategia.estrategia);
   }, [estrategia?.estrategia]);
 
+  // Se não há um lote "ativo" guardado nesta aba (sessionStorage perdido --
+  // aba nova, outro navegador, ou o servidor caiu e voltou), pergunta pro
+  // backend se existe algum disparo em_andamento/pausado agora. Sem isso, um
+  // disparo real rodando no servidor ficava "invisível" pra quem abrisse o
+  // sistema de novo -- via um browser diferente, ou depois de um crash -- só
+  // aparecendo se a pessoa fosse manualmente até o Histórico procurar.
+  useEffect(() => {
+    if (envioAtivoId) return;
+    let cancelado = false;
+    api.envios
+      .ativo()
+      .then((r) => {
+        if (!cancelado && r?.id) setEnvioAtivoId(r.id);
+      })
+      .catch(() => {
+        // Sem problema -- só significa que não dá pra saber agora; a tela de
+        // montagem de lote continua disponível normalmente.
+      });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envioAtivoId]);
+
   async function criarEIniciar() {
     setCriando(true);
     setErro(null);
@@ -832,13 +999,18 @@ function Disparo() {
       const minutos = Number(janelaMinutos) || 0;
       const janela_ms = horas > 0 || minutos > 0 ? (horas * 60 + minutos) * 60 * 1000 : undefined;
 
+      const variacoesPreenchidas = templates.map((t) => t.trim()).filter(Boolean);
+
       const envio = await api.envios.criar({
         cliente_ids: selecionados,
         // NOTA: o backend (POST /envios) espera "mensagem", não "template_mensagem"
         // -- estava divergente aqui, o que fazia a criação sempre falhar com
         // "mensagem é obrigatória" quando disparada direto por essa tela (fora
         // do fluxo de Importar planilha+zip, que usa outro endpoint).
-        mensagem: template,
+        mensagem: variacoesPreenchidas[0] ?? "",
+        // Até 5 variações -- o backend sorteia uma delas pra cada mensagem do
+        // lote (ver migration-9-variacoes-mensagem.sql).
+        mensagens: variacoesPreenchidas,
         slot: estrategiaEscolhida === "slot_1" ? 1 : estrategiaEscolhida === "slot_2" ? 2 : undefined,
         ...(janela_ms ? { janela_ms } : {}),
         ...(agendarPara ? { agendado_para: new Date(agendarPara).toISOString() } : {}),
@@ -857,7 +1029,7 @@ function Disparo() {
   }
 
   const estrategiaLabel = ESTRATEGIAS.find((e) => e.valor === estrategiaEscolhida)?.label ?? estrategiaEscolhida;
-  const podeConfirmar = selecionados.length > 0 && template.trim().length > 0;
+  const podeConfirmar = selecionados.length > 0 && templates.some((t) => t.trim().length > 0);
 
   return (
     <AppShell
@@ -882,7 +1054,7 @@ function Disparo() {
         ) : (
           <>
             <EtapaDestinatarios />
-            <EtapaMensagem template={template} setTemplate={setTemplate} />
+            <EtapaMensagem templates={templates} setTemplates={setTemplates} />
             <EtapaAnexo comPdf={comPdf} setComPdf={setComPdf} />
             <EtapaConexaoEstrategia
               estrategiaEscolhida={estrategiaEscolhida}
@@ -923,7 +1095,7 @@ function Disparo() {
           </>
         )}
 
-        <TesteDisparo templateSugerido={template} />
+        <TesteDisparo templateSugerido={templates[0]} />
       </div>
     </AppShell>
   );

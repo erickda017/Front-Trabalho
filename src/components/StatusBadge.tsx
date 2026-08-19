@@ -9,6 +9,7 @@ const map: Record<ItemStatus, { label: string; tone: Tone }> = {
   lido: { label: "Lido", tone: "success" },
   erro: { label: "Erro", tone: "danger" },
   numero_invalido: { label: "Número inválido", tone: "warning" },
+  cancelado: { label: "Cancelado", tone: "muted" },
 };
 
 export function StatusBadge({ status, className }: { status: ItemStatus; className?: string }) {

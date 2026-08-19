@@ -1,9 +1,9 @@
-// Parsing de planilha + zip de PDFs no navegador -- espelha
-// backend/src/services/importLote.js (parsePlanilha, extrairPdfsDoZip) e
-// backend/src/lib/telefone.js (normalizarTelefone), mantidos em paralelo de
-// propósito: são funções puras pequenas, duplicar aqui evita ter que expor um
-// pacote compartilhado só por causa de duas funções, e mantém front/back
-// desacoplados no deploy.
+// Parsing de planilha + zip de PDFs no navegador -- espelha as mesmas duas
+// funções que existiam no backend (server-side, removidas em 2026-08 -- ver
+// backend/src/services/importLote.js) e backend/src/lib/telefone.js
+// (normalizarTelefone), mantidos em paralelo de propósito: são funções puras
+// pequenas, duplicar aqui evita ter que expor um pacote compartilhado só por
+// causa de duas funções, e mantém front/back desacoplados no deploy.
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 
@@ -123,15 +123,14 @@ export function casarPdf(linha: LinhaPlanilha, pdfsPorNome: Map<string, PdfDoZip
 // Orquestração completa da importação client-side
 // ==========================================================================
 import { supabase } from "@/supabaseClient";
-import { extrairPixDoPdfNoBrowser } from "@/lib/pixFromPdfBrowser";
+import { extrairDadosPixViaWorker } from "@/lib/pixWorkerClient";
 import { api } from "@/api";
 
-// Concorrência do processamento no navegador: cada item envolve renderizar até
-// 3 páginas de PDF em canvas + escanear QR + upload pro Storage. Mesmo
-// raciocínio do backend (CONCORRENCIA_IMPORTACAO): alto demais trava a aba
-// (o processamento roda na thread principal do JS, então concorrência alta
-// demais deixa a UI travada por mais tempo de cada vez, sem ganho real, já que
-// é tudo single-thread). 2 dá um bom equilíbrio entre velocidade e
+// Concorrência do processamento no navegador: cada item envolve fatiar o PDF
+// (pdf-lib) + chamar o Worker de OCR pra cada página + upload pro Storage.
+// Mesmo raciocínio do backend (CONCORRENCIA_IMPORTACAO): alto demais deixa a
+// aba lenta (o fatiamento roda na thread principal do JS) e satura o Worker
+// com requisições demais de uma vez. 2 dá um bom equilíbrio entre velocidade e
 // responsividade da tela de progresso.
 const CONCORRENCIA_BROWSER = 2;
 
@@ -147,6 +146,7 @@ export type ItemLotePronto = {
   nome: string;
   valor: string | null;
   vencimento: string | null;
+  linha_digitavel: string | null;
   mensagem: string | null;
   pdf_url: string | null;
   pdf_path: string | null;
@@ -283,6 +283,7 @@ export async function processarImportacaoNoBrowser(
         nome: linha.nome,
         valor: linha.valor,
         vencimento: linha.vencimento,
+        linha_digitavel: null,
         mensagem: linha.mensagem,
         pdf_url: null,
         pdf_path: null,
@@ -293,11 +294,13 @@ export async function processarImportacaoNoBrowser(
       return;
     }
 
-    // Extrai o Pix ANTES do upload -- não depende do resultado do upload, então
-    // rodam em paralelo (Promise.all) pra não somar os dois tempos à toa.
+    // Extrai os dados do Pix (via Worker, fatiando o PDF -- ver
+    // pixWorkerClient.ts) ANTES do upload -- não depende do resultado do
+    // upload, então rodam em paralelo (Promise.all) pra não somar os dois
+    // tempos à toa.
     const caminho = `${telefoneNormalizado}/${Date.now()}-${pdfEncontrado.nomeOriginal}`;
-    const [pixCode, uploadResultado] = await Promise.all([
-      extrairPixDoPdfNoBrowser(pdfEncontrado.blob),
+    const [dadosPix, uploadResultado] = await Promise.all([
+      extrairDadosPixViaWorker(pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
       uploadComRetry(caminho, pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
     ]);
 
@@ -314,12 +317,15 @@ export async function processarImportacaoNoBrowser(
       linha: linha.linha,
       numero: linha.numero,
       nome: linha.nome,
-      valor: linha.valor,
-      vencimento: linha.vencimento,
+      // planilha manda na frente; se a célula estiver vazia, usa o que o
+      // Worker extraiu do próprio boleto (OCR).
+      valor: linha.valor || dadosPix?.valor || null,
+      vencimento: linha.vencimento || dadosPix?.vencimento || null,
+      linha_digitavel: dadosPix?.linhaDigitavel || null,
       mensagem: linha.mensagem,
       pdf_url: uploadResultado.publicUrl ?? null,
       pdf_path: caminho,
-      pix_code: pixCode,
+      pix_code: dadosPix?.pixCopiaCola || null,
     });
     processados++;
     onProgresso?.({ processados, total: linhas.length, etapa: linha.nome });

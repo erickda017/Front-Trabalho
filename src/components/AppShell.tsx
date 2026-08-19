@@ -60,7 +60,12 @@ function SidebarContent({
   onToggleCollapse?: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { conexoes, logout, session } = useAppState();
+  const { conexoes, logout, session, perfil } = useAppState();
+  const nomeExibido = perfil.nome.trim() || session?.user?.email || "—";
+  const iniciais = (perfil.nome.trim() || session?.user?.email || "?")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
 
   return (
     <div className="bg-sidebar text-sidebar-foreground flex h-full flex-col">
@@ -155,6 +160,32 @@ function SidebarContent({
             })}
           </div>
         )}
+        <Link
+          to="/configuracoes"
+          onClick={onNavigate}
+          title="Editar perfil do operador"
+          className={cn(
+            "hover:bg-sidebar-accent/60 mb-1.5 flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors",
+            collapsed && "justify-center px-0",
+          )}
+        >
+          {perfil.fotoUrl ? (
+            <img
+              src={perfil.fotoUrl}
+              alt=""
+              className="bg-sidebar-accent size-7 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <span className="bg-sidebar-accent text-sidebar-foreground/70 grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold">
+              {iniciais}
+            </span>
+          )}
+          {!collapsed && (
+            <span className="text-sidebar-foreground/70 min-w-0 truncate text-[11px] font-medium">
+              {nomeExibido}
+            </span>
+          )}
+        </Link>
         <div
           className={cn(
             "flex items-center gap-2",

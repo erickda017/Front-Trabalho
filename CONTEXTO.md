@@ -105,11 +105,79 @@ Duas formas de gerar um disparo:
 - **Frontend — abas**: Conexão, Importar, Clientes, Disparo (`frontend/src/App.jsx`).
   Estado de seleção de clientes (`selecionados`) e do lote importado (`loteImportado`)
   vivem no `App`, compartilhados entre abas Clientes/Disparo/Importar.
+- **[2026-08] Pausar/cancelar um disparo em andamento** — botões na aba Disparo
+  (`ProgressoDisparo`) e no painel de detalhes do lote na aba Histórico
+  (`DetalhesLote`). `POST /envios/:id/pausar` (retomada só manual, depois pelo
+  botão "Iniciar lote" — diferente da pausa automática por limite diário/queda
+  de conexão) e `POST /envios/:id/cancelar` (interrompe de vez, não é
+  retomável). Implementado em `backend/src/services/dispatchQueue.js`
+  (`solicitarPausa`/`solicitarCancelamento`): se o envio está rodando NESTE
+  processo, só sinaliza um `Set` em memória e o loop para com segurança depois
+  do item atual (nunca no meio de um envio); se não está (ex: só está
+  "em_andamento" no banco por causa de um crash anterior), mexe direto no
+  banco. Cancelar também marca os itens ainda `pendente` desse envio como
+  `cancelado` (novo status em `envio_itens.status`) — sem isso ficavam
+  contando como "pendente" pra sempre no dashboard/histórico mesmo depois do
+  lote ser interrompido.
+- **[2026-08] Lote ativo sempre visível na aba Disparo** — `GET /envios/ativo`
+  retorna o envio `em_andamento`/`pausado` mais recente direto do banco. A aba
+  Disparo consulta isso no carregamento se não houver `envioAtivoId` guardado
+  no `sessionStorage` da aba (perdido ao abrir uma aba/navegador novo, ou após
+  o servidor cair e voltar) — antes disso um disparo real rodando no servidor
+  ficava "invisível" pra quem abrisse o sistema de novo, só aparecia se a
+  pessoa fosse manualmente procurar no Histórico.
+- **[2026-08] Limite diário de disparo subido de 100 → 300** — `DAILY_LIMIT`
+  em `dispatchQueue.js` e no `render.yaml` (os dois precisam ficar
+  sincronizados: o `render.yaml` sobrescreve o default do código no deploy —
+  ver bug corrigido abaixo).
+- **[2026-08] Extrator de PIX suporta lotes grandes (até 400 PDFs / 800MB por
+  requisição)** — `backend/src/routes/pix.routes.js` trocou
+  `multer.memoryStorage()` por `diskStorage` (evita acumular todos os
+  arquivos em RAM de uma vez, que arriscava derrubar o processo — o mesmo que
+  segura a sessão do WhatsApp). Limites configuráveis
+  (`PIX_MAX_ARQUIVOS`/`PIX_MAX_ARQUIVO_MB`/`PIX_MAX_TOTAL_MB`), mensagens de
+  erro em PT-BR pros limites do multer, e limpeza garantida dos temporários em
+  disco (`finally`). No frontend (`pix.tsx`), o upload agora é feito em lotes
+  de 10 arquivos por vez (em vez de um único POST gigante) — isso dá barra de
+  progresso real e contagem de sucesso/falha ao vivo, e um lote que falhar
+  (timeout, queda de rede) não derruba o restante do envio.
+- **[2026-08] Limpeza automática de faturas/boletos antigos (40 dias)** —
+  `backend/src/services/limpezaAutomatica.js`, roda 1x por dia
+  (`RETENCAO_FATURAS_DIAS`, default 40). Dois alvos: PDF anexado a um cliente
+  (bucket `faturas`, contado a partir da nova coluna
+  `clientes.pdf_atualizado_em` — ver migration-7) e boleto enviado pro
+  Extrator de PIX (bucket `pix-extracoes`, contado a partir de
+  `pix_extracoes.criado_em`). Remove do Storage e limpa/apaga a linha no
+  banco; nunca apaga o cliente em si, só o PDF associado.
 
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-08] `render.yaml` sobrescrevia o `DAILY_LIMIT` do código.** Ao subir o
+  limite diário pra 300 direto no default de `dispatchQueue.js`, o
+  `backend/render.yaml` ainda tinha `DAILY_LIMIT: value: 100` hardcoded como env
+  var do serviço no Render — que tem prioridade sobre o default do código. O
+  limite mudado só valeria em ambiente local sem essa env var setada; em
+  produção continuaria em 100. Corrigido sincronizando os dois (e aproveitado
+  pra já adicionar as novas env vars de PIX/retenção de faturas no mesmo
+  arquivo, pro deploy não ficar dependendo só dos defaults do código).
+- **[2026-08] Filtro "Entregues"/"Lidos" no Histórico sempre devolvia lista
+  vazia.** `GET /envios/:id/itens?filtro=entregue` filtrava
+  `.eq('status', filtro)`, mas `status_entrega` (não `status`) é a coluna que
+  guarda `entregue`/`lido` — a coluna `status` só tem
+  `pendente|enviado|erro|numero_invalido|cancelado`. Bug pré-existente,
+  encontrado ao revisar o mesmo arquivo por causa de outra mudança. Corrigido
+  em `backend/src/routes/envios.routes.js` mapeando esses dois filtros pra
+  `status_entrega`.
+- **[2026-08] Itens de um disparo cancelado ficavam "pendente" pra sempre.**
+  Ao implementar cancelar disparo, a primeira versão só mudava
+  `envios.status` pra `cancelado` e não tocava nos `envio_itens` ainda
+  pendentes — eles continuavam contando como "pendente" no dashboard e nos
+  filtros do Histórico mesmo depois do lote ser interrompido de vez (nunca
+  mais seriam enviados). Corrigido: cancelar agora também marca esses itens
+  como `cancelado` (novo valor de `envio_itens.status`,
+  `marcarItensPendentesComoCancelados` em `dispatchQueue.js`).
 - **[2026-08] Backend não subia de jeito nenhum — `useMultiFileAuthState is not a
   function`.** Causa: `whatsapp.js` importava o pacote Baileys como
   `import baileysPkg from '@whiskeysockets/baileys'` e depois desestruturava

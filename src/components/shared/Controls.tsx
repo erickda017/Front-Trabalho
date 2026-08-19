@@ -175,11 +175,39 @@ export function Aviso({
 /* Tabelas                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** Container de tabela com scroll horizontal em telas estreitas. */
-export function TabelaWrap({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * Container de tabela.
+ *
+ * Por padrão tem scroll horizontal em telas estreitas (min-w-[46rem] força o
+ * scroll quando não cabe tudo). Em espaços mais apertados (ex: SectionCard
+ * mais estreito, painel lateral do histórico) isso fazia colunas inteiras
+ * "fugirem" pra fora da área visível, dependendo do usuário arrastar a
+ * barrinha horizontal pra ver o resto.
+ *
+ * `compact`: usa table-fixed + largura 100% do container (sem min-width nem
+ * overflow-x), então as colunas sempre cabem no espaço disponível -- células
+ * fazem truncate/wrap em vez de estourar a largura. Use em tabelas dentro de
+ * containers estreitos (sidebars, cards menores).
+ */
+export function TabelaWrap({
+  children,
+  className,
+  compact = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  compact?: boolean;
+}) {
   return (
-    <div className={cn("min-w-0 overflow-x-auto", className)}>
-      <table className="w-full min-w-[46rem] border-collapse text-left">{children}</table>
+    <div className={cn("min-w-0", compact ? "overflow-hidden" : "overflow-x-auto", className)}>
+      <table
+        className={cn(
+          "w-full border-collapse text-left",
+          compact ? "table-fixed" : "min-w-[46rem]",
+        )}
+      >
+        {children}
+      </table>
     </div>
   );
 }
