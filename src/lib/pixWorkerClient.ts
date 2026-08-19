@@ -15,15 +15,21 @@
 //   na esmagadora maioria dos casos, já que sobra só 1 página) e evita
 //   deixar o Worker escanear páginas irrelevantes desnecessariamente.
 import { PDFDocument } from "pdf-lib";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Vite: aponta pro worker do pdfjs como asset via URL (funciona em dev e build).
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).href;
 
 const WORKER_URL =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ||
   "https://processo-de-pdf.erickramiro2010.workers.dev";
 
-// Limite alvo por requisição ao Worker. Mesmo fatiando página a página, um PDF
-// com imagens de altíssima resolução numa página só pode passar disso -- nesse
-// caso ainda mandamos (não dá pra "comprimir" mais sem reprocessar a imagem),
-// mas paramos de tentar reduzir mais que isso.
+// Limite real do Worker/OCR.space (ver worker.js: OCR_SPACE_LIMIT_BYTES).
+// Página de PDF que passar disso agora é rasterizada e comprimida como JPEG
+// (ver rasterizarComoJpeg) em vez de enviada crua e estourar 413.
 const LIMITE_BYTES_POR_PAGINA = 1 * 1024 * 1024; // 1MB
 
 // Só faz sentido procurar o Pix nas primeiras páginas -- na prática ele está
@@ -82,29 +88,86 @@ async function fatiarPdfEmPaginas(arquivo: File | Blob): Promise<Blob[]> {
   return fatias;
 }
 
-// Se, mesmo com 1 página só, o arquivo ainda passar do limite (ex: imagem de
-// altíssima resolução embutida), tenta salvar de novo removendo metadados/
-// streams não usados -- pdf-lib já faz isso por padrão em save(), então na
-// prática isso só serve de log/aviso; não há muito mais o que cortar no
-// navegador sem re-rasterizar a página (o que perderia qualidade do QR).
-function avisarSeGrande(blob: Blob, indice: number) {
-  if (blob.size > LIMITE_BYTES_POR_PAGINA) {
-    console.warn(
-      `[pixWorkerClient] página ${indice + 1} ficou com ${(blob.size / 1024 / 1024).toFixed(2)}MB ` +
-        `(acima do alvo de 1MB) -- enviando assim mesmo, não há como reduzir mais sem perder qualidade.`,
+// Renderiza a 1ª página do PDF (já fatiado) num <canvas> e reencoda como JPEG,
+// reduzindo escala/qualidade em passos até caber no limite do Worker. Isso
+// substitui o antigo "manda cru e torce" -- que estourava 413 em boletos com
+// imagem de alta resolução (scan) numa página só.
+async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Promise<Blob | null> {
+  const buffer = await paginaPdfBlob.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pagina = await doc.getPage(1);
+
+  // Tenta em passos decrescentes de escala/qualidade até caber no limite.
+  // Escala alta primeiro (melhor OCR), cai pra garantir que sempre manda algo.
+  const tentativas: Array<{ scale: number; quality: number }> = [
+    { scale: 2.5, quality: 0.85 },
+    { scale: 2.0, quality: 0.8 },
+    { scale: 1.5, quality: 0.75 },
+    { scale: 1.2, quality: 0.6 },
+    { scale: 1.0, quality: 0.5 },
+  ];
+
+  for (const { scale, quality } of tentativas) {
+    const viewport = pagina.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+
+    // Fundo branco -- PDFs com fundo transparente viram JPEG preto sem isso.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    await pagina.render({ canvasContext: ctx, viewport }).promise;
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", quality),
     );
+    if (blob && blob.size <= limiteBytes) return blob;
+    // Guarda o menor obtido até agora caso nenhuma tentativa entre no limite.
+    if (blob && scale === tentativas[tentativas.length - 1].scale) return blob;
   }
+  return null;
 }
 
-async function enviarPaginaParaWorker(pagina: Blob, nomeArquivo: string): Promise<DadosPix | null> {
+async function enviarPaginaParaWorker(
+  pagina: Blob,
+  nomeArquivo: string,
+  indice: number,
+): Promise<DadosPix | null> {
+  let corpo = pagina;
+  let nome = nomeArquivo;
+
+  if (corpo.size > LIMITE_BYTES_POR_PAGINA) {
+    console.warn(
+      `[pixWorkerClient] página ${indice + 1} ficou com ${(corpo.size / 1024 / 1024).toFixed(2)}MB ` +
+        `(acima do limite de 1MB) -- rasterizando como JPEG comprimido antes de enviar.`,
+    );
+    const rasterizado = await rasterizarComoJpeg(corpo, LIMITE_BYTES_POR_PAGINA);
+    if (!rasterizado) {
+      console.error(`[pixWorkerClient] falha ao rasterizar página ${indice + 1}, pulando.`);
+      return null;
+    }
+    corpo = rasterizado;
+    nome = nomeArquivo.replace(/\.pdf$/i, "") + ".jpg";
+  }
+
   const formData = new FormData();
-  formData.append("file", pagina, nomeArquivo);
+  formData.append("file", corpo, nome);
 
   const resposta = await fetch(WORKER_URL, { method: "POST", body: formData });
-  if (!resposta.ok) return null;
+  if (!resposta.ok) {
+    const corpoErro = await resposta.text().catch(() => "");
+    console.error(`[pixWorkerClient] worker respondeu ${resposta.status} pra página ${indice + 1}:`, corpoErro);
+    return null;
+  }
 
   const json = (await resposta.json().catch(() => null)) as RespostaWorker | null;
-  if (!json?.success || !json.data?.pixCopiaCola) return null;
+  if (!json?.success || !json.data?.pixCopiaCola) {
+    if (json?.error) console.warn(`[pixWorkerClient] página ${indice + 1} sem Pix:`, json.error);
+    return null;
+  }
 
   return {
     pixCopiaCola: json.data.pixCopiaCola,
@@ -126,11 +189,9 @@ export async function extrairDadosPixViaWorker(
 
     for (let i = 0; i < paginas.length; i++) {
       const pagina = paginas[i];
-      avisarSeGrande(pagina, i);
-
       const nomePagina = nomeArquivo.replace(/\.pdf$/i, "") + `-pagina-${i + 1}.pdf`;
       const dados = await comTimeout(
-        enviarPaginaParaWorker(pagina, nomePagina),
+        enviarPaginaParaWorker(pagina, nomePagina, i),
         TIMEOUT_POR_PAGINA_MS,
         null,
       );
