@@ -114,12 +114,19 @@ export const api = {
     atualizar: (id, payload) => request(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
     remover: (id) => request(`/clientes/${id}`, { method: 'DELETE' }),
     historico: (id) => request(`/clientes/${id}/historico`),
-    uploadPdf: async (id, file) => {
-      // Nunca sobe um PDF "cru": fatia + extrai via Cloudflare Worker no
-      // navegador ANTES de mandar o arquivo pro back-end (que só guarda o
-      // PDF no Storage e persiste o que já veio pronto -- ver
-      // backend/src/routes/clientes.routes.js, POST /:id/pdf).
-      const dadosPix = await extrairDadosPixViaWorker(file, file.name);
+    uploadPdf: async (id, file, dadosPixPrecalculado) => {
+      // Nunca sobe um PDF "cru": fatia + extrai via Cloudflare Worker (+
+      // fallback local de QR) no navegador ANTES de mandar o arquivo pro
+      // back-end (que só guarda o PDF no Storage e persiste o que já veio
+      // pronto -- ver backend/src/routes/clientes.routes.js, POST /:id/pdf).
+      // `dadosPixPrecalculado`: passe o resultado de extrairDadosPixViaWorker
+      // se já rodou antes (ex: fluxo do Extrator de PIX, que já extraiu pra
+      // decidir a qual cliente associar) -- evita rodar o Worker/scan de QR
+      // de novo pro mesmo arquivo. Omitido, extrai aqui mesmo (comportamento
+      // original, usado pela tela de Clientes).
+      const dadosPix = dadosPixPrecalculado !== undefined
+        ? dadosPixPrecalculado
+        : await extrairDadosPixViaWorker(file, file.name);
       const formData = new FormData();
       formData.append('pdf', file);
       if (dadosPix?.pixCopiaCola) formData.append('pixCode', dadosPix.pixCopiaCola);

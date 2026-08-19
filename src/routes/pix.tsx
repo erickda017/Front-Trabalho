@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/api";
 import { extrairDadosPixViaWorker } from "@/lib/pixWorkerClient";
+import { casarClientePorArquivo } from "@/lib/clienteMatch";
 import { useAppState } from "@/lib/app-state";
 import type { PixExtracao, PixExtracaoStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -155,11 +156,12 @@ function Dropzone({
 // o PDF nesse fluxo).
 const MAX_ARQUIVOS = 100;
 const MAX_TOTAL_MB = 300;
-// Processa em lotes menores em vez de tudo de uma vez: permite mostrar
-// progresso real (X de Y processados) e resultado parcial mesmo que um
-// arquivo no meio falhe (Worker fora do ar, PDF corrompido) -- só aquele
-// item fica marcado como falha, o resto continua normalmente.
-const CONCORRENCIA_EXTRACAO = 2;
+// Processa em PACOTES de 10: sobe os 10 primeiros arquivos em paralelo,
+// espera TODOS os 10 terminarem (sucesso ou falha, não interessa) e só então
+// pega os próximos 10 da fila. Nada de esteira contínua -- é pacote fechado
+// mesmo, do jeito que foi pedido. Isso também dá um resultado parcial visível
+// a cada pacote, em vez de só no fim do arquivo 100.
+const TAMANHO_LOTE_EXTRACAO = 10;
 
 type ResumoEnvio = {
   total: number;
@@ -223,24 +225,26 @@ function Pix() {
     setArquivos((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // Roda `tarefa` para cada item de `itens`, no máximo `limite` em paralelo
-  // por vez -- mesmo padrão usado em importacaoBrowser.ts, evita travar a aba
-  // fatiando/chamando o Worker pra dezenas de PDFs ao mesmo tempo.
-  async function comConcorrencia<T>(itens: T[], limite: number, tarefa: (item: T) => Promise<void>) {
-    let proximo = 0;
-    async function worker() {
-      while (proximo < itens.length) {
-        const item = itens[proximo++];
-        if (item !== undefined) await tarefa(item);
-      }
+  // Processa `itens` em pacotes de `tamanhoLote`: dispara todos os itens do
+  // pacote atual em paralelo (Promise.allSettled -- um item com erro não
+  // derruba os outros do mesmo pacote) e só avança pro próximo pacote quando
+  // TODOS os itens do atual já terminaram, com sucesso ou falha.
+  async function processarEmLotes<T>(itens: T[], tamanhoLote: number, tarefa: (item: T) => Promise<void>) {
+    for (let inicio = 0; inicio < itens.length; inicio += tamanhoLote) {
+      const pacote = itens.slice(inicio, inicio + tamanhoLote);
+      await Promise.allSettled(pacote.map((item) => tarefa(item)));
     }
-    await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, () => worker()));
   }
 
   // Pipeline 100% client-side: fatia cada PDF (pdf-lib) e manda página por
-  // página pro Cloudflare Worker de OCR até achar o Pix (ver
-  // src/lib/pixWorkerClient.ts) -- o PDF em si NUNCA é enviado ao back-end.
-  // Só o resultado (JSON) vai pro back-end, via POST /api/boletos/salvar-pix.
+  // página pro Cloudflare Worker de OCR até achar o Pix, com fallback de
+  // renderização local só quando necessário (ver src/lib/pixWorkerClient.ts)
+  // -- o PDF em si NUNCA é enviado pro backend pra ser processado. O backend
+  // só entra depois, pra: 1) guardar o PDF já pronto no Storage e associá-lo
+  // ao cliente casado (POST /clientes/:id/pdf, repasse puro de bytes -- sem
+  // OCR/render no servidor) e 2) registrar a extração na tabela de auditoria
+  // (POST /boletos/salvar-pix, só JSON). Processa em pacotes de 10 -- ver
+  // TAMANHO_LOTE_EXTRACAO/processarEmLotes.
   async function extrair() {
     if (!arquivos.length || loteExcedeLimite) return;
     setEnviando(true);
@@ -248,7 +252,7 @@ function Pix() {
     const total = arquivos.length;
     setResumoEnvio({ total, processados: 0, sucesso: 0, falha: 0 });
 
-    await comConcorrencia(arquivos, CONCORRENCIA_EXTRACAO, async (arquivo) => {
+    await processarEmLotes(arquivos, TAMANHO_LOTE_EXTRACAO, async (arquivo) => {
       try {
         const dados = await extrairDadosPixViaWorker(arquivo, arquivo.name);
         if (!dados) {
@@ -258,12 +262,27 @@ function Pix() {
           return;
         }
 
+        // Casa o arquivo com um cliente já cadastrado pelo nome (100% no
+        // navegador, contra a lista de clientes já carregada -- ver
+        // clienteMatch.ts). Achou: sobe o PDF pro Storage E grava
+        // pix/valor/vencimento direto no cliente, num único passo (reusa
+        // `dados`, não roda o Worker de novo pro mesmo arquivo).
+        const clienteCasado = casarClientePorArquivo(arquivo.name, clientes);
+        if (clienteCasado) {
+          await api.clientes.uploadPdf(clienteCasado.id, arquivo, dados);
+        }
+
+        // Mantém o histórico na tela "Extrações" abaixo -- se já achamos o
+        // cliente aqui, manda o id direto (evita o backend ter que adivinhar
+        // de novo); sem casamento, a pessoa ainda pode vincular manualmente
+        // na lista (botão "Vincular").
         await api.boletos.salvarPix({
           pixCopiaCola: dados.pixCopiaCola,
           valor: dados.valor,
           vencimento: dados.vencimento,
           linhaDigitavel: dados.linhaDigitavel,
           arquivo: arquivo.name,
+          clienteId: clienteCasado?.id,
         });
 
         setResumoEnvio((prev) =>
@@ -271,8 +290,8 @@ function Pix() {
         );
       } catch (e) {
         // Um arquivo com erro (Worker fora do ar, PDF corrompido, falha ao
-        // salvar) não derruba o resto do lote -- só esse item conta como
-        // falha e os demais continuam sendo processados normalmente.
+        // salvar) não derruba o resto do pacote -- só esse item conta como
+        // falha e os demais do pacote continuam normalmente.
         setErroEnvio((e as Error).message);
         setResumoEnvio((prev) =>
           prev ? { ...prev, processados: prev.processados + 1, falha: prev.falha + 1 } : prev,
@@ -500,7 +519,7 @@ function Pix() {
               {[
                 {
                   titulo: "1. Envie a fatura",
-                  descricao: "Faça upload de um ou mais PDFs de fatura, um por cliente.",
+                  descricao: `Faça upload de um ou mais PDFs de fatura, um por cliente. Processado em pacotes de ${TAMANHO_LOTE_EXTRACAO}.`,
                 },
                 {
                   titulo: "2. Extração automática",
@@ -508,7 +527,7 @@ function Pix() {
                 },
                 {
                   titulo: "3. Vínculo com o cliente",
-                  descricao: "A chave encontrada é associada ao cliente correspondente para uso nos disparos.",
+                  descricao: "Pelo nome do arquivo, o PIX e o próprio PDF são associados automaticamente ao cliente já cadastrado. Sem casamento, vincule manualmente na lista abaixo.",
                 },
               ].map((passo) => (
                 <li key={passo.titulo} className="flex gap-3">

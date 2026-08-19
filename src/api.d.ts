@@ -13,6 +13,7 @@ declare module "@/api" {
     WhatsappConexao,
     WhatsappSlot,
   } from "@/lib/types";
+  import type { DadosPix } from "@/lib/pixWorkerClient";
 
   type Envio = {
     id: string;
@@ -106,7 +107,7 @@ declare module "@/api" {
           erro: string | null;
         }[]
       >;
-      uploadPdf: (id: string, file: File) => Promise<Cliente>;
+      uploadPdf: (id: string, file: File, dadosPixPrecalculado?: DadosPix | null) => Promise<Cliente>;
       converterLista: (texto: string) => Promise<{ itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]; avisos: string[]; total: number }>;
       importarLista: (itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
     };

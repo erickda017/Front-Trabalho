@@ -1,8 +1,27 @@
-// Extração de dados do boleto (Pix copia-e-cola, valor, vencimento, linha
-// digitável) delegada ao Cloudflare Worker `processo-de-pdf` -- ele faz o OCR
-// e valida o Pix via Regex. Isso SUBSTITUI o fluxo antigo, que renderizava o
-// PDF em <canvas> e escaneava QR com jsQR direto no navegador
-// (ver pixFromPdfBrowser.ts, removido).
+// Extração de dados do boleto: valor, vencimento e linha digitável vêm do
+// OCR feito pelo Worker `processo-de-pdf`. O Pix copia-e-cola idealmente
+// também vem do Worker (ele já tenta achar via unpdf/extractImages+jsQR,
+// sem custo nenhum pro navegador) -- só quando ISSO falha é que escaneamos
+// localmente, renderizando a página num <canvas> e rodando jsQR (ver
+// escanearPixNaPagina / processarPagina). Deliberadamente NÃO fazemos o scan
+// local sempre/em paralelo: renderizar página inteira em alta resolução pra
+// todo arquivo é pesado (RAM/CPU do navegador), então isso só roda como
+// fallback, pros PDFs que o Worker realmente não resolve sozinho.
+//
+// FIX (bug: "acha tudo, menos o Pix"): o Worker tentava achar o Pix chamando
+// `unpdf.extractImages()` no PDF e rodando jsQR só nas imagens raster
+// embutidas encontradas. Isso falha silenciosamente sempre que o QR do
+// boleto é desenhado como VETOR (retângulos via operadores de desenho do
+// PDF) em vez de vir como uma imagem embutida (Image XObject) -- que é
+// exatamente como muitos geradores de boleto desenham o QR, pra ficar
+// nítido em qualquer resolução de impressão. `extractImages` simplesmente
+// não vê nada nesse caso (não é uma "imagem" do ponto de vista do PDF), daí
+// `pixCopiaCola` sempre voltava `null` pra esses boletos, mesmo com o resto
+// dos campos (linha digitável, vencimento) extraídos certinho via OCR de
+// texto. O Worker roda em Cloudflare Workers, que não tem Canvas/DOM nem
+// suporta módulos nativos (@napi-rs/canvas) -- não dá pra renderizar a
+// página lá pra resolver isso no servidor. O navegador é o único lugar com
+// Canvas disponível "de graça", por isso o fallback é aqui, e só aqui.
 //
 // Por que fatiar o PDF antes de mandar pro Worker:
 // - O back-end (Render, 512MB de RAM) NUNCA MAIS deve tocar em bytes de PDF --
@@ -29,6 +48,7 @@
 // Import dinâmico + guard de `typeof document` garantem que esse código só
 // roda no navegador.
 import { PDFDocument } from "pdf-lib";
+import jsQR from "jsqr";
 
 const WORKER_URL =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ||
@@ -40,12 +60,59 @@ const WORKER_URL =
 const LIMITE_BYTES_POR_PAGINA = 1 * 1024 * 1024; // 1MB
 
 // Só faz sentido procurar o Pix nas primeiras páginas -- na prática ele está
-// sempre na capa/1ª via do boleto. Limita o número de páginas fatiadas e
-// enviadas ao Worker por documento, pra não gastar tempo/rede em carnês de
-// 20+ páginas atrás de algo que não está lá.
-const MAX_PAGINAS_POR_PDF = 6;
+// sempre na capa/1ª via do boleto. Seus boletos giram em torno de 4 páginas,
+// então 4 já cobre o documento inteiro sem gastar tempo/rede à toa em casos
+// fora da curva (ajuste aqui se algum lote tiver documentos maiores).
+const MAX_PAGINAS_POR_PDF = 4;
 
 const TIMEOUT_POR_PAGINA_MS = 20_000;
+
+// Tamanho máximo (maior lado, em px) do bitmap renderizado pra escanear QR.
+// jsQR não precisa de DPI alto como o OCR de texto precisa -- um QR de
+// boleto (tipicamente uns 3-4cm no papel) fica com módulos de sobra pro
+// jsQR mesmo numa página inteira renderizada a ~1200px de lado. Isso é o
+// que mantém o custo de RAM/CPU no navegador baixo: um canvas de 1200px é
+// ~1/8 dos pixels de um de 3400px (scale 4x numa A4), então ~8x menos
+// memória por render. Só escalamos pra cima (ALVO_PX_FALLBACK) se a
+// primeira tentativa não achar nada.
+const ALVO_PX_SCAN_QR = 1200;
+const ALVO_PX_SCAN_QR_FALLBACK = 1800;
+
+// ---------------------------------------------------------------------
+// Validação do payload Pix (EMV / BR Code) -- mesma regra usada no Worker
+// (ver worker.js: isValidPixPayload/crc16ccitt). Duplicada aqui de propósito:
+// o Worker segue validando o Pix que ele mesmo encontra via OCR (texto), e
+// aqui validamos o Pix lido do QR direto no navegador -- os dois precisam
+// bater no mesmo critério (prefixo 000201, chave br.gov.bcb.pix, CRC16
+// correto) pra não devolver lixo pro usuário.
+// ---------------------------------------------------------------------
+
+function crc16ccitt(str: string): string {
+  let crc = 0xffff;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = (crc & 0x8000) !== 0 ? (crc << 1) ^ 0x1021 : crc << 1;
+      crc &= 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function isValidPixPayload(raw: string | null | undefined): raw is string {
+  if (!raw) return false;
+  const payload = raw.trim();
+
+  if (!payload.startsWith("000201")) return false;
+  if (!payload.includes("br.gov.bcb.pix")) return false;
+
+  const crcMatch = payload.match(/6304([0-9A-Fa-f]{4})$/);
+  if (!crcMatch) return false;
+
+  const providedCrc = crcMatch[1].toUpperCase();
+  const payloadForCrc = payload.slice(0, payload.length - 4);
+  return providedCrc === crc16ccitt(payloadForCrc);
+}
 
 export type DadosPix = {
   pixCopiaCola: string;
@@ -95,14 +162,25 @@ async function fatiarPdfEmPaginas(arquivo: File | Blob): Promise<Blob[]> {
   return fatias;
 }
 
-// Renderiza a 1ª página do PDF (já fatiado) num <canvas> e reencoda como JPEG,
-// reduzindo escala/qualidade em passos até caber no limite do Worker. Isso
-// substitui o antigo "manda cru e torce" -- que estourava 413 em boletos com
-// imagem de alta resolução (scan) numa página só.
-//
 // `pdfjsLib` é importado dinamicamente aqui dentro -- nunca no topo do
 // módulo -- pra não rodar em SSR (ver comentário no topo do arquivo).
-async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Promise<Blob | null> {
+async function carregarPdfjs() {
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).href;
+  return pdfjsLib;
+}
+
+// Renderiza a 1ª página de um PDF (já fatiado) num <canvas>, numa escala
+// fixa (usado pelo rasterizador JPEG) OU limitando o maior lado a `maxDim`
+// pixels (usado pelo scanner de QR, que não precisa de tanta resolução --
+// ver ALVO_PX_SCAN_QR). Só um dos dois deve ser passado.
+async function renderizarPaginaEmCanvas(
+  paginaPdfBlob: Blob,
+  opcoes: { scale: number } | { maxDim: number },
+): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") {
     // Estamos em SSR/Node (sem DOM/canvas) -- não há como rasterizar aqui.
     // Isso não deveria acontecer na prática (extrairDadosPixViaWorker já
@@ -110,18 +188,51 @@ async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Pro
     return null;
   }
 
-  const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).href;
-
+  const pdfjsLib = await carregarPdfjs();
   const buffer = await paginaPdfBlob.arrayBuffer();
   const doc = await pdfjsLib.getDocument({ data: buffer }).promise;
-  const pagina = await doc.getPage(1);
+  try {
+    const pagina = await doc.getPage(1);
 
-  // Tenta em passos decrescentes de escala/qualidade até caber no limite.
-  // Escala alta primeiro (melhor OCR), cai pra garantir que sempre manda algo.
+    let scale: number;
+    if ("scale" in opcoes) {
+      scale = opcoes.scale;
+    } else {
+      // Descobre o tamanho intrínseco da página (scale 1) pra calcular a
+      // escala que faz o maior lado bater em `maxDim` -- independe do
+      // tamanho real do PDF (alguns boletos vêm com mediabox gigante).
+      const tamanhoBase = pagina.getViewport({ scale: 1 });
+      const maiorLado = Math.max(tamanhoBase.width, tamanhoBase.height);
+      scale = Math.min(3, Math.max(0.5, opcoes.maxDim / maiorLado));
+    }
+
+    const viewport = pagina.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    // Fundo branco -- PDFs com fundo transparente viram imagem preta sem
+    // isso (e o jsQR/JPEG ficam ilegíveis).
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    await pagina.render({ canvasContext: ctx, viewport }).promise;
+    return canvas;
+  } finally {
+    // Libera os recursos internos do pdf.js (fontes, workers, cache de
+    // página) assim que terminamos com essa página -- sem isso, processar
+    // muitos arquivos em sequência acumula memória desnecessariamente.
+    doc.destroy();
+  }
+}
+
+// Renderiza a página em JPEG comprimido, reduzindo escala/qualidade em
+// passos até caber no limite do Worker. Isso substitui o antigo "manda cru e
+// torce" -- que estourava 413 em boletos com imagem de alta resolução (scan)
+// numa página só.
+async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Promise<Blob | null> {
   const tentativas: Array<{ scale: number; quality: number }> = [
     { scale: 2.5, quality: 0.85 },
     { scale: 2.0, quality: 0.8 },
@@ -131,22 +242,14 @@ async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Pro
   ];
 
   for (const { scale, quality } of tentativas) {
-    const viewport = pagina.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) continue;
-
-    // Fundo branco -- PDFs com fundo transparente viram JPEG preto sem isso.
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    await pagina.render({ canvasContext: ctx, viewport }).promise;
+    const canvas = await renderizarPaginaEmCanvas(paginaPdfBlob, { scale });
+    if (!canvas) continue;
 
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob((b) => resolve(b), "image/jpeg", quality),
     );
+    canvas.width = 0;
+    canvas.height = 0;
 
     if (blob && blob.size <= limiteBytes) return blob;
     // Guarda o menor obtido até agora caso nenhuma tentativa entre no limite.
@@ -155,11 +258,60 @@ async function rasterizarComoJpeg(paginaPdfBlob: Blob, limiteBytes: number): Pro
   return null;
 }
 
-async function enviarPaginaParaWorker(
+// Escaneia o Pix diretamente no navegador: renderiza a página inteira em
+// bitmap (isso "achata" QR desenhado como vetor E imagem embutida da mesma
+// forma) e roda jsQR em cima. SÓ é chamado como fallback, quando o Worker
+// (que é essencialmente de graça pro seu navegador) não encontrou nada -- ver
+// processarPagina. Resolução deliberadamente modesta (ver ALVO_PX_SCAN_QR):
+// QR tolera bem menos DPI que OCR de texto, então não há motivo pra pagar o
+// custo de RAM de renderizar em alta resolução igual ao rasterizarComoJpeg.
+async function escanearPixNaPagina(paginaPdfBlob: Blob): Promise<string | null> {
+  for (const maxDim of [ALVO_PX_SCAN_QR, ALVO_PX_SCAN_QR_FALLBACK]) {
+    let canvas: HTMLCanvasElement | null = null;
+    try {
+      canvas = await renderizarPaginaEmCanvas(paginaPdfBlob, { maxDim });
+    } catch (err) {
+      console.warn(`[pixWorkerClient] falha ao renderizar página p/ scan de QR (${maxDim}px):`, (err as Error).message);
+      continue;
+    }
+    if (!canvas) continue;
+
+    const ctx = canvas.getContext("2d");
+    let payload: string | undefined;
+    if (ctx) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      try {
+        const resultado = jsQR(imageData.data, imageData.width, imageData.height);
+        payload = resultado?.data?.trim();
+      } catch (err) {
+        console.warn("[pixWorkerClient] jsQR falhou ao escanear a página:", (err as Error).message);
+      }
+    }
+
+    // Libera o canvas imediatamente -- não espera o fim do escopo/GC natural,
+    // importante quando processando muitos arquivos em sequência num import
+    // em lote.
+    canvas.width = 0;
+    canvas.height = 0;
+
+    if (isValidPixPayload(payload)) return payload;
+  }
+  return null;
+}
+
+// Chama o Worker pra OCR (valor, vencimento, linha digitável) e também
+// aproveita o Pix que ele já tenta achar sozinho (via unpdf/extractImages --
+// funciona quando o QR vem como imagem embutida no PDF, sem custo nenhum de
+// CPU/RAM no navegador). Só quando o Worker NÃO acha o Pix é que caímos pro
+// fallback local (escanearPixNaPagina) -- ver processarPagina. Isso mantém o
+// caminho comum (arquivo que o Worker já resolve sozinho) exatamente tão
+// leve quanto antes; o navegador só entra em ação pros PDFs problemáticos
+// (QR desenhado como vetor).
+async function consultarWorker(
   pagina: Blob,
   nomeArquivo: string,
   indice: number,
-): Promise<DadosPix | null> {
+): Promise<{ pixCopiaCola: string | null } & Omit<DadosPix, "pixCopiaCola"> | null> {
   let corpo = pagina;
   let nome = nomeArquivo;
 
@@ -170,7 +322,7 @@ async function enviarPaginaParaWorker(
     );
     const rasterizado = await rasterizarComoJpeg(corpo, LIMITE_BYTES_POR_PAGINA);
     if (!rasterizado) {
-      console.error(`[pixWorkerClient] falha ao rasterizar página ${indice + 1}, pulando.`);
+      console.error(`[pixWorkerClient] falha ao rasterizar página ${indice + 1}, pulando OCR.`);
       return null;
     }
     corpo = rasterizado;
@@ -188,16 +340,45 @@ async function enviarPaginaParaWorker(
   }
 
   const json = (await resposta.json().catch(() => null)) as RespostaWorker | null;
-  if (!json?.success || !json.data?.pixCopiaCola) {
-    if (json?.error) console.warn(`[pixWorkerClient] página ${indice + 1} sem Pix:`, json.error);
+  if (!json?.success) {
+    if (json?.error) console.warn(`[pixWorkerClient] página ${indice + 1}:`, json.error);
     return null;
   }
 
   return {
-    pixCopiaCola: json.data.pixCopiaCola,
-    valor: json.data.valor ?? null,
-    vencimento: json.data.vencimento ?? null,
-    linhaDigitavel: json.data.linhaDigitavel ?? null,
+    pixCopiaCola: json.data?.pixCopiaCola ?? null,
+    valor: json.data?.valor ?? null,
+    vencimento: json.data?.vencimento ?? null,
+    linhaDigitavel: json.data?.linhaDigitavel ?? null,
+  };
+}
+
+// Processa uma página: chama o Worker primeiro (barato, roda no servidor).
+// Só se ele não trouxer um Pix válido é que escaneamos localmente no
+// navegador como fallback -- ver comentário em consultarWorker sobre por que
+// essa ordem importa pro custo de RAM/CPU no lado do cliente.
+async function processarPagina(
+  pagina: Blob,
+  nomeArquivo: string,
+  indice: number,
+): Promise<DadosPix | null> {
+  const resultadoWorker = await consultarWorker(pagina, nomeArquivo, indice);
+
+  let pix = resultadoWorker?.pixCopiaCola ?? null;
+  if (!pix) {
+    pix = await escanearPixNaPagina(pagina).catch((err) => {
+      console.warn(`[pixWorkerClient] falha ao escanear QR da página ${indice + 1}:`, (err as Error).message);
+      return null;
+    });
+  }
+
+  if (!pix) return null;
+
+  return {
+    pixCopiaCola: pix,
+    valor: resultadoWorker?.valor ?? null,
+    vencimento: resultadoWorker?.vencimento ?? null,
+    linhaDigitavel: resultadoWorker?.linhaDigitavel ?? null,
   };
 }
 
@@ -224,7 +405,7 @@ export async function extrairDadosPixViaWorker(
 
       const nomePagina = nomeArquivo.replace(/\.pdf$/i, "") + `-pagina-${i + 1}.pdf`;
       const dados = await comTimeout(
-        enviarPaginaParaWorker(pagina, nomePagina, i),
+        processarPagina(pagina, nomePagina, i),
         TIMEOUT_POR_PAGINA_MS,
         null,
       );
