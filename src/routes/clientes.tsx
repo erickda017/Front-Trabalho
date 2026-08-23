@@ -6,11 +6,13 @@ import {
   Copy,
   FileText,
   KeyRound,
+  Link2,
   Loader2,
   Pencil,
   Plus,
   Tag as TagIcon,
   Trash2,
+  Unlink,
   Upload,
   Users,
   X,
@@ -270,14 +272,161 @@ function ClienteFormModal({
   );
 }
 
+function VincularNumero({ cliente, onMudou }: { cliente: Cliente; onMudou: () => void }) {
+  const [vinculados, setVinculados] = useState<{ id: string; nome: string; telefone: string }[]>(
+    cliente.vinculados ?? [],
+  );
+  const [buscando, setBuscando] = useState(false);
+  const [termo, setTermo] = useState("");
+  const [resultados, setResultados] = useState<Cliente[]>([]);
+  const [processando, setProcessando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    // O objeto vindo da listagem não traz `vinculados` (só o GET de 1
+    // cliente traz) -- busca fresco toda vez que a ficha abre um cliente.
+    let cancelado = false;
+    api.clientes
+      .buscar(cliente.id)
+      .then((c) => !cancelado && setVinculados(c.vinculados ?? []))
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [cliente.id]);
+
+  async function buscar() {
+    if (!termo.trim()) return;
+    setBuscando(true);
+    setErro(null);
+    try {
+      const data = await api.clientes.listar({ busca: termo.trim() });
+      setResultados((Array.isArray(data) ? data : []).filter((c: Cliente) => c.id !== cliente.id));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  async function vincular(outroId: string) {
+    setProcessando(outroId);
+    setErro(null);
+    try {
+      const atualizado = await api.clientes.vincular(cliente.id, outroId);
+      setVinculados(atualizado.vinculados ?? []);
+      setResultados([]);
+      setTermo("");
+      onMudou();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setProcessando(null);
+    }
+  }
+
+  async function desvincular(outroId: string) {
+    setProcessando(outroId);
+    setErro(null);
+    try {
+      await api.clientes.desvincular(outroId);
+      setVinculados((prev) => prev.filter((v) => v.id !== outroId));
+      onMudou();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setProcessando(null);
+    }
+  }
+
+  return (
+    <div>
+      <p className="label-eyebrow mb-1">Outros números deste cliente</p>
+      <p className="text-subtle mb-2 text-xs">
+        Fatura, PIX e vencimento gravados em qualquer um destes números valem pros outros também.
+      </p>
+
+      {vinculados.length > 0 && (
+        <div className="mb-2 space-y-1.5">
+          {vinculados.map((v) => (
+            <div
+              key={v.id}
+              className="bg-surface-sunken border-border flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">{v.nome}</p>
+                <p className="text-subtle font-mono">{v.telefone}</p>
+              </div>
+              <button
+                onClick={() => desvincular(v.id)}
+                disabled={processando === v.id}
+                aria-label="Desvincular"
+                className="focus-ring text-subtle hover:text-destructive grid size-6 shrink-0 place-items-center rounded"
+              >
+                {processando === v.id ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Unlink className="size-3.5" />
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        <Campo
+          placeholder="Buscar por nome ou telefone…"
+          value={termo}
+          onChange={(e) => setTermo(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), buscar())}
+          className="text-xs"
+        />
+        <Botao type="button" variante="outline" tamanho="sm" onClick={buscar} disabled={buscando}>
+          {buscando ? <Loader2 className="size-3.5 animate-spin" /> : "Buscar"}
+        </Botao>
+      </div>
+
+      {resultados.length > 0 && (
+        <div className="border-border mt-1.5 space-y-1 rounded-md border p-1.5">
+          {resultados.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => vincular(c.id)}
+              disabled={processando === c.id}
+              className="hover:bg-surface-sunken focus-ring flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs"
+            >
+              <span className="min-w-0 truncate">
+                {c.nome} <span className="text-subtle font-mono">{c.telefone}</span>
+              </span>
+              {processando === c.id ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin" />
+              ) : (
+                <Link2 className="text-subtle size-3.5 shrink-0" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {erro && (
+        <p className="text-destructive mt-1.5 text-xs">{erro}</p>
+      )}
+    </div>
+  );
+}
+
 function FichaCliente({
   cliente,
   onClose,
   onEditar,
+  onMudou,
 }: {
   cliente: Cliente | null;
   onClose: () => void;
   onEditar: () => void;
+  onMudou: () => void;
 }) {
   return (
     <Sheet open={!!cliente} onOpenChange={(v) => !v && onClose()}>
@@ -343,6 +492,7 @@ function FichaCliente({
                 label="Último envio"
                 valor={cliente.ultimo_envio_em ? formatarData(cliente.ultimo_envio_em) : "—"}
               />
+              <VincularNumero cliente={cliente} onMudou={onMudou} />
             </div>
             <SheetFooter>
               <Botao variante="primary" onClick={onEditar} className="w-full sm:w-auto">
@@ -726,6 +876,7 @@ function Clientes() {
             setClienteFicha(null);
           }
         }}
+        onMudou={refreshClientes}
       />
     </AppShell>
   );

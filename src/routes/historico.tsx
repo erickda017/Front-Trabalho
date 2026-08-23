@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/sheet";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
-import { statusDoItem, type EnvioResumo, type EnvioStatus, type ItemStatus, type WhatsappSlot } from "@/lib/types";
+import { statusDoItem, type EnvioResumo, type EnvioStatus, type ItemStatus } from "@/lib/types";
 
 export const Route = createFileRoute("/historico")({
   head: () => ({
@@ -85,7 +85,6 @@ type EnvioProgresso = {
   numeros_invalidos: number;
   pendentes: number;
   status: string;
-  slot_atual: WhatsappSlot | null;
 };
 
 function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChange: (v: boolean) => void }) {
@@ -218,7 +217,6 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
           <MiniMetrica label="Inválidos" valor={progresso?.numeros_invalidos ?? envio.numeros_invalidos} tone="warning" />
           <MiniMetrica label="Pendentes" valor={progresso?.pendentes ?? envio.pendentes} />
           <MiniMetrica label="Cancelados" valor={envio.cancelados ?? 0} />
-          <MiniMetrica label="Conexão" valor={progresso?.slot_atual ?? envio.slot ?? "—"} />
         </div>
 
         <div>
@@ -229,11 +227,10 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
 
         <TabelaWrap compact>
           <colgroup>
+            <col className="w-[26%]" />
+            <col className="w-[26%]" />
+            <col className="w-[16%]" />
             <col className="w-[22%]" />
-            <col className="w-[22%]" />
-            <col className="w-[14%]" />
-            <col className="w-[22%]" />
-            <col className="w-[10%]" />
             <col className="w-[10%]" />
           </colgroup>
           <thead>
@@ -242,16 +239,15 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
               <th className="th-cell whitespace-normal">Telefone</th>
               <th className="th-cell whitespace-normal">Valor</th>
               <th className="th-cell whitespace-normal">Status</th>
-              <th className="th-cell whitespace-normal">Conexão</th>
               <th className="th-cell whitespace-normal">Horário</th>
             </tr>
           </thead>
           <tbody>
             {carregando ? (
-              <LinhasEsqueleto colunas={6} linhas={4} />
+              <LinhasEsqueleto colunas={5} linhas={4} />
             ) : itens.length === 0 ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={5}>
                   <EmptyState titulo="Nenhum destinatário encontrado." compacto />
                 </td>
               </tr>
@@ -267,7 +263,6 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
                       <StatusBadge status={status} />
                       {item.erro && <p className="text-destructive mt-1 text-[11px] text-pretty">{item.erro}</p>}
                     </td>
-                    <td className="td-cell truncate">{item.slot != null ? `WhatsApp ${item.slot}` : "—"}</td>
                     <td className="td-cell truncate text-xs">{formatarData(item.enviado_em)}</td>
                   </tr>
                 );
@@ -388,15 +383,13 @@ function Historico() {
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [status, setStatus] = useState<EnvioStatus | "todos">("todos");
-  const [slot, setSlot] = useState<WhatsappSlot | "todos">("todos");
   const [busca, setBusca] = useState("");
 
   const [loteSelecionado, setLoteSelecionado] = useState<EnvioResumo | null>(null);
 
   function buildParams() {
-    const p: { de?: string; ate?: string; status?: EnvioStatus; slot?: WhatsappSlot; busca?: string } = {};
+    const p: { de?: string; ate?: string; status?: EnvioStatus; busca?: string } = {};
     if (status !== "todos") p.status = status;
-    if (slot !== "todos") p.slot = slot;
     if (de) p.de = de;
     if (ate) p.ate = ate;
     if (busca) p.busca = busca;
@@ -415,7 +408,7 @@ function Historico() {
       setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [de, ate, status, slot, busca]);
+  }, [de, ate, status, busca]);
 
   useEffect(() => {
     carregar();
@@ -448,7 +441,7 @@ function Historico() {
       }
     >
       <SectionCard titulo="Filtros" flush bodyClassName="p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="flex flex-col gap-1.5">
             <Rotulo>De</Rotulo>
             <Campo type="date" value={de} onChange={(e) => setDe(e.target.value)} />
@@ -465,17 +458,6 @@ function Historico() {
                   {o.label}
                 </option>
               ))}
-            </Seletor>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <Rotulo>Conexão</Rotulo>
-            <Seletor
-              value={String(slot)}
-              onChange={(e) => setSlot(e.target.value === "todos" ? "todos" : (Number(e.target.value) as WhatsappSlot))}
-            >
-              <option value="todos">Todas</option>
-              <option value="1">WhatsApp 1</option>
-              <option value="2">WhatsApp 2</option>
             </Seletor>
           </label>
           <label className="flex flex-col gap-1.5">

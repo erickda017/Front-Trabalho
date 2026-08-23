@@ -54,20 +54,14 @@ export const api = {
     resumo: () => request('/dashboard/resumo'),
   },
   whatsapp: {
-    // Status agregado (compatibilidade com a versão de conexão única).
+    // [2026-08] MULTI-TENANT: 1 conexão por usuário logado -- não recebe mais
+    // "slot", o backend já sabe de quem é a sessão pelo token de autenticação.
     status: () => request('/whatsapp/status'),
-    logout: () => request('/whatsapp/logout', { method: 'POST' }),
-    // Duas conexões independentes (slot 1 e slot 2).
-    conexoes: () => request('/whatsapp/conexoes'),
-    statusSlot: (slot) => request(`/whatsapp/conexoes/${slot}/status`),
-    conectar: (slot) => request(`/whatsapp/conexoes/${slot}/conectar`, { method: 'POST' }),
-    desconectar: (slot) => request(`/whatsapp/conexoes/${slot}/logout`, { method: 'POST' }),
+    conectar: () => request('/whatsapp/conectar', { method: 'POST' }),
+    desconectar: () => request('/whatsapp/logout', { method: 'POST' }),
   },
-  estrategia: {
-    buscar: () => request('/configuracoes/estrategia'),
-    salvar: (payload) =>
-      request('/configuracoes/estrategia', { method: 'PUT', body: JSON.stringify(payload) }),
-  },
+  // [2026-08] MULTI-TENANT: api.estrategia removida -- não existe mais
+  // round-robin entre slots (cada usuário tem 1 WhatsApp só).
   configuracoes: {
     disparo: () => request('/configuracoes/disparo'),
   },
@@ -137,6 +131,30 @@ export const api = {
     },
     converterLista: (texto) => request('/clientes/converter-lista', { method: 'POST', body: JSON.stringify({ texto }) }),
     importarLista: (itens) => request('/clientes/importar-lista', { method: 'POST', body: JSON.stringify({ itens }) }),
+    // Vincula outro cliente (outro número) como o MESMO cliente -- PDF/pix/
+    // valor/vencimento passam a valer pros dois (ver backend/migration-15).
+    vincular: (id, outroId) => request(`/clientes/${id}/vincular/${outroId}`, { method: 'POST' }),
+    desvincular: (id) => request(`/clientes/${id}/vincular`, { method: 'DELETE' }),
+    // Grava só o Pix (sem PDF novo) -- usado pela "rodar verificação".
+    atualizarPix: (id, pixCode) => request(`/clientes/${id}/pix`, { method: 'PATCH', body: JSON.stringify({ pixCode }) }),
+  },
+  perfil: {
+    // Papel (operador|supervisor) do usuário logado -- decide se o menu
+    // "Supervisor" aparece (ver AppShell/app-state.tsx).
+    me: () => request('/perfil/me'),
+  },
+  supervisor: {
+    // Todas as rotas abaixo exigem role=supervisor no backend (ver
+    // middleware/supervisor.js) -- 403 se chamadas por um operador comum.
+    operadores: () => request('/supervisor/operadores'),
+    clientes: (params) => request(`/supervisor/clientes${qs(params)}`),
+    faturas: (params) => request(`/supervisor/faturas${qs(params)}`),
+    disparos: (params) => request(`/supervisor/disparos${qs(params)}`),
+    dashboard: () => request('/supervisor/dashboard'),
+    // Lista enxuta (nome/telefone/pix/operador) de todo mundo com Pix já
+    // cadastrado -- matéria-prima pro casamento por nome feito no navegador
+    // (planilha de PIX e extrator pessoal, ver routes/supervisor.tsx).
+    indicePix: () => request('/supervisor/indice-pix'),
   },
   importacao: {
     // [2026-08] Único fluxo suportado: recebe o resultado já processado no

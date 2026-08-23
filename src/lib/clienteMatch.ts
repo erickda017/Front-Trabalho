@@ -23,6 +23,23 @@ function normalizarNomeArquivo(nomeArquivo: string): string {
     .trim();
 }
 
+// Mesma ideia de `casarClientePorNome`, mas comparando direto um nome de
+// texto (ex.: célula "CLIENTE" de uma planilha) em vez de um nome de
+// arquivo -- usado pela função de planilha de PIX do Supervisor.
+export function casarClientePorNome<C extends { nome: string }>(nome: string, clientes: C[]): C | null {
+  const alvo = normalizarTexto(nome).replace(/\s+/g, " ").trim();
+  if (!alvo) return null;
+
+  const exato = clientes.find((c) => normalizarTexto(c.nome) === alvo);
+  if (exato) return exato;
+
+  const parcial = clientes.find((c) => {
+    const nomeCliente = normalizarTexto(c.nome);
+    return nomeCliente.length >= 3 && (alvo.includes(nomeCliente) || nomeCliente.includes(alvo));
+  });
+  return parcial ?? null;
+}
+
 // Estratégia: 1) nome do arquivo bate exatamente com o nome do cliente;
 // 2) por fallback, um "contém" o outro (cobre arquivo com sufixo/prefixo
 // extra, tipo "joao_silva_fatura_agosto.pdf" ou nome de cliente abreviado).

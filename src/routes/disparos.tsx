@@ -37,7 +37,7 @@ import {
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
-import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo, type EstrategiaEnvio, type WhatsappSlot } from "@/lib/types";
+import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo } from "@/lib/types";
 
 export const Route = createFileRoute("/disparos")({
   head: () => ({
@@ -58,12 +58,8 @@ export const Route = createFileRoute("/disparos")({
   component: Disparo,
 });
 
-const ESTRATEGIAS: { valor: EstrategiaEnvio; label: string; descricao: string }[] = [
-  { valor: "qualquer", label: "Qualquer conexão", descricao: "Usa a primeira conexão disponível" },
-  { valor: "slot_1", label: "Somente WhatsApp 1", descricao: "Todas as mensagens saem pelo slot 1" },
-  { valor: "slot_2", label: "Somente WhatsApp 2", descricao: "Todas as mensagens saem pelo slot 2" },
-  { valor: "round_robin", label: "Alternar (round robin)", descricao: "Alterna entre as conexões disponíveis" },
-];
+/* [2026-08] MULTI-TENANT: ESTRATEGIAS removido -- não existe mais escolha de
+   slot/round-robin, cada usuário tem 1 WhatsApp só (ver migration-13). */
 
 /* -------------------------------------------------------------------------- */
 /* 1. Destinatários                                                           */
@@ -292,75 +288,51 @@ function EtapaAnexo({ comPdf, setComPdf }: { comPdf: boolean; setComPdf: (v: boo
           </span>
         </span>
       </label>
+      {!comPdf && (
+        <p className="text-muted-foreground mt-3 text-xs">
+          Desligado: ninguém recebe PDF neste lote — só a mensagem, com o código PIX de cada cliente (use{" "}
+          <code className="bg-surface-sunken rounded px-1 py-0.5 font-mono">{"{{pix}}"}</code> no texto, ou ele é
+          adicionado automaticamente no fim). Só entram clientes com PIX cadastrado — quem não tem fica de fora do
+          lote (mesma lógica de quem não tem PDF, no modo normal).
+        </p>
+      )}
     </SectionCard>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* 4/5. WhatsApp e Estratégia                                                 */
+/* 4. WhatsApp                                                                */
 /* -------------------------------------------------------------------------- */
 
-function EtapaConexaoEstrategia({
-  estrategiaEscolhida,
-  setEstrategiaEscolhida,
-}: {
-  estrategiaEscolhida: EstrategiaEnvio;
-  setEstrategiaEscolhida: (v: EstrategiaEnvio) => void;
-}) {
-  const { conexoes, conexoesCarregando, estrategia } = useAppState();
+// [2026-08] MULTI-TENANT: não existe mais escolha de estratégia/slot -- só
+// mostra o status da conexão do próprio usuário, e avisa se ela não estiver
+// pronta pra disparar.
+function EtapaConexao() {
+  const { conexao, conexaoCarregando } = useAppState();
 
   return (
-    <SectionCard eyebrow="Etapas 4 e 5" titulo="WhatsApp e estratégia" descricao="Escolha como as mensagens serão distribuídas entre as conexões.">
-      <div className="mb-5">
-        <p className="label-eyebrow mb-2">Conexões disponíveis</p>
-        {conexoesCarregando ? (
-          <p className="text-subtle text-xs">Carregando conexões…</p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {conexoes.map((c) => (
-              <div
-                key={c.slot}
-                className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs"
-              >
-                <Wifi
-                  className={cn(
-                    "size-3.5 shrink-0",
-                    c.status === "connected" ? "text-success" : "text-subtle",
-                  )}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">WhatsApp {c.slot}</p>
-                  <p className="text-subtle truncate">{c.telefone ?? (c.configurada ? "sem número" : "não configurado")}</p>
-                </div>
-                <StatusBadgeSimples status={c.status} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <p className="label-eyebrow mb-2">Estratégia de envio</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {ESTRATEGIAS.map((op) => (
-          <button
-            key={op.valor}
-            type="button"
-            onClick={() => setEstrategiaEscolhida(op.valor)}
+    <SectionCard eyebrow="Etapa 4" titulo="WhatsApp" descricao="Sua sessão de WhatsApp usada para este disparo.">
+      {conexaoCarregando ? (
+        <p className="text-subtle text-xs">Carregando conexão…</p>
+      ) : (
+        <div className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs sm:max-w-sm">
+          <Wifi
             className={cn(
-              "focus-ring rounded-md border px-3 py-2.5 text-left text-xs transition-colors",
-              estrategiaEscolhida === op.valor
-                ? "border-primary bg-primary-soft text-primary-strong"
-                : "border-border text-foreground hover:bg-surface-raised",
+              "size-3.5 shrink-0",
+              conexao.status === "connected" ? "text-success" : "text-subtle",
             )}
-          >
-            <span className="block font-medium">{op.label}</span>
-            <span className="text-muted-foreground block">{op.descricao}</span>
-          </button>
-        ))}
-      </div>
-
-      {estrategiaEscolhida === "round_robin" && estrategia?.next_slot != null && (
-        <p className="text-info mt-3 text-xs">Próximo envio: WhatsApp {estrategia.next_slot}</p>
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Seu WhatsApp</p>
+            <p className="text-subtle truncate">{conexao.telefone ?? (conexao.configurada ? "sem número" : "não configurado")}</p>
+          </div>
+          <StatusBadgeSimples status={conexao.status} />
+        </div>
+      )}
+      {conexao.status !== "connected" && (
+        <p className="text-warning mt-3 text-xs">
+          Conecte seu WhatsApp em <Link to="/conexoes" className="underline">Conexão</Link> antes de disparar.
+        </p>
       )}
     </SectionCard>
   );
@@ -476,7 +448,6 @@ function ConfirmarDisparo({
   aberto,
   onOpenChange,
   totalClientes,
-  conexaoResumo,
   comPdf,
   agendarPara,
   onConfirmar,
@@ -485,7 +456,6 @@ function ConfirmarDisparo({
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
   totalClientes: number;
-  conexaoResumo: string;
   comPdf: boolean;
   agendarPara: string;
   onConfirmar: () => void;
@@ -502,7 +472,6 @@ function ConfirmarDisparo({
           <p>
             Você está prestes a enviar para <strong>{totalClientes}</strong> cliente(s).
           </p>
-          <p className="text-muted-foreground">Estratégia/conexão: {conexaoResumo}</p>
           <p className="text-muted-foreground">Anexo: {comPdf ? "com PDF da fatura" : "somente mensagem de texto"}</p>
           <p className="text-muted-foreground">
             {agendarPara
@@ -539,8 +508,6 @@ type EnvioProgresso = {
   cancelados: number;
   status: string;
   ultimo_envio_em: string | null;
-  proximo_slot: WhatsappSlot | null;
-  slot_atual: WhatsappSlot | null;
 };
 
 function ProgressoDisparo({
@@ -735,8 +702,6 @@ function ProgressoDisparo({
             {progresso.ultimo_envio_em && (
               <span>Último envio: {new Date(progresso.ultimo_envio_em).toLocaleString("pt-BR")}</span>
             )}
-            {progresso.slot_atual != null && <span>Slot atual: WhatsApp {progresso.slot_atual}</span>}
-            {progresso.proximo_slot != null && <span>Próximo slot: WhatsApp {progresso.proximo_slot}</span>}
           </div>
 
           {envio?.status === "em_andamento" && configDisparo && configDisparo.batch_size > 0 && (
@@ -949,23 +914,19 @@ function TesteDisparo({ templateSugerido }: { templateSugerido?: string | undefi
 /* -------------------------------------------------------------------------- */
 
 function Disparo() {
-  const { envioAtivoId, setEnvioAtivoId, selecionados, limparSelecionados, estrategia } = useAppState();
+  const { envioAtivoId, setEnvioAtivoId, selecionados, limparSelecionados } = useAppState();
 
   const [templates, setTemplates] = useState<string[]>([
     "Olá {{nome}}, tudo bem? Segue em anexo sua fatura no valor de {{valor}}, com vencimento em {{vencimento}}. Qualquer dúvida estou à disposição!",
   ]);
   const [comPdf, setComPdf] = useState(true);
-  const [estrategiaEscolhida, setEstrategiaEscolhida] = useState<EstrategiaEnvio>(estrategia?.estrategia ?? "qualquer");
   const [janelaHoras, setJanelaHoras] = useState("");
   const [janelaMinutos, setJanelaMinutos] = useState("");
   const [agendarPara, setAgendarPara] = useState("");
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [avisoIgnorados, setAvisoIgnorados] = useState<string | null>(null);
   const [confirmarAberto, setConfirmarAberto] = useState(false);
-
-  useEffect(() => {
-    if (estrategia?.estrategia) setEstrategiaEscolhida(estrategia.estrategia);
-  }, [estrategia?.estrategia]);
 
   // Se não há um lote "ativo" guardado nesta aba (sessionStorage perdido --
   // aba nova, outro navegador, ou o servidor caiu e voltou), pergunta pro
@@ -1011,10 +972,25 @@ function Disparo() {
         // Até 5 variações -- o backend sorteia uma delas pra cada mensagem do
         // lote (ver migration-9-variacoes-mensagem.sql).
         mensagens: variacoesPreenchidas,
-        slot: estrategiaEscolhida === "slot_1" ? 1 : estrategiaEscolhida === "slot_2" ? 2 : undefined,
         ...(janela_ms ? { janela_ms } : {}),
         ...(agendarPara ? { agendado_para: new Date(agendarPara).toISOString() } : {}),
+        // [correção] o toggle "Enviar PDF da fatura" (EtapaAnexo) já existia
+        // na tela mas nunca era mandado pro backend -- desligar o checkbox
+        // não tinha efeito nenhum antes disso. Off = lote "só PIX": nunca
+        // anexa PDF, manda o código PIX como texto (ver migration-17).
+        enviar_pix: !comPdf,
       });
+      const ignoradosSemPdf = (envio as { ignorados_sem_pdf?: number }).ignorados_sem_pdf ?? 0;
+      const ignoradosPorTag = (envio as { ignorados_por_tag?: number }).ignorados_por_tag ?? 0;
+      if (ignoradosSemPdf || ignoradosPorTag) {
+        const partes = [];
+        if (ignoradosSemPdf) partes.push(comPdf ? `${ignoradosSemPdf} sem PDF vinculado` : `${ignoradosSemPdf} sem PIX cadastrado`);
+        if (ignoradosPorTag) partes.push(`${ignoradosPorTag} com tag que bloqueia disparo (ex.: Pago/Cancelado)`);
+        setAvisoIgnorados(`${partes.join(" e ")} ficaram de fora do lote.`);
+      } else {
+        setAvisoIgnorados(null);
+      }
+
       limparSelecionados();
       setEnvioAtivoId(envio.id);
       setConfirmarAberto(false);
@@ -1028,7 +1004,6 @@ function Disparo() {
     }
   }
 
-  const estrategiaLabel = ESTRATEGIAS.find((e) => e.valor === estrategiaEscolhida)?.label ?? estrategiaEscolhida;
   const podeConfirmar = selecionados.length > 0 && templates.some((t) => t.trim().length > 0);
 
   return (
@@ -1048,6 +1023,7 @@ function Disparo() {
     >
       <div className="space-y-6">
         {erro && <Aviso tone="danger">{erro}</Aviso>}
+        {avisoIgnorados && <Aviso tone="warning">{avisoIgnorados}</Aviso>}
 
         {envioAtivoId ? (
           <ProgressoDisparo envioAtivoId={envioAtivoId} setEnvioAtivoId={setEnvioAtivoId} />
@@ -1056,10 +1032,7 @@ function Disparo() {
             <EtapaDestinatarios />
             <EtapaMensagem templates={templates} setTemplates={setTemplates} />
             <EtapaAnexo comPdf={comPdf} setComPdf={setComPdf} />
-            <EtapaConexaoEstrategia
-              estrategiaEscolhida={estrategiaEscolhida}
-              setEstrategiaEscolhida={setEstrategiaEscolhida}
-            />
+            <EtapaConexao />
             <EtapaIntervalo
               janelaHoras={janelaHoras}
               setJanelaHoras={setJanelaHoras}
@@ -1086,7 +1059,6 @@ function Disparo() {
               aberto={confirmarAberto}
               onOpenChange={setConfirmarAberto}
               totalClientes={selecionados.length}
-              conexaoResumo={estrategiaLabel}
               comPdf={comPdf}
               agendarPara={agendarPara}
               onConfirmar={criarEIniciar}

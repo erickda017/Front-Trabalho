@@ -7,10 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao } from "@/components/shared/Controls";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAppState, type Perfil } from "@/lib/app-state";
-import { api } from "@/api";
-import type { EstrategiaEnvio } from "@/lib/types";
 
 // Tamanho máximo aceito para a foto de perfil, antes de converter pra base64
 // e guardar no localStorage (que tem limite de alguns MB no total).
@@ -123,118 +120,42 @@ export const Route = createFileRoute("/configuracoes")({
       { title: "Configurações — Veloce Faturas" },
       {
         name: "description",
-        content: "Defina a estratégia de envio e acompanhe o ambiente de integração do painel.",
+        content: "Perfil do operador e ambiente de integração do painel.",
       },
       { property: "og:title", content: "Configurações — Veloce Faturas" },
-      { property: "og:description", content: "Estratégia de envio, conexões ativas e ambiente da aplicação." },
+      { property: "og:description", content: "Perfil do operador, conexão ativa e ambiente da aplicação." },
     ],
   }),
   component: Configuracoes,
 });
 
-const OPCOES: { valor: EstrategiaEnvio; label: string; slot?: 1 | 2 }[] = [
-  { valor: "slot_1", label: "WhatsApp 1", slot: 1 },
-  { valor: "slot_2", label: "WhatsApp 2", slot: 2 },
-  { valor: "round_robin", label: "Alternância automática" },
-  { valor: "qualquer", label: "Qualquer conexão disponível" },
-];
-
+// [2026-08] MULTI-TENANT: seção de "Estratégia de envio" removida -- não
+// existe mais round-robin/slot fixo pra escolher, cada usuário tem 1
+// WhatsApp só (ver migration-13-multi-tenant.sql). O que sobra aqui é só um
+// resumo do status da própria conexão, com link pra tela de Conexão.
 function Configuracoes() {
-  const { estrategia, estrategiaCarregando, refreshEstrategia, conexoes, supabaseConfigurado } = useAppState();
-  const [selecionada, setSelecionada] = useState<EstrategiaEnvio | null>(null);
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  const valorAtual = selecionada ?? estrategia?.estrategia ?? null;
-
-  async function salvar() {
-    if (!valorAtual) return;
-    setSalvando(true);
-    setErro(null);
-    try {
-      await api.estrategia.salvar({ estrategia: valorAtual });
-      await refreshEstrategia();
-      toast.success("Estratégia de envio atualizada");
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  function slotConfigurado(slot?: 1 | 2) {
-    if (!slot) return true;
-    return conexoes.find((c) => c.slot === slot)?.configurada ?? false;
-  }
+  const { conexao, supabaseConfigurado } = useAppState();
 
   return (
-    <AppShell title="Configurações" subtitle="Estratégia de envio e ambiente do painel">
+    <AppShell title="Configurações" subtitle="Perfil do operador e ambiente do painel">
       <div className="flex flex-col gap-6">
         <PerfilOperador />
 
         <SectionCard
-          titulo="Estratégia de envio"
-          eyebrow="Disparo"
-          descricao="Escolha como as mensagens devem ser distribuídas entre as conexões disponíveis."
+          titulo="Conexão do WhatsApp"
+          eyebrow="Resumo"
           acoes={
             <Link to="/conexoes" className="text-xs font-medium text-primary hover:underline">
-              Ver conexões
+              Ver conexão
             </Link>
           }
         >
-          {estrategiaCarregando ? (
-            <div className="bg-surface-sunken h-24 animate-pulse rounded" />
+          {conexao.configurada ? (
+            <StatusPill tone={conexao.status === "connected" ? "success" : "warning"} dot pulse={conexao.status === "connected"}>
+              {conexao.status === "connected" ? "WhatsApp conectado" : "WhatsApp configurado, mas não conectado"}
+            </StatusPill>
           ) : (
-            <div className="flex flex-col gap-4">
-              <RadioGroup
-                value={valorAtual}
-                onValueChange={(v) => setSelecionada(v as EstrategiaEnvio)}
-                className="gap-2.5"
-              >
-                {OPCOES.map((o) => {
-                  const desabilitado = !slotConfigurado(o.slot);
-                  return (
-                    <label
-                      key={o.valor}
-                      className="border-border has-[[data-state=checked]]:border-primary flex items-center gap-3 rounded-md border px-3 py-2.5 text-sm data-[disabled]:opacity-50"
-                      data-disabled={desabilitado || undefined}
-                    >
-                      <RadioGroupItem value={o.valor} disabled={desabilitado} />
-                      <span className="flex-1">{o.label}</span>
-                      {desabilitado && <span className="text-subtle text-[11px]">não configurado</span>}
-                    </label>
-                  );
-                })}
-              </RadioGroup>
-
-              {estrategia?.estrategia === "round_robin" && estrategia.next_slot && (
-                <StatusPill tone="brand" className="w-fit">
-                  Próximo envio: WhatsApp {estrategia.next_slot}
-                </StatusPill>
-              )}
-
-              {erro && <Aviso tone="danger">{erro}</Aviso>}
-
-              <div>
-                <Botao variante="primary" onClick={salvar} disabled={salvando || !valorAtual}>
-                  {salvando ? "Salvando..." : "Salvar estratégia"}
-                </Botao>
-              </div>
-            </div>
-          )}
-        </SectionCard>
-
-        <SectionCard titulo="Conexões ativas" eyebrow="Resumo">
-          {estrategia?.slots_ativos?.length ? (
-            <div className="flex flex-wrap gap-2">
-              {estrategia.slots_ativos.map((slot) => (
-                <StatusPill key={slot} tone="success" dot>
-                  WhatsApp {slot} ativo
-                </StatusPill>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-xs">Nenhuma conexão ativa no momento.</p>
+            <p className="text-muted-foreground text-xs">WhatsApp ainda não configurado — acesse a tela de Conexão para gerar o QR Code.</p>
           )}
         </SectionCard>
 

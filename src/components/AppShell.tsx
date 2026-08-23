@@ -12,6 +12,7 @@ import {
   PanelLeft,
   Send,
   Settings,
+  ShieldCheck,
   Smartphone,
   Tag,
   Upload,
@@ -35,7 +36,12 @@ const nav = [
   { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Gestão" },
   { to: "/importar", label: "Importar", icon: Upload, grupo: "Gestão" },
   { to: "/tags", label: "Tags", icon: Tag, grupo: "Gestão" },
-  { to: "/conexoes", label: "Conexões", icon: Smartphone, grupo: "Sistema" },
+  // Só aparece pra quem tem role=supervisor -- filtrado abaixo em
+  // SidebarContent. Backend também exige o papel em toda rota /supervisor/*
+  // (ver middleware/supervisor.js), então esconder o link é só UX, não é a
+  // barreira de segurança de verdade.
+  { to: "/supervisor", label: "Supervisor", icon: ShieldCheck, grupo: "Gestão", supervisorOnly: true },
+  { to: "/conexoes", label: "Conexão", icon: Smartphone, grupo: "Sistema" },
   { to: "/configuracoes", label: "Configurações", icon: Settings, grupo: "Sistema" },
 ] as const;
 
@@ -60,7 +66,7 @@ function SidebarContent({
   onToggleCollapse?: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { conexoes, logout, session, perfil } = useAppState();
+  const { conexao, logout, session, perfil, isSupervisor } = useAppState();
   const nomeExibido = perfil.nome.trim() || session?.user?.email || "—";
   const iniciais = (perfil.nome.trim() || session?.user?.email || "?")
     .trim()
@@ -93,7 +99,7 @@ function SidebarContent({
 
       <nav className={cn("min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-4", collapsed && "px-2")}>
         {grupos.map((grupo) => {
-          const itens = nav.filter((n) => n.grupo === grupo);
+          const itens = nav.filter((n) => n.grupo === grupo && (!("supervisorOnly" in n && n.supervisorOnly) || isSupervisor));
           if (!itens.length) return null;
           return (
             <div key={grupo} className="space-y-0.5">
@@ -136,18 +142,18 @@ function SidebarContent({
       <div className={cn("border-sidebar-border mt-auto border-t p-3", collapsed && "p-2")}>
         {!collapsed && (
           <div className="mb-2.5 space-y-1.5">
-            {conexoes.map((c) => {
-              const info = statusConexao[c.status] ?? statusConexao["disconnected"]!;
+            {(() => {
+              const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
               return (
-                <div key={c.slot} className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-sidebar-foreground/55 truncate text-[11px] font-medium">
-                    WhatsApp {c.slot}
+                    WhatsApp
                   </span>
-                  {c.configurada ? (
+                  {conexao.configurada ? (
                     <StatusPill
                       tone={info.tone}
                       dot
-                      pulse={c.status === "connected"}
+                      pulse={conexao.status === "connected"}
                       className="ring-0"
                     >
                       {info.label}
@@ -157,7 +163,7 @@ function SidebarContent({
                   )}
                 </div>
               );
-            })}
+            })()}
           </div>
         )}
         <Link

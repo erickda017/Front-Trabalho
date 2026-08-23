@@ -25,7 +25,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/api";
-import { extrairDadosPixViaWorker } from "@/lib/pixWorkerClient";
+import { extrairDadosPix } from "@/lib/pixWorkerClient";
+import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorArquivo } from "@/lib/clienteMatch";
 import { useAppState } from "@/lib/app-state";
 import type { PixExtracao, PixExtracaoStatus } from "@/lib/types";
@@ -170,8 +171,15 @@ type ResumoEnvio = {
   falha: number;
 };
 
+type ResumoVerificacao = {
+  total: number;
+  processados: number;
+  encontrados: number;
+  semSucesso: number;
+};
+
 function Pix() {
-  const { clientes } = useAppState();
+  const { clientes, refreshClientes } = useAppState();
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
@@ -184,6 +192,10 @@ function Pix() {
   const [clienteEscolhido, setClienteEscolhido] = useState("");
   const [salvandoVinculo, setSalvandoVinculo] = useState(false);
   const [erroVinculo, setErroVinculo] = useState<string | null>(null);
+
+  const [verificando, setVerificando] = useState(false);
+  const [resumoVerificacao, setResumoVerificacao] = useState<ResumoVerificacao | null>(null);
+  const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -254,7 +266,7 @@ function Pix() {
 
     await processarEmLotes(arquivos, TAMANHO_LOTE_EXTRACAO, async (arquivo) => {
       try {
-        const dados = await extrairDadosPixViaWorker(arquivo, arquivo.name);
+        const dados = await extrairDadosPix(arquivo, arquivo.name);
         if (!dados) {
           setResumoEnvio((prev) =>
             prev ? { ...prev, processados: prev.processados + 1, falha: prev.falha + 1 } : prev,
@@ -302,6 +314,55 @@ function Pix() {
     setArquivos([]);
     setEnviando(false);
     await carregar();
+  }
+
+  // "Rodar verificação": varre clientes que já têm PDF mas ficaram sem Pix
+  // (Worker fora do ar na hora, boleto com layout raro, etc.) e tenta achar
+  // o QR de novo, 100% local -- baixa o PDF já salvo (signed URL) e roda o
+  // mesmo scanner de canto usado no upload normal (ver pixExtractor.ts). Achou:
+  // grava só o Pix (propaga pra números vinculados do mesmo cliente, se
+  // houver -- ver backend/src/lib/faturaPropagacao.js).
+  async function rodarVerificacao() {
+    setVerificando(true);
+    setErroVerificacao(null);
+    setResumoVerificacao(null);
+    try {
+      const semPix = await api.clientes.listar({ com_pdf: true, sem_pix: true });
+      const lista: typeof clientes = Array.isArray(semPix) ? semPix : [];
+      const total = lista.length;
+      setResumoVerificacao({ total, processados: 0, encontrados: 0, semSucesso: 0 });
+
+      await processarEmLotes(lista, TAMANHO_LOTE_EXTRACAO, async (cliente) => {
+        try {
+          if (!cliente.pdf_url) throw new Error("sem pdf_url");
+          const resposta = await fetch(cliente.pdf_url);
+          if (!resposta.ok) throw new Error(`falha ao baixar PDF (${resposta.status})`);
+          const blob = await resposta.blob();
+          const resultado = await extrairPixLocal(blob);
+
+          if (resultado?.pixCopiaCola) {
+            await api.clientes.atualizarPix(cliente.id, resultado.pixCopiaCola);
+            setResumoVerificacao((prev) =>
+              prev ? { ...prev, processados: prev.processados + 1, encontrados: prev.encontrados + 1 } : prev,
+            );
+          } else {
+            setResumoVerificacao((prev) =>
+              prev ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 } : prev,
+            );
+          }
+        } catch {
+          setResumoVerificacao((prev) =>
+            prev ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 } : prev,
+          );
+        }
+      });
+
+      await refreshClientes();
+    } catch (e) {
+      setErroVerificacao((e as Error).message);
+    } finally {
+      setVerificando(false);
+    }
   }
 
   function abrirVinculo(extracao: PixExtracao) {
@@ -409,6 +470,59 @@ function Pix() {
               {erroEnvio && (
                 <Aviso tone="danger">{erroEnvio}</Aviso>
               )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            titulo="Rodar verificação"
+            descricao="Revarre clientes que já têm PDF de fatura mas ficaram sem Pix (Worker fora do ar, layout raro etc.) e tenta achar o QR de novo, direto no seu navegador."
+            acoes={
+              <Botao variante="secondary" onClick={rodarVerificacao} disabled={verificando}>
+                {verificando ? "Verificando…" : "Rodar verificação"}
+              </Botao>
+            }
+          >
+            <div className="space-y-2">
+              {resumoVerificacao && (
+                <>
+                  <div className="bg-surface-sunken h-1.5 w-full overflow-hidden rounded-full">
+                    <div
+                      className="bg-primary h-full rounded-full transition-all"
+                      style={{
+                        width: `${resumoVerificacao.total ? (resumoVerificacao.processados / resumoVerificacao.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-subtle text-xs">
+                    {resumoVerificacao.total === 0 ? (
+                      "Nenhum cliente com PDF pendente de Pix no momento."
+                    ) : (
+                      <>
+                        {resumoVerificacao.processados} / {resumoVerificacao.total} processado(s)
+                        {resumoVerificacao.processados > 0 && (
+                          <>
+                            {" — "}
+                            <span className="text-success">{resumoVerificacao.encontrados} achado(s)</span>
+                            {resumoVerificacao.semSucesso > 0 && (
+                              <>
+                                {", "}
+                                <span className="text-muted-foreground">
+                                  {resumoVerificacao.semSucesso} sem sucesso
+                                </span>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {!verificando &&
+                          resumoVerificacao.processados === resumoVerificacao.total &&
+                          resumoVerificacao.total > 0 &&
+                          " — concluído."}
+                      </>
+                    )}
+                  </p>
+                </>
+              )}
+              {erroVerificacao && <Aviso tone="danger">{erroVerificacao}</Aviso>}
             </div>
           </SectionCard>
 

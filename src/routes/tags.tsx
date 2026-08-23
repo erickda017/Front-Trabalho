@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/api";
 import type { Tag } from "@/lib/app-state";
 
@@ -59,6 +60,7 @@ function Tags() {
   const [editando, setEditando] = useState<TagComContagem | null>(null);
   const [nome, setNome] = useState("");
   const [cor, setCor] = useState<string>(CORES[0].valor);
+  const [permiteDisparo, setPermiteDisparo] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState<string | null>(null);
 
@@ -86,6 +88,7 @@ function Tags() {
     setEditando(null);
     setNome("");
     setCor(CORES[0].valor);
+    setPermiteDisparo(true);
     setErroForm(null);
     setDialogAberto(true);
   }
@@ -94,6 +97,7 @@ function Tags() {
     setEditando(tag);
     setNome(tag.nome);
     setCor(tag.cor || CORES[0].valor);
+    setPermiteDisparo(tag.permite_disparo !== false);
     setErroForm(null);
     setDialogAberto(true);
   }
@@ -105,9 +109,9 @@ function Tags() {
     setErroForm(null);
     try {
       if (editando) {
-        await api.tags.atualizar(editando.id, { nome, cor });
+        await api.tags.atualizar(editando.id, { nome, cor, permite_disparo: permiteDisparo });
       } else {
-        await api.tags.criar({ nome, cor });
+        await api.tags.criar({ nome, cor, permite_disparo: permiteDisparo });
       }
       setDialogAberto(false);
       await carregar();
@@ -189,6 +193,11 @@ function Tags() {
                         ? `${t.clientes_count} cliente(s)`
                         : "—"}
                     </p>
+                    {t.permite_disparo === false && (
+                      <p className="text-destructive mt-1 text-[11px] font-medium">
+                        Tira do disparo (atual e futuro)
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -245,6 +254,21 @@ function Tags() {
                   />
                 ))}
               </div>
+            </div>
+            <div className="border-border bg-surface-sunken flex items-start justify-between gap-3 rounded-lg border p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Permite entrar em disparo</p>
+                <p className="text-subtle mt-0.5 text-xs">
+                  Desligado = clientes com essa tag não entram em novos lotes e saem
+                  imediatamente de qualquer lote em andamento/pendente. Use pra tags como
+                  "Pago" ou "Cancelado".
+                </p>
+              </div>
+              <Switch
+                checked={permiteDisparo}
+                onCheckedChange={setPermiteDisparo}
+                aria-label="Permite entrar em disparo"
+              />
             </div>
             {erroForm && <Aviso tone="danger">{erroForm}</Aviso>}
             <DialogFooter>

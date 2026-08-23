@@ -123,16 +123,19 @@ export function casarPdf(linha: LinhaPlanilha, pdfsPorNome: Map<string, PdfDoZip
 // Orquestração completa da importação client-side
 // ==========================================================================
 import { supabase } from "@/supabaseClient";
-import { extrairDadosPixViaWorker } from "@/lib/pixWorkerClient";
+import { extrairDadosPix } from "@/lib/pixWorkerClient";
 import { api } from "@/api";
 
-// Concorrência do processamento no navegador: cada item envolve fatiar o PDF
-// (pdf-lib) + chamar o Worker de OCR pra cada página + upload pro Storage.
-// Mesmo raciocínio do backend (CONCORRENCIA_IMPORTACAO): alto demais deixa a
-// aba lenta (o fatiamento roda na thread principal do JS) e satura o Worker
-// com requisições demais de uma vez. 2 dá um bom equilíbrio entre velocidade e
-// responsividade da tela de progresso.
-const CONCORRENCIA_BROWSER = 2;
+// Processamento em LOTES DE 10 clientes por vez (mesmo padrão já usado e
+// validado na extração manual -- ver routes/pix.tsx/processarEmLotes): cada
+// item envolve renderizar o PDF localmente (pixExtractor.ts) + OCR de texto
+// via Worker + upload pro Storage. Rodar tudo de uma vez acumula memória de
+// canvases/PDFs de centenas de clientes em voo ao mesmo tempo; processar em
+// lotes com concorrência limitada dentro de cada lote, e uma pausa curta
+// entre lotes, dá tempo do navegador liberar essa memória antes de abrir o
+// próximo lote.
+const TAMANHO_LOTE_BROWSER = 10;
+const CONCORRENCIA_DENTRO_DO_LOTE = 3;
 
 export type ProgressoImportacao = {
   processados: number;
@@ -148,7 +151,6 @@ export type ItemLotePronto = {
   vencimento: string | null;
   linha_digitavel: string | null;
   mensagem: string | null;
-  pdf_url: string | null;
   pdf_path: string | null;
   pix_code: string | null;
 };
@@ -169,17 +171,23 @@ export type LinhaComErro = LinhaPlanilha & { motivoErro: string };
 // (render do PDF em canvas + leitura de QR pra achar o Pix) continua 100% no
 // navegador, só os bytes finais é que passam pelo backend agora -- não volta
 // o problema de RAM que a migration-5 resolvia.
+//
+// [2026-08] SEGURANÇA: o bucket "faturas" é privado agora -- o backend não
+// devolve mais `publicUrl` (não existe URL pública nesse bucket). Só o
+// `path` importa aqui pra gente gravar em pdf_path; a exibição do PDF na UI
+// (se precisar de preview) usa a signedUrl de curta duração que o backend
+// também devolve, nunca persistida.
 async function uploadComRetry(
   caminho: string,
   blob: Blob,
   nomeArquivo: string,
   tentativas = 3,
-): Promise<{ error: { message: string; status?: number } | null; publicUrl?: string }> {
+): Promise<{ error: { message: string; status?: number } | null }> {
   let ultimoErro: { message: string; status?: number } | null = null;
   for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
     try {
-      const resultado = await api.importacao.uploadPdf({ caminho, blob, nomeArquivo });
-      return { error: null, publicUrl: resultado.publicUrl };
+      await api.importacao.uploadPdf({ caminho, blob, nomeArquivo });
+      return { error: null };
     } catch (err) {
       // api.js não expõe o status HTTP na exceção -- transitório vira sempre
       // "sem status" aqui, então sempre vale re-tentar (mais seguro: no pior
@@ -215,6 +223,35 @@ async function mapComConcorrencia<T, R>(
 
   const workers = Array.from({ length: Math.min(limite, itens.length) }, () => worker());
   await Promise.all(workers);
+  return resultados;
+}
+
+// Igual `mapComConcorrencia`, mas fatiado em LOTES DE `tamanhoLote`: dentro
+// de cada lote roda com concorrência limitada, e só abre o próximo lote
+// quando o atual termina por completo -- ver comentário em
+// TAMANHO_LOTE_BROWSER sobre por quê.
+async function mapEmLotes<T, R>(
+  itens: T[],
+  tamanhoLote: number,
+  concorrenciaPorLote: number,
+  tarefa: (item: T, indice: number) => Promise<R>,
+): Promise<R[]> {
+  const resultados: R[] = new Array(itens.length);
+
+  for (let inicioLote = 0; inicioLote < itens.length; inicioLote += tamanhoLote) {
+    const lote = itens.slice(inicioLote, inicioLote + tamanhoLote);
+    const resultadosLote = await mapComConcorrencia(lote, concorrenciaPorLote, (item, indiceNoLote) =>
+      tarefa(item, inicioLote + indiceNoLote),
+    );
+    resultadosLote.forEach((r, i) => (resultados[inicioLote + i] = r));
+
+    // Pausa curta entre lotes -- deixa o GC do navegador liberar memória
+    // (canvases, ArrayBuffers dos PDFs) do lote que acabou de terminar.
+    if (inicioLote + tamanhoLote < itens.length) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }
+
   return resultados;
 }
 
@@ -285,7 +322,6 @@ export async function processarImportacaoNoBrowser(
         vencimento: linha.vencimento,
         linha_digitavel: null,
         mensagem: linha.mensagem,
-        pdf_url: null,
         pdf_path: null,
         pix_code: null,
       });
@@ -294,13 +330,13 @@ export async function processarImportacaoNoBrowser(
       return;
     }
 
-    // Extrai os dados do Pix (via Worker, fatiando o PDF -- ver
-    // pixWorkerClient.ts) ANTES do upload -- não depende do resultado do
+    // Extrai os dados do Pix (100% local, renderizando o PDF no navegador --
+    // ver pixExtractor.ts) ANTES do upload -- não depende do resultado do
     // upload, então rodam em paralelo (Promise.all) pra não somar os dois
     // tempos à toa.
     const caminho = `${telefoneNormalizado}/${Date.now()}-${pdfEncontrado.nomeOriginal}`;
     const [dadosPix, uploadResultado] = await Promise.all([
-      extrairDadosPixViaWorker(pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
+      extrairDadosPix(pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
       uploadComRetry(caminho, pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
     ]);
 
@@ -323,7 +359,6 @@ export async function processarImportacaoNoBrowser(
       vencimento: linha.vencimento || dadosPix?.vencimento || null,
       linha_digitavel: dadosPix?.linhaDigitavel || null,
       mensagem: linha.mensagem,
-      pdf_url: uploadResultado.publicUrl ?? null,
       pdf_path: caminho,
       pix_code: dadosPix?.pixCopiaCola || null,
     });
@@ -331,7 +366,7 @@ export async function processarImportacaoNoBrowser(
     onProgresso?.({ processados, total: linhas.length, etapa: linha.nome });
   }
 
-  await mapComConcorrencia(linhas, CONCORRENCIA_BROWSER, processarLinha);
+  await mapEmLotes(linhas, TAMANHO_LOTE_BROWSER, CONCORRENCIA_DENTRO_DO_LOTE, processarLinha);
 
   return { itens, linhasSemDados, linhasComErroUpload };
 }

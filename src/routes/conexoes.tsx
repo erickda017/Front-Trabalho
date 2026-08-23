@@ -22,18 +22,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
-import type { WhatsappConexao, WhatsappSlot } from "@/lib/types";
+import type { WhatsappConexao } from "@/lib/types";
 
 export const Route = createFileRoute("/conexoes")({
   head: () => ({
     meta: [
-      { title: "Conexões — Veloce Faturas" },
+      { title: "Conexão — Veloce Faturas" },
       {
         name: "description",
-        content: "Gerencie as duas conexões de WhatsApp usadas para o disparo de faturas.",
+        content: "Gerencie sua sessão de WhatsApp usada para o disparo de faturas.",
       },
-      { property: "og:title", content: "Conexões — Veloce Faturas" },
-      { property: "og:description", content: "Conectar, desconectar e acompanhar o status das duas sessões." },
+      { property: "og:title", content: "Conexão — Veloce Faturas" },
+      { property: "og:description", content: "Conectar, desconectar e acompanhar o status da sua sessão." },
     ],
   }),
   component: Conexoes,
@@ -49,7 +49,7 @@ function formatarData(iso: string | null) {
 }
 
 function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
-  const { refreshConexoes } = useAppState();
+  const { refreshConexao } = useAppState();
   const [acaoCarregando, setAcaoCarregando] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
 
@@ -59,8 +59,8 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
     setAcaoCarregando(true);
     setErroAcao(null);
     try {
-      await api.whatsapp.conectar(conexao.slot);
-      await refreshConexoes();
+      await api.whatsapp.conectar();
+      await refreshConexao();
     } catch (e) {
       setErroAcao((e as Error).message);
     } finally {
@@ -72,8 +72,8 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
     setAcaoCarregando(true);
     setErroAcao(null);
     try {
-      await api.whatsapp.desconectar(conexao.slot);
-      await refreshConexoes();
+      await api.whatsapp.desconectar();
+      await refreshConexao();
     } catch (e) {
       setErroAcao((e as Error).message);
     } finally {
@@ -83,7 +83,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
 
   return (
     <SectionCard
-      titulo={`WhatsApp ${conexao.slot}`}
+      titulo="WhatsApp"
       eyebrow="Sessão"
       acoes={
         <StatusPill tone={info.tone} dot pulse={conexao.status === "connected"}>
@@ -95,7 +95,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
         {!conexao.configurada ? (
           <EmptyState
             icon={Smartphone}
-            titulo={`WhatsApp ${conexao.slot} não configurado`}
+            titulo="WhatsApp não configurado"
             descricao="Clique em conectar para iniciar a sessão e gerar o QR Code."
             compacto
           />
@@ -110,7 +110,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
 
         <div className="bg-surface-sunken flex min-h-40 flex-col items-center justify-center gap-2 rounded-md p-4">
           {conexao.status === "qr" && conexao.qr ? (
-            <img src={conexao.qr} alt={`QR Code WhatsApp ${conexao.slot}`} className="size-40 rounded-md bg-white p-1" />
+            <img src={conexao.qr} alt="QR Code WhatsApp" className="size-40 rounded-md bg-white p-1" />
           ) : conexao.status === "connecting" ? (
             <>
               <Loader2 className="text-subtle size-6 animate-spin" />
@@ -148,7 +148,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Desconectar WhatsApp {conexao.slot}?</AlertDialogTitle>
+                <AlertDialogTitle>Desconectar WhatsApp?</AlertDialogTitle>
                 <AlertDialogDescription>
                   A sessão atual será encerrada e será necessário escanear um novo QR Code para reconectar.
                 </AlertDialogDescription>
@@ -166,26 +166,22 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
 }
 
 function Conexoes() {
-  const { conexoes, conexoesErro, conexoesCarregando } = useAppState();
+  const { conexao, conexaoErro, conexaoCarregando } = useAppState();
 
   return (
-    <AppShell title="Conexões" subtitle="Gerenciamento das duas sessões de WhatsApp">
+    <AppShell title="Conexão" subtitle="Gerenciamento da sua sessão de WhatsApp">
       <div className="flex flex-col gap-6">
-        {conexoesErro && (
-          <Aviso tone="danger">Não foi possível carregar as conexões: {conexoesErro}</Aviso>
+        {conexaoErro && (
+          <Aviso tone="danger">Não foi possível carregar a conexão: {conexaoErro}</Aviso>
         )}
 
-        {conexoesCarregando && !conexoes.length ? (
+        {conexaoCarregando && !conexao.configurada ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {[1, 2].map((i) => (
-              <div key={i} className="panel h-64 animate-pulse" />
-            ))}
+            <div className="panel h-64 animate-pulse" />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {conexoes.map((c) => (
-              <PainelConexao key={c.slot} conexao={c} />
-            ))}
+            <PainelConexao conexao={conexao} />
           </div>
         )}
 
@@ -193,7 +189,7 @@ function Conexoes() {
           <ul className="text-muted-foreground list-inside list-disc space-y-1.5 text-xs">
             <li>Delay aleatório entre o envio de cada mensagem.</li>
             <li>Pausa automática a cada bloco de envios.</li>
-            <li>Limite diário de disparos, com retomada à meia-noite no horário de Brasília.</li>
+            <li>Limite diário de disparos (por operador), com retomada à meia-noite no horário de Brasília.</li>
             <li>Número validado no WhatsApp antes do envio, evitando disparos para contatos inválidos.</li>
           </ul>
         </SectionCard>

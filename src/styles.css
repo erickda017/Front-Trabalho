@@ -405,6 +405,49 @@ html.dark {
   }
 }
 
+/*
+ * Tela de login -- canhoto de recibo: a borda entre o painel de identidade e
+ * o formulário imita o corte picotado entre a via do cliente e o canhoto de
+ * um boleto/recibo. Feito com um repeating-gradient (sem imagem, respeita
+ * light/dark via currentColor a partir de --sidebar-border).
+ */
+@utility perforated-edge {
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--sidebar-border) 0,
+      var(--sidebar-border) 6px,
+      transparent 6px,
+      transparent 14px
+    );
+  }
+}
+
+@utility ledger-row {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: ledger-row-in 420ms ease-out forwards;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ledger-row-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @utility chat-daypill {
   display: inline-flex;
   align-items: center;

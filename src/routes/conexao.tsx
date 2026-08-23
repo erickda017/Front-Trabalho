@@ -5,7 +5,6 @@ import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
-import type { WhatsappConexao, WhatsappSlot } from "@/lib/types";
 
 export const Route = createFileRoute("/conexao")({
   head: () => ({
@@ -14,12 +13,12 @@ export const Route = createFileRoute("/conexao")({
       {
         name: "description",
         content:
-          "Status das sessões do WhatsApp: QR Code de vínculo, instância ativa, uptime e desconexão segura de cada dispositivo.",
+          "Status da sua sessão do WhatsApp: QR Code de vínculo, instância ativa, uptime e desconexão segura.",
       },
       { property: "og:title", content: "Conexão do WhatsApp — Veloce Faturas" },
       {
         property: "og:description",
-        content: "QR Code de vínculo, instância ativa, uptime e desconexão de cada sessão.",
+        content: "QR Code de vínculo, instância ativa, uptime e desconexão da sua sessão.",
       },
     ],
   }),
@@ -36,13 +35,10 @@ const statusInfo = {
   },
 } as const;
 
-// Cada slot é uma sessão WhatsApp independente -- se o slot 1 cair, o slot 2
-// continua intacto (e vice-versa). Antes esta tela mostrava um status "agregado"
-// (o melhor entre os dois), então quando um slot caía mas o outro seguia
-// conectado, os botões de conectar/desconectar ficavam bloqueados ou agiam na
-// sessão errada. Agora cada slot tem seu próprio card, QR e ações.
-function CardSlot({ conexao }: { conexao: WhatsappConexao }) {
-  const { refreshConexoes } = useAppState();
+// [2026-08] MULTI-TENANT: 1 sessão de WhatsApp por usuário logado -- não
+// existe mais grade de slots, só o card da sua própria conexão.
+function Conexao() {
+  const { conexao, refreshConexao } = useAppState();
   const [acao, setAcao] = useState<"conectar" | "desconectar" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const info = statusInfo[conexao.status] ?? statusInfo.disconnected;
@@ -51,8 +47,8 @@ function CardSlot({ conexao }: { conexao: WhatsappConexao }) {
     setAcao("conectar");
     setErro(null);
     try {
-      await api.whatsapp.conectar(conexao.slot);
-      await refreshConexoes();
+      await api.whatsapp.conectar();
+      await refreshConexao();
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -64,8 +60,8 @@ function CardSlot({ conexao }: { conexao: WhatsappConexao }) {
     setAcao("desconectar");
     setErro(null);
     try {
-      await api.whatsapp.desconectar(conexao.slot);
-      await refreshConexoes();
+      await api.whatsapp.desconectar();
+      await refreshConexao();
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -77,88 +73,67 @@ function CardSlot({ conexao }: { conexao: WhatsappConexao }) {
   const podeDesconectar = conexao.status !== "disconnected";
 
   return (
-    <section className="panel p-6">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <h3 className="font-display text-sm font-medium">WhatsApp {conexao.slot}</h3>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-semibold tracking-wider uppercase ring-1 ${info.className}`}
-        >
-          <span className="size-1.5 rounded-full bg-current" />
-          {info.label}
-        </span>
-      </div>
-
-      <div className="bg-foreground mb-4 aspect-square max-w-52 rounded-lg p-4">
-        {conexao.status === "qr" && conexao.qr ? (
-          <img src={conexao.qr} alt={`QR Code WhatsApp ${conexao.slot}`} className="h-full w-full rounded bg-white object-contain p-2" />
-        ) : (
-          <div className="grid h-full w-full place-items-center rounded bg-white/90 outline-1 -outline-offset-1 outline-black/5">
-            <span className="text-subtle px-4 text-center text-[10px] font-medium tracking-[0.15em] uppercase">
-              {conexao.status === "connected"
-                ? "Dispositivo conectado"
-                : conexao.status === "connecting"
-                  ? "Conectando..."
-                  : "Sem QR ativo"}
+    <AppShell title="Conexão" subtitle="Sua sessão do WhatsApp vinculada por QR Code">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section className="panel p-6">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h3 className="font-display text-sm font-medium">Seu WhatsApp</h3>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-semibold tracking-wider uppercase ring-1 ${info.className}`}
+            >
+              <span className="size-1.5 rounded-full bg-current" />
+              {info.label}
             </span>
           </div>
-        )}
-      </div>
 
-      {conexao.telefone && (
-        <p className="text-subtle mb-3 font-mono text-xs">
-          {conexao.telefone}
-          {conexao.nome ? ` — ${conexao.nome}` : ""}
-        </p>
-      )}
+          <div className="bg-foreground mb-4 aspect-square max-w-52 rounded-lg p-4">
+            {conexao.status === "qr" && conexao.qr ? (
+              <img src={conexao.qr} alt="QR Code do WhatsApp" className="h-full w-full rounded bg-white object-contain p-2" />
+            ) : (
+              <div className="grid h-full w-full place-items-center rounded bg-white/90 outline-1 -outline-offset-1 outline-black/5">
+                <span className="text-subtle px-4 text-center text-[10px] font-medium tracking-[0.15em] uppercase">
+                  {conexao.status === "connected"
+                    ? "Dispositivo conectado"
+                    : conexao.status === "connecting"
+                      ? "Conectando..."
+                      : "Sem QR ativo"}
+                </span>
+              </div>
+            )}
+          </div>
 
-      {erro && (
-        <div className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 ring-1 ring-red-500/20">
-          {erro}
-        </div>
-      )}
+          {conexao.telefone && (
+            <p className="text-subtle mb-3 font-mono text-xs">
+              {conexao.telefone}
+              {conexao.nome ? ` — ${conexao.nome}` : ""}
+            </p>
+          )}
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={conectar}
-          disabled={acao !== null || !podeConectar}
-          className="bg-surface-raised text-foreground hover:bg-surface-raised/70 inline-flex h-9 items-center gap-2 rounded-md px-4 text-sm font-medium ring-1 ring-white/10 transition-colors disabled:opacity-50"
-        >
-          {acao === "conectar" ? <RefreshCw className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />}
-          {conexao.status === "qr" || conexao.status === "connecting" ? "Gerar novo QR" : "Conectar"}
-        </button>
-        <button
-          onClick={desconectar}
-          disabled={acao !== null || !podeDesconectar}
-          className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground inline-flex h-9 items-center gap-2 rounded-md border px-4 text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
-        >
-          {acao === "desconectar" ? <RefreshCw className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
-          Desconectar
-        </button>
-      </div>
-    </section>
-  );
-}
+          {erro && (
+            <div className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 ring-1 ring-red-500/20">
+              {erro}
+            </div>
+          )}
 
-function Conexao() {
-  const { conexoes } = useAppState();
-  const slots: WhatsappSlot[] = [1, 2];
-
-  return (
-    <AppShell title="Conexão" subtitle="Sessões do WhatsApp vinculadas por QR Code (2 conexões independentes)">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {slots.map((slot) => {
-          const conexao = conexoes.find((c) => c.slot === slot) ?? {
-            slot,
-            configurada: false,
-            status: "disconnected" as const,
-            qr: null,
-            telefone: null,
-            nome: null,
-            ultima_conexao: null,
-            mensagens_enviadas: null,
-          };
-          return <CardSlot key={slot} conexao={conexao} />;
-        })}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={conectar}
+              disabled={acao !== null || !podeConectar}
+              className="bg-surface-raised text-foreground hover:bg-surface-raised/70 inline-flex h-9 items-center gap-2 rounded-md px-4 text-sm font-medium ring-1 ring-white/10 transition-colors disabled:opacity-50"
+            >
+              {acao === "conectar" ? <RefreshCw className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />}
+              {conexao.status === "qr" || conexao.status === "connecting" ? "Gerar novo QR" : "Conectar"}
+            </button>
+            <button
+              onClick={desconectar}
+              disabled={acao !== null || !podeDesconectar}
+              className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground inline-flex h-9 items-center gap-2 rounded-md border px-4 text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
+            >
+              {acao === "desconectar" ? <RefreshCw className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
+              Desconectar
+            </button>
+          </div>
+        </section>
       </div>
 
       <section className="panel mt-6 p-6">
@@ -174,7 +149,7 @@ function Conexao() {
           </li>
           <li className="flex gap-3">
             <span className="text-primary-glow shrink-0 font-mono">03</span>
-            Limite diário global com retomada à meia-noite (Brasília).
+            Limite diário (por operador) com retomada à meia-noite (Brasília).
           </li>
           <li className="flex gap-3">
             <span className="text-primary-glow shrink-0 font-mono">04</span>

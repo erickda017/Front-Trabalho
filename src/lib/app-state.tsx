@@ -5,16 +5,12 @@ import { isSupabaseConfigured, supabase } from "@/supabaseClient";
 import { api } from "@/api";
 import type {
   Cliente,
-  EstrategiaConfig,
   Tag,
   WhatsappConexao,
-  WhatsappSlot,
   WhatsappStatus,
 } from "@/lib/types";
 
 export type { Cliente, Tag, WhatsappConexao, WhatsappStatus } from "@/lib/types";
-
-const SLOTS: WhatsappSlot[] = [1, 2];
 
 /**
  * Perfil do operador (nome + foto) exibido na barra lateral. Não é dado de
@@ -48,35 +44,31 @@ function lerPerfilSalvo(): Perfil {
 }
 
 /** Conexão "vazia" (não configurada) — placeholder de UI, não dado fictício. */
-function conexaoVazia(slot: WhatsappSlot): WhatsappConexao {
-  return {
-    slot,
-    configurada: false,
-    status: "disconnected",
-    qr: null,
-    telefone: null,
-    nome: null,
-    ultima_conexao: null,
-    mensagens_enviadas: null,
-  };
-}
+const conexaoVazia: WhatsappConexao = {
+  configurada: false,
+  status: "disconnected",
+  qr: null,
+  telefone: null,
+  nome: null,
+  ultima_conexao: null,
+  mensagens_enviadas: null,
+};
 
 type AppStateValue = {
   session: Session | null | undefined; // undefined = carregando
   supabaseConfigurado: boolean;
   logout: () => void;
 
-  /** Melhor status entre as conexões (usado por badges globais). */
+  // [2026-08] MULTI-TENANT: 1 conexão de WhatsApp por usuário logado -- não é
+  // mais uma lista de 2 slots. whatsappStatus/whatsappQr abaixo espelham
+  // direto essa conexão única (mantidos como campos próprios só pra não
+  // precisar mudar todo mundo que já lia `whatsappStatus`/`whatsappQr`).
   whatsappStatus: WhatsappStatus;
   whatsappQr: string | null;
-  conexoes: WhatsappConexao[];
-  conexoesCarregando: boolean;
-  conexoesErro: string | null;
-  refreshConexoes: () => Promise<void>;
-
-  estrategia: EstrategiaConfig | null;
-  estrategiaCarregando: boolean;
-  refreshEstrategia: () => Promise<void>;
+  conexao: WhatsappConexao;
+  conexaoCarregando: boolean;
+  conexaoErro: string | null;
+  refreshConexao: () => Promise<void>;
 
   clientes: Cliente[];
   clientesCarregando: boolean;
@@ -93,6 +85,8 @@ type AppStateValue = {
 
   perfil: Perfil;
   atualizarPerfil: (perfil: Perfil) => void;
+  role: "operador" | "supervisor";
+  isSupervisor: boolean;
 };
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -101,17 +95,16 @@ const ENVIO_ATIVO_KEY = "disparo:envioAtivoId";
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-  const [conexoes, setConexoes] = useState<WhatsappConexao[]>(() => SLOTS.map(conexaoVazia));
-  const [conexoesCarregando, setConexoesCarregando] = useState(true);
-  const [conexoesErro, setConexoesErro] = useState<string | null>(null);
-  const [estrategia, setEstrategia] = useState<EstrategiaConfig | null>(null);
-  const [estrategiaCarregando, setEstrategiaCarregando] = useState(true);
+  const [conexao, setConexao] = useState<WhatsappConexao>(conexaoVazia);
+  const [conexaoCarregando, setConexaoCarregando] = useState(true);
+  const [conexaoErro, setConexaoErro] = useState<string | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clientesCarregando, setClientesCarregando] = useState(false);
   const [clientesErro, setClientesErro] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [envioAtivoId, setEnvioAtivoIdState] = useState<string | null>(null);
   const [perfil, setPerfil] = useState<Perfil>(perfilPadrao);
+  const [role, setRole] = useState<"operador" | "supervisor">("operador");
 
   useEffect(() => {
     setEnvioAtivoIdState(window.sessionStorage.getItem(ENVIO_ATIVO_KEY));
@@ -150,15 +143,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // decidir quando de fato mostrar "desconectado" (ver comentário abaixo).
   const falhasSeguidasRef = useRef(0);
 
-  const refreshConexoes = useCallback(async () => {
+  const refreshConexao = useCallback(async () => {
     try {
-      const data = await api.whatsapp.conexoes();
-      const lista = SLOTS.map(
-        (slot) => data?.find?.((c) => Number(c.slot) === slot) ?? conexaoVazia(slot),
-      );
+      const data = await api.whatsapp.status();
       falhasSeguidasRef.current = 0;
-      setConexoes(lista);
-      setConexoesErro(null);
+      setConexao(data ?? conexaoVazia);
+      setConexaoErro(null);
     } catch (e) {
       falhasSeguidasRef.current += 1;
       // Uma falha de rede/CORS isolada (ex: backend reiniciando, hiccup do Render)
@@ -168,15 +158,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // grande deixando o backend lento pra responder por alguns segundos). Só
       // assume "desconectado" depois de falhas seguidas (backend realmente fora do ar).
       if (falhasSeguidasRef.current >= 3) {
-        setConexoes(SLOTS.map(conexaoVazia));
+        setConexao(conexaoVazia);
       }
-      setConexoesErro((e as Error).message);
+      setConexaoErro((e as Error).message);
     } finally {
-      setConexoesCarregando(false);
+      setConexaoCarregando(false);
     }
   }, []);
 
-  // Polling das conexões -- no nível raiz (não dentro da tela Conexões) para que o
+  // Polling da conexão -- no nível raiz (não dentro da tela Conexão) para que o
   // badge e a permissão de disparo não "congelem" enquanto o usuário navega.
   //
   // Backoff quando o backend está fora do ar: martelar a cada 3s um backend que já
@@ -194,7 +184,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     async function verificar() {
       if (cancelado) return;
-      await refreshConexoes();
+      await refreshConexao();
       if (cancelado) return;
 
       const proximoIntervalo = Math.min(
@@ -209,22 +199,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       cancelado = true;
       clearTimeout(timeoutId);
     };
-  }, [session, refreshConexoes]);
-
-  const refreshEstrategia = useCallback(async () => {
-    try {
-      const data = await api.estrategia.buscar();
-      setEstrategia(data);
-    } catch {
-      setEstrategia(null);
-    } finally {
-      setEstrategiaCarregando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (session) refreshEstrategia();
-  }, [session, refreshEstrategia]);
+  }, [session, refreshConexao]);
 
   const refreshClientes = useCallback(async () => {
     setClientesCarregando(true);
@@ -244,19 +219,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (session) refreshClientes();
   }, [session, refreshClientes]);
 
+  useEffect(() => {
+    // Papel some/reseta pra 'operador' ao deslogar -- não deixa o menu
+    // "Supervisor" piscando de uma sessão anterior enquanto a próxima carrega.
+    if (!session) {
+      setRole("operador");
+      return;
+    }
+    let cancelado = false;
+    api.perfil
+      .me()
+      .then((p) => !cancelado && setRole(p?.role === "supervisor" ? "supervisor" : "operador"))
+      .catch(() => !cancelado && setRole("operador"));
+    return () => {
+      cancelado = true;
+    };
+  }, [session]);
+
   const toggleSelecionado = useCallback((id: string) => {
     setSelecionados((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   }, []);
 
   const limparSelecionados = useCallback(() => setSelecionados([]), []);
-
-  const { whatsappStatus, whatsappQr } = useMemo(() => {
-    const prioridade: WhatsappStatus[] = ["connected", "qr", "connecting", "disconnected"];
-    const melhor =
-      prioridade.find((status) => conexoes.some((c) => c.status === status)) ?? "disconnected";
-    const comQr = conexoes.find((c) => c.status === "qr" && c.qr);
-    return { whatsappStatus: melhor, whatsappQr: comQr?.qr ?? null };
-  }, [conexoes]);
 
   return (
     <AppStateContext.Provider
@@ -264,15 +248,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         session,
         supabaseConfigurado: isSupabaseConfigured,
         logout,
-        whatsappStatus,
-        whatsappQr,
-        conexoes,
-        conexoesCarregando,
-        conexoesErro,
-        refreshConexoes,
-        estrategia,
-        estrategiaCarregando,
-        refreshEstrategia,
+        whatsappStatus: conexao.status,
+        whatsappQr: conexao.status === "qr" ? conexao.qr : null,
+        conexao,
+        conexaoCarregando,
+        conexaoErro,
+        refreshConexao,
         clientes,
         clientesCarregando,
         clientesErro,
@@ -285,6 +266,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setEnvioAtivoId,
         perfil,
         atualizarPerfil,
+        role,
+        isSupervisor: role === "supervisor",
       }}
     >
       {children}

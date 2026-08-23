@@ -6,12 +6,9 @@ declare module "@/api" {
     EnvioItem,
     EnvioResumo,
     EnvioStatus,
-    EstrategiaConfig,
-    EstrategiaEnvio,
     PixExtracao,
     PixExtracaoStatus,
     WhatsappConexao,
-    WhatsappSlot,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
 
@@ -21,7 +18,6 @@ declare module "@/api" {
     agendado_para: string | null;
     retomar_em: string | null;
     template_mensagem: string;
-    estrategia?: EstrategiaEnvio | null | undefined;
     janela_ms?: number | null | undefined;
     itens: EnvioItem[];
   };
@@ -37,8 +33,6 @@ declare module "@/api" {
     cancelados: number;
     status: EnvioStatus;
     ultimo_envio_em: string | null;
-    proximo_slot: WhatsappSlot | null;
-    slot_atual: WhatsappSlot | null;
   };
 
   type Fatura = {
@@ -58,20 +52,28 @@ declare module "@/api" {
     dashboard: {
       resumo: () => Promise<DashboardResumo>;
     };
+    // [2026-08] MULTI-TENANT: 1 conexão por usuário logado -- sem parâmetro
+    // de slot, o backend já sabe de quem é a sessão pelo token de autenticação.
     whatsapp: {
-      status: () => Promise<{ status: "disconnected" | "connecting" | "qr" | "connected"; qr: string | null }>;
-      logout: () => Promise<{ ok: boolean }>;
-      conexoes: () => Promise<WhatsappConexao[]>;
-      statusSlot: (slot: WhatsappSlot) => Promise<WhatsappConexao>;
-      conectar: (slot: WhatsappSlot) => Promise<WhatsappConexao>;
-      desconectar: (slot: WhatsappSlot) => Promise<{ ok: boolean }>;
-    };
-    estrategia: {
-      buscar: () => Promise<EstrategiaConfig>;
-      salvar: (payload: { estrategia: EstrategiaEnvio }) => Promise<EstrategiaConfig>;
+      status: () => Promise<WhatsappConexao>;
+      conectar: () => Promise<WhatsappConexao>;
+      desconectar: () => Promise<WhatsappConexao>;
     };
     configuracoes: {
       disparo: () => Promise<ConfigDisparo>;
+    };
+    // [2026-08] tipos faltando pra api.boletos (existe em runtime desde antes,
+    // só não estava declarado aqui -- tsc acusava "Property 'boletos' does not exist").
+    boletos: {
+      salvarPix: (payload: {
+        pixCopiaCola: string;
+        valor?: string | number | null | undefined;
+        vencimento?: string | null | undefined;
+        linhaDigitavel?: string | null | undefined;
+        arquivo?: string | undefined;
+        clienteId?: string | undefined;
+      }) => Promise<PixExtracao>;
+      extrairDoPdf: (file: File) => Promise<DadosPix | null>;
     };
     pix: {
       listar: (params?: {
@@ -101,7 +103,6 @@ declare module "@/api" {
           id: string;
           criado_em: string;
           mensagem: string | null;
-          slot: WhatsappSlot | null;
           status: string;
           status_entrega: string | null;
           erro: string | null;
@@ -114,7 +115,7 @@ declare module "@/api" {
     importacao: {
       enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;
       enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;
-      uploadPdf: (args: { caminho: string; blob: Blob; nomeArquivo: string }) => Promise<{ path: string; publicUrl: string }>;
+      uploadPdf: (args: { caminho: string; blob: Blob; nomeArquivo: string }) => Promise<{ path: string; signedUrl: string | null }>;
       baixarModelo: () => Promise<void>;
     };
     chat: {
@@ -148,7 +149,6 @@ declare module "@/api" {
         mensagem: string;
         /** Até 5 variações do texto -- o backend sorteia uma pra cada mensagem enviada. */
         mensagens?: string[] | undefined;
-        slot?: WhatsappSlot | undefined;
         janela_ms?: number | undefined;
         agendado_para?: string | undefined;
       }) => Promise<Envio>;
@@ -163,14 +163,13 @@ declare module "@/api" {
         de?: string | undefined;
         ate?: string | undefined;
         status?: EnvioStatus | "todos" | undefined;
-        slot?: WhatsappSlot | "todos" | undefined;
         busca?: string | undefined;
       } | undefined) => Promise<EnvioResumo[]>;
       itens: (id: string, params?: { filtro?: string | undefined; busca?: string | undefined } | undefined) => Promise<EnvioItem[]>;
       progresso: (id: string) => Promise<EnvioProgresso>;
       exportar: (
         formato: "csv" | "xlsx",
-        params?: { de?: string | undefined; ate?: string | undefined; status?: string | undefined; slot?: string | undefined; busca?: string | undefined } | undefined,
+        params?: { de?: string | undefined; ate?: string | undefined; status?: string | undefined; busca?: string | undefined } | undefined,
       ) => Promise<void>;
       teste: (payload: {
         telefone?: string | undefined;
