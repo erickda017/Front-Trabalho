@@ -100,22 +100,49 @@ const REGIAO_CANTO_JUSTA = { x0: 0.45, y0: 0.55, x1: 1, y1: 1 };
 const REGIAO_CANTO_AMPLA = { x0: 0.28, y0: 0.38, x1: 1, y1: 1 };
 const REGIAO_PAGINA_INTEIRA = { x0: 0, y0: 0, x1: 1, y1: 1 };
 
-// Maior lado do recorte renderizado, em pixels. Como o recorte do canto é
-// pequeno, dá pra mirar alto (QR fica bem denso/nítido) sem que o canvas
-// fique grande -- bem mais barato que a mesma resolução na página inteira.
-const ALVO_PX_CANTO_JUSTA = 900;
-const ALVO_PX_CANTO_AMPLA = 1200;
-// Fallback de página inteira -- só entra se o canto (nas duas tentativas)
-// não achar nada. Escalas crescentes, igual à lógica antiga.
-const ALVOS_PX_PAGINA_INTEIRA = [1200, 1800];
+// Maior lado do recorte renderizado, em pixels -- ver `ALVOS_PX_CANTO`
+// abaixo pro motivo de ser uma LISTA de alvos, não um valor único.
+//
+// [2026-08] REESCRITO: boletos com o Pix e um segundo QR Code (propaganda/
+// app da operadora) muito próximos, os dois dentro do mesmo recorte do
+// canto -- caso comum e testado com boletos reais. Duas descobertas:
+//
+//   1) Com os dois QRs juntos na mesma imagem, jsQR (que só decodifica UM
+//      código por chamada) pode "travar" no QR errado -- geralmente o de
+//      propaganda, que é menos denso -- e a chamada nunca chega a tentar o
+//      Pix. Resolvido tentando `escanearBlocos` (ver abaixo) sempre que a
+//      leitura direta do recorte inteiro não devolver um Pix válido.
+//
+//   2) MAIS IMPORTANTE: reamostrar (resize) o canvas pra um alvoPx fixo via
+//      `viewport scale` do pdfjs introduz suavização que, em QRs pequenos e
+//      densos (payload Pix costuma ter 140+ caracteres = módulos bem
+//      apertados), derruba a decodificação de forma inconsistente --
+//      testado em boletos reais: um alvo que funciona num boleto falha
+//      noutro, e não existe um valor único de alvoPx confiável (a faixa que
+//      funciona também não é "quanto maior melhor": alvos MUITO altos
+//      falham tanto quanto os muito baixos). Por isso `ALVOS_PX_CANTO` é uma
+//      LISTA -- tentamos várias resoluções em sequência (inclui uma escala
+//      "nativa", pedida como um alvo bem alto que na prática vira a
+//      resolução real do PDF nessa região) até uma decodificar.
+const ALVOS_PX_CANTO = [1800, 2400, 1200, 3000];
+const ALVOS_PX_CANTO_AMPLO = [2200, 2800, 1500];
+// Fallback de página inteira -- só entra se o canto (em nenhuma combinação
+// de escala/blocos) achar nada. Mesma lógica de múltiplos alvos.
+const ALVOS_PX_PAGINA_INTEIRA = [1800, 2400, 1200, 3200];
 
-// Varredura em blocos (só usada no fallback de página inteira) -- cobre
-// boletos com mais de um QR Code na mesma página (QR de app/parceiro +
-// Pix). Ordem prioriza a última linha (fundo da página) primeiro.
+// Varredura em blocos -- cobre boletos com mais de um QR Code na mesma
+// região (QR de app/parceiro + Pix, o caso mais comum: os dois ficam
+// próximos, no canto inferior direito, um acima do outro). Usada tanto
+// dentro do recorte do canto (ver `extrairPixDaPagina`) quanto no fallback
+// de página inteira. Ordem prioriza a última linha (fundo da página/
+// recorte) primeiro, que é onde o Pix aparece com mais frequência. Overlap
+// alto (0.4) porque blocos que cortam o QR bem na borda falham -- testado
+// em boletos reais, blocos com pouca sobreposição frequentemente cortavam
+// o QR do Pix ao meio.
 const QR_TILE_COLS = 3;
 const QR_TILE_ROWS = 4;
-const QR_TILE_OVERLAP = 0.18;
-const QR_TILE_MIN_DIMENSAO = 500;
+const QR_TILE_OVERLAP = 0.4;
+const QR_TILE_MIN_DIMENSAO = 300;
 
 // ---------------------------------------------------------------------
 // Render local (pdfjs-dist)
@@ -205,9 +232,14 @@ function ordemDosBlocos(linhas: number, colunas: number): Array<[number, number]
   return ordem;
 }
 
-// Varre o canvas inteiro em blocos sobrepostos -- só chamada no fallback de
-// página inteira, quando o scan direto da página toda não achou nada
-// (ex: boleto com vários QR Codes na mesma página).
+// Varre o canvas (pode ser o recorte do canto OU a página inteira) em
+// blocos sobrepostos -- usada sempre que o scan direto de corpo inteiro não
+// achou um Pix válido. Separar em blocos é o que resolve o caso de DOIS QR
+// Codes muito próximos na mesma imagem (ex: QR de propaganda + QR do Pix,
+// um embaixo do outro no canto): jsQR só decodifica UM código por chamada,
+// então com os dois juntos na mesma imagem ele pode "achar" o QR errado
+// (geralmente o menos denso) e nunca chegar a tentar o outro. Isolando em
+// blocos menores, cada QR fica sozinho na sua própria leitura.
 function escanearBlocos(ctx: CanvasRenderingContext2D, width: number, height: number): string | null {
   if (width < QR_TILE_MIN_DIMENSAO || height < QR_TILE_MIN_DIMENSAO) return null;
 
@@ -236,33 +268,12 @@ export type ResultadoPix = {
   /** Página (1-based) onde o Pix foi encontrado. */
   pagina: number;
   /** De onde veio o resultado -- útil pra depurar/telemetria, não afeta o uso normal. */
-  origem: "canto" | "canto-ampliado" | "pagina-inteira" | "blocos";
+  origem: "canto" | "canto-ampliado" | "pagina-inteira";
 };
 
-async function extrairPixDaPagina(pagina: any, indicePagina: number): Promise<ResultadoPix | null> {
-  // 1) Canto inferior direito, janela justa -- caminho rápido, cobre a
-  //    esmagadora maioria dos boletos (o Pix SEMPRE está nessa região).
-  let canvas = await renderizarRegiaoDaPagina(pagina, REGIAO_CANTO_JUSTA, ALVO_PX_CANTO_JUSTA);
-  if (canvas) {
-    const ctx = canvas.getContext("2d");
-    const pix = ctx ? lerQrDoRetangulo(ctx, 0, 0, canvas.width, canvas.height) : null;
-    liberarCanvas(canvas);
-    if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem: "canto" };
-  }
-
-  // 2) Canto ampliado -- boletos com margens/layout um pouco diferentes.
-  canvas = await renderizarRegiaoDaPagina(pagina, REGIAO_CANTO_AMPLA, ALVO_PX_CANTO_AMPLA);
-  if (canvas) {
-    const ctx = canvas.getContext("2d");
-    const pix = ctx ? lerQrDoRetangulo(ctx, 0, 0, canvas.width, canvas.height) : null;
-    liberarCanvas(canvas);
-    if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem: "canto-ampliado" };
-  }
-
-  // 3) Fallback: página inteira, escalas crescentes, com varredura em
-  //    blocos se o scan direto não bater de primeira.
-  for (const alvoPx of ALVOS_PX_PAGINA_INTEIRA) {
-    canvas = await renderizarRegiaoDaPagina(pagina, REGIAO_PAGINA_INTEIRA, alvoPx);
+async function tentarRegiaoEmVariosAlvos(pagina: any, regiao: RegiaoFracao, alvos: number[]): Promise<string | null> {
+  for (const alvoPx of alvos) {
+    const canvas = await renderizarRegiaoDaPagina(pagina, regiao, alvoPx);
     if (!canvas) continue;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
@@ -271,14 +282,27 @@ async function extrairPixDaPagina(pagina: any, indicePagina: number): Promise<Re
     }
 
     let pix = lerQrDoRetangulo(ctx, 0, 0, canvas.width, canvas.height);
-    let origem: ResultadoPix["origem"] = "pagina-inteira";
-    if (!pix) {
-      pix = escanearBlocos(ctx, canvas.width, canvas.height);
-      origem = "blocos";
-    }
+    if (!pix) pix = escanearBlocos(ctx, canvas.width, canvas.height);
     liberarCanvas(canvas);
-    if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem };
+    if (pix) return pix;
   }
+  return null;
+}
+
+async function extrairPixDaPagina(pagina: any, indicePagina: number): Promise<ResultadoPix | null> {
+  // 1) Canto inferior direito, janela justa -- caminho rápido, cobre a
+  //    esmagadora maioria dos boletos (o Pix SEMPRE está nessa região).
+  let pix = await tentarRegiaoEmVariosAlvos(pagina, REGIAO_CANTO_JUSTA, ALVOS_PX_CANTO);
+  if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem: "canto" };
+
+  // 2) Canto ampliado -- boletos com margens/layout um pouco diferentes.
+  pix = await tentarRegiaoEmVariosAlvos(pagina, REGIAO_CANTO_AMPLA, ALVOS_PX_CANTO_AMPLO);
+  if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem: "canto-ampliado" };
+
+  // 3) Fallback: página inteira, vários alvos de resolução, com varredura
+  //    em blocos se o scan direto não bater de primeira.
+  pix = await tentarRegiaoEmVariosAlvos(pagina, REGIAO_PAGINA_INTEIRA, ALVOS_PX_PAGINA_INTEIRA);
+  if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem: "pagina-inteira" };
 
   return null;
 }
