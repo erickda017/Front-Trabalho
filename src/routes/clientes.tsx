@@ -44,6 +44,17 @@ import {
 } from "@/components/ui/dialog";
 import { useAppState, type Tag } from "@/lib/app-state";
 import type { Cliente } from "@/lib/types";
+
+// [regra de negócio] Sugestão de promoção FPD -> SPD (ver
+// backend/src/lib/promocaoSpd.js) devolvida por POST /clientes/importar-pagos
+// e POST /tags/:id/clientes/:clienteId -- nunca aplicada sozinha.
+type SugestaoSpd = {
+  cliente_id: string;
+  cliente_nome: string;
+  tipo_fatura_atual: "FPD";
+  data_prazo_atual: string;
+  sugestao: { tipo_fatura: "SPD"; data_prazo: string };
+};
 import { agruparClientesPorNumero, type ClienteAgrupado } from "@/lib/agruparClientes";
 import { api, abrirArquivoProtegido } from "@/api";
 import { cn } from "@/lib/utils";
@@ -536,13 +547,23 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ encontrados: { cliente_nome: string }[]; nao_encontrados: string[] } | null>(null);
+  const [resultado, setResultado] = useState<{ encontrados: { cliente_nome: string }[]; nao_encontrados: string[]; sugestoes_spd: SugestaoSpd[] } | null>(null);
+  // [regra de negócio] FPD pago -> sugestão de virar SPD na próxima safra (ver
+  // backend/src/lib/promocaoSpd.js). Nunca aplica sozinho -- guarda aqui só
+  // pra controlar edição da data sugerida e quais já foram confirmadas/
+  // descartadas pelo operador nesta sessão do diálogo.
+  const [datasEditadas, setDatasEditadas] = useState<Record<string, string>>({});
+  const [promovendo, setPromovendo] = useState<string | null>(null);
+  const [promovidos, setPromovidos] = useState<Set<string>>(new Set());
+  const [erroPromocao, setErroPromocao] = useState<string | null>(null);
 
   async function importar() {
     if (!texto.trim()) return;
     setEnviando(true);
     setErro(null);
     setResultado(null);
+    setDatasEditadas({});
+    setPromovidos(new Set());
     try {
       const data = await api.clientes.importarPagos(texto);
       setResultado(data);
@@ -551,6 +572,20 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
       setErro((e as Error).message);
     } finally {
       setEnviando(false);
+    }
+  }
+
+  async function confirmarPromocao(s: SugestaoSpd) {
+    setPromovendo(s.cliente_id);
+    setErroPromocao(null);
+    try {
+      await api.clientes.promoverSpd(s.cliente_id, datasEditadas[s.cliente_id]);
+      setPromovidos((atual) => new Set(atual).add(s.cliente_id));
+      onImportado();
+    } catch (e) {
+      setErroPromocao((e as Error).message);
+    } finally {
+      setPromovendo(null);
     }
   }
 
@@ -595,6 +630,42 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
                   <p className="text-subtle mb-1 font-medium">Não encontrados:</p>
                   {resultado.nao_encontrados.map((n, i) => (
                     <p key={i}>{n}</p>
+                  ))}
+                </div>
+              )}
+              {resultado.sugestoes_spd.length > 0 && (
+                <div className="border-border space-y-2 rounded-md border p-2.5">
+                  <p className="text-subtle text-xs font-medium">
+                    {resultado.sugestoes_spd.length} cliente(s) FPD pago(s) — entram na próxima safra como SPD.
+                    Confirme (ou ajuste) a data de vencimento do SPD de cada um:
+                  </p>
+                  {erroPromocao && <Aviso tone="danger">{erroPromocao}</Aviso>}
+                  {resultado.sugestoes_spd.map((s) => (
+                    <div key={s.cliente_id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="min-w-0 flex-1 truncate font-medium">{s.cliente_nome}</span>
+                      <span className="text-subtle">FPD {formatarData(s.data_prazo_atual)} →</span>
+                      {promovidos.has(s.cliente_id) ? (
+                        <span className="text-success font-medium">SPD confirmado</span>
+                      ) : (
+                        <>
+                          <input
+                            type="date"
+                            value={datasEditadas[s.cliente_id] ?? s.sugestao.data_prazo}
+                            onChange={(e) =>
+                              setDatasEditadas((atual) => ({ ...atual, [s.cliente_id]: e.target.value }))
+                            }
+                            className="bg-surface-sunken border-border focus-ring rounded-md border px-2 py-1"
+                          />
+                          <Botao
+                            variante="outline"
+                            onClick={() => confirmarPromocao(s)}
+                            disabled={promovendo === s.cliente_id}
+                          >
+                            {promovendo === s.cliente_id ? "Confirmando…" : "Confirmar SPD"}
+                          </Botao>
+                        </>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

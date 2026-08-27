@@ -23,6 +23,14 @@ declare module "@/api" {
     itens: EnvioItem[];
   };
 
+  type SugestaoSpd = {
+    cliente_id: string;
+    cliente_nome: string;
+    tipo_fatura_atual: "FPD";
+    data_prazo_atual: string;
+    sugestao: { tipo_fatura: "SPD"; data_prazo: string };
+  };
+
   type EnvioProgresso = {
     total: number;
     enviados: number;
@@ -125,6 +133,14 @@ declare module "@/api" {
       uploadPdf: (id: string, file: File, dadosPixPrecalculado?: DadosPix | null) => Promise<Cliente>;
       converterLista: (texto: string) => Promise<{ itens: ItemConvertido[]; avisos: string[]; total: number }>;
       importarLista: (itens: ItemConvertido[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
+      importarPagos: (texto: string) => Promise<{
+        tag: { id: string; nome: string; cor: string; permite_disparo: boolean };
+        total_colados: number;
+        encontrados: { nome_colado: string; cliente_id: string; cliente_nome: string }[];
+        nao_encontrados: string[];
+        sugestoes_spd: SugestaoSpd[];
+      }>;
+      promoverSpd: (id: string, dataPrazo?: string | undefined) => Promise<Cliente>;
     };
     // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado")
     // e README_CLAUDE_BACKEND.md seção 11.
