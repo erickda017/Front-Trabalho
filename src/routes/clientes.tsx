@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 import {
   Check,
   Copy,
@@ -33,9 +34,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAppState, type Tag } from "@/lib/app-state";
 import type { Cliente } from "@/lib/types";
-import { api } from "@/api";
+import { agruparClientesPorNumero, type ClienteAgrupado } from "@/lib/agruparClientes";
+import { api, abrirArquivoProtegido } from "@/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/clientes")({
@@ -78,6 +88,7 @@ function formatarData(data: string | null): string {
 }
 
 type FiltroPix = "todos" | "com_pix" | "sem_pix" | "com_fatura" | "sem_fatura";
+type FiltroDisparo = "todos" | "recebeu" | "nao_recebeu";
 
 function BotaoCopiar({ texto }: { texto: string }) {
   const [copiado, setCopiado] = useState(false);
@@ -475,15 +486,14 @@ function FichaCliente({
               <div>
                 <p className="label-eyebrow mb-1">Fatura (PDF)</p>
                 {cliente.pdf_url ? (
-                  <a
-                    href={cliente.pdf_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => abrirArquivoProtegido(cliente.pdf_url).catch(() => toast.error("Não foi possível abrir o PDF"))}
                     className="text-primary-strong inline-flex items-center gap-1.5 text-xs hover:underline"
                   >
                     <FileText className="size-3.5" />
                     Ver PDF
-                  </a>
+                  </button>
                 ) : (
                   <p className="text-muted-foreground text-sm">—</p>
                 )}
@@ -516,6 +526,89 @@ function Campo1({ label, valor, mono = false }: { label: string; valor: string; 
   );
 }
 
+// [2026-08] "Importar clientes PAGOS" -- cola uma lista de nomes (1 por
+// linha, direto de uma planilha/coluna) e o backend casa cada um com um
+// cliente já cadastrado, aplicando a tag "Pago" (criada automaticamente já
+// como "não dispara" -- ver backend/src/routes/clientes.routes.js, POST
+// /importar-pagos). Mesmo espírito do "Importar clientes" da aba Importar,
+// mas aqui não se cria ninguém, só se marca quem já existe.
+function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: boolean; onOpenChange: (v: boolean) => void; onImportado: () => void }) {
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<{ encontrados: { cliente_nome: string }[]; nao_encontrados: string[] } | null>(null);
+
+  async function importar() {
+    if (!texto.trim()) return;
+    setEnviando(true);
+    setErro(null);
+    setResultado(null);
+    try {
+      const data = await api.clientes.importarPagos(texto);
+      setResultado(data);
+      onImportado();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => { onOpenChange(v); if (!v) { setTexto(""); setResultado(null); setErro(null); } }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Importar clientes pagos</DialogTitle>
+          <DialogDescription>
+            Cole abaixo os nomes de quem já pagou (1 nome por linha). O sistema casa cada nome com um
+            cliente já cadastrado e aplica a tag "Pago" — quem leva essa tag sai dos disparos
+            pendentes e futuros automaticamente.
+          </DialogDescription>
+        </DialogHeader>
+        {erro && <Aviso tone="danger">{erro}</Aviso>}
+        {!resultado ? (
+          <>
+            <textarea
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder={"João da Silva\nMaria Souza\n..."}
+              rows={8}
+              className="bg-surface-sunken border-border focus-ring w-full rounded-md border px-3 py-2 text-sm"
+            />
+            <DialogFooter>
+              <Botao variante="outline" onClick={() => onOpenChange(false)}>Cancelar</Botao>
+              <Botao variante="primary" onClick={importar} disabled={enviando || !texto.trim()}>
+                {enviando ? "Importando…" : "Importar"}
+              </Botao>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="text-success font-semibold">{resultado.encontrados.length}</span> cliente(s)
+                marcado(s) como pago — <span className="font-semibold">{resultado.nao_encontrados.length}</span> nome(s)
+                não encontrado(s).
+              </p>
+              {resultado.nao_encontrados.length > 0 && (
+                <div className="bg-surface-sunken border-border max-h-40 overflow-y-auto rounded-md border p-2.5 text-xs">
+                  <p className="text-subtle mb-1 font-medium">Não encontrados:</p>
+                  {resultado.nao_encontrados.map((n, i) => (
+                    <p key={i}>{n}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Botao variante="primary" onClick={() => onOpenChange(false)}>Concluir</Botao>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Clientes() {
   const {
     clientes,
@@ -530,7 +623,9 @@ function Clientes() {
   const [busca, setBusca] = useState("");
   const [filtroTag, setFiltroTag] = useState<string>("todas");
   const [filtroPix, setFiltroPix] = useState<FiltroPix>("todos");
+  const [filtroDisparo, setFiltroDisparo] = useState<FiltroDisparo>("todos");
   const [modalAberto, setModalAberto] = useState(false);
+  const [importarPagosAberto, setImportarPagosAberto] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -542,18 +637,25 @@ function Clientes() {
     api.tags.listar().then(setTodasTags).catch(() => {});
   }, []);
 
+  // Uma linha por cliente, não por número -- quem tem 2+ números vinculados
+  // (ver migration-15) mostra um único cliente com os telefones combinados,
+  // em vez de aparecer 2x na lista/dashboard.
+  const clientesAgrupados = useMemo(() => agruparClientesPorNumero(clientes), [clientes]);
+
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return clientes.filter((c) => {
-      if (q && !(c.nome.toLowerCase().includes(q) || c.telefone.includes(q))) return false;
+    return clientesAgrupados.filter((c) => {
+      if (q && !(c.nome.toLowerCase().includes(q) || c.telefones.some((t) => t.includes(q)))) return false;
       if (filtroTag !== "todas" && !c.tags.some((t) => t.id === filtroTag)) return false;
       if (filtroPix === "com_pix" && !c.pix_code) return false;
       if (filtroPix === "sem_pix" && c.pix_code) return false;
       if (filtroPix === "com_fatura" && !c.pdf_url) return false;
       if (filtroPix === "sem_fatura" && c.pdf_url) return false;
+      if (filtroDisparo === "recebeu" && !(c.disparos_recebidos && c.disparos_recebidos > 0)) return false;
+      if (filtroDisparo === "nao_recebeu" && (c.disparos_recebidos ?? 0) > 0) return false;
       return true;
     });
-  }, [clientes, busca, filtroTag, filtroPix]);
+  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo]);
 
   async function remover(id: string) {
     if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
@@ -581,11 +683,17 @@ function Clientes() {
   }
 
   const contagens = {
-    todos: clientes.length,
-    com_pix: clientes.filter((c) => c.pix_code).length,
-    sem_pix: clientes.filter((c) => !c.pix_code).length,
-    com_fatura: clientes.filter((c) => c.pdf_url).length,
-    sem_fatura: clientes.filter((c) => !c.pdf_url).length,
+    todos: clientesAgrupados.length,
+    com_pix: clientesAgrupados.filter((c) => c.pix_code).length,
+    sem_pix: clientesAgrupados.filter((c) => !c.pix_code).length,
+    com_fatura: clientesAgrupados.filter((c) => c.pdf_url).length,
+    sem_fatura: clientesAgrupados.filter((c) => !c.pdf_url).length,
+  };
+
+  const contagensDisparo = {
+    todos: clientesAgrupados.length,
+    recebeu: clientesAgrupados.filter((c) => (c.disparos_recebidos ?? 0) > 0).length,
+    nao_recebeu: clientesAgrupados.filter((c) => !(c.disparos_recebidos ?? 0)).length,
   };
 
   return (
@@ -593,12 +701,19 @@ function Clientes() {
       title="Clientes"
       subtitle="Cadastro, faturas em PDF e histórico de envios"
       actions={
-        <Botao variante="primary" onClick={() => { setClienteEditando(null); setModalAberto(true); }}>
-          <Plus className="size-3.5" />
-          Novo cliente
-        </Botao>
+        <div className="flex items-center gap-2">
+          <Botao variante="outline" onClick={() => setImportarPagosAberto(true)}>
+            <TagIcon className="size-3.5" />
+            Importar pagos
+          </Botao>
+          <Botao variante="primary" onClick={() => { setClienteEditando(null); setModalAberto(true); }}>
+            <Plus className="size-3.5" />
+            Novo cliente
+          </Botao>
+        </div>
       }
     >
+      <ImportarPagosDialog aberto={importarPagosAberto} onOpenChange={setImportarPagosAberto} onImportado={refreshClientes} />
       <div className="space-y-4">
         <div className="toolbar flex flex-wrap items-center gap-3">
           <Busca
@@ -627,6 +742,18 @@ function Clientes() {
               { valor: "sem_pix", label: "Sem PIX", contagem: contagens.sem_pix },
               { valor: "com_fatura", label: "Com fatura", contagem: contagens.com_fatura },
               { valor: "sem_fatura", label: "Sem fatura", contagem: contagens.sem_fatura },
+            ]}
+          />
+          {/* [2026-08] "Quantos disparos cada cliente recebeu" -- filtro
+              recebeu/não recebeu, calculado a partir de disparos_recebidos
+              (ver backend/src/routes/clientes.routes.js, GET /). */}
+          <FiltroChips
+            valor={filtroDisparo}
+            onChange={setFiltroDisparo}
+            opcoes={[
+              { valor: "todos", label: "Qualquer disparo", contagem: contagensDisparo.todos },
+              { valor: "recebeu", label: "Já recebeu", contagem: contagensDisparo.recebeu },
+              { valor: "nao_recebeu", label: "Nunca recebeu", contagem: contagensDisparo.nao_recebeu },
             ]}
           />
         </div>
@@ -694,13 +821,14 @@ function Clientes() {
                       <th className="th-cell">Valor</th>
                       <th className="th-cell">Vencimento</th>
                       <th className="th-cell">PIX</th>
+                      <th className="th-cell">Disparos</th>
                       <th className="th-cell">Tags</th>
                       <th className="th-cell text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {clientesCarregando ? (
-                      <LinhasEsqueleto colunas={8} />
+                      <LinhasEsqueleto colunas={9} />
                     ) : (
                       filtrados.map((c) => (
                         <tr
@@ -715,7 +843,17 @@ function Clientes() {
                             />
                           </td>
                           <td className="td-cell font-medium">{c.nome}</td>
-                          <td className="td-cell text-muted-foreground tabular font-mono text-xs">{c.telefone}</td>
+                          <td className="td-cell text-muted-foreground tabular font-mono text-xs">
+                            {c.telefones.length > 1 ? (
+                              <div className="flex flex-col gap-0.5">
+                                {c.telefones.map((t) => (
+                                  <span key={t}>{t}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              c.telefones[0]
+                            )}
+                          </td>
                           <td className="td-cell tabular">{formatarValor(c.valor)}</td>
                           <td className="td-cell text-muted-foreground tabular">{formatarData(c.vencimento)}</td>
                           <td className="td-cell">
@@ -725,6 +863,15 @@ function Clientes() {
                               </StatusPill>
                             ) : (
                               <StatusPill tone="muted">Sem PIX</StatusPill>
+                            )}
+                          </td>
+                          <td className="td-cell">
+                            {(c.disparos_recebidos ?? 0) > 0 ? (
+                              <StatusPill tone="brand" dot>
+                                {c.disparos_recebidos}x
+                              </StatusPill>
+                            ) : (
+                              <StatusPill tone="muted">Nunca</StatusPill>
                             )}
                           </td>
                           <td className="td-cell">
@@ -779,7 +926,7 @@ function Clientes() {
                     )}
                     {!clientesCarregando && filtrados.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="text-muted-foreground px-5 py-10 text-center text-xs">
+                        <td colSpan={9} className="text-muted-foreground px-5 py-10 text-center text-xs">
                           Nenhum cliente encontrado para os filtros aplicados.
                         </td>
                       </tr>
@@ -809,7 +956,9 @@ function Clientes() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{c.nome}</p>
-                            <p className="text-muted-foreground font-mono text-xs">{c.telefone}</p>
+                            <p className="text-muted-foreground font-mono text-xs">
+                              {c.telefones.join(" · ")}
+                            </p>
                           </div>
                         </div>
                         {c.pix_code ? (

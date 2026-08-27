@@ -39,6 +39,24 @@
 //     de centenas de PDFs em voo ao mesmo tempo. Mesmo padrão já usado (e
 //     comprovadamente estável) na extração manual em `routes/pix.tsx`.
 //
+// [2026-08] WEB WORKER: cada extração leva ~15-20s de CPU (vários renders
+// em resolução alta + jsQR em blocos, ver `ALVOS_PX_CANTO`). Rodando na
+// thread principal (como era até aqui), isso trava a página inteira pelo
+// tempo todo -- cliques não respondem, scroll para. `extrairPixLocal`
+// continua com a MESMA assinatura pública de sempre (recebe um `File|Blob`,
+// devolve `ResultadoPix|null`), mas por dentro agora delega pro worker em
+// `pixExtractor.worker.ts` (que roda a idêntica lógica de render+QR usando
+// `OffscreenCanvas`, sem DOM) -- os 3 pontos do app que chamam essa função
+// (`routes/pix.tsx`, `routes/supervisor.tsx`, `pixWorkerClient.ts`) não
+// precisaram mudar nada. Um pequeno POOL de workers (2, ver
+// `TAMANHO_POOL_WORKERS`) é criado na primeira chamada e reaproveitado
+// entre extrações (`obterWorkerDoPool`), evitando o custo de subir/derrubar
+// um worker novo a cada PDF. Se `Worker`/`OffscreenCanvas` não existir no
+// ambiente (navegador muito antigo, ou algum contexto sem suporte), cai de
+// volta pro caminho síncrono de sempre (`extrairPixLocalSincrono`), que
+// continua aqui intacto como fallback -- por isso as funções de render/QR
+// abaixo não foram removidas, mesmo com o worker cobrindo o caso comum.
+//
 // `pdfjs-dist` é importado dinamicamente (nunca no topo do módulo) porque
 // este projeto roda com SSR (TanStack Start/Nitro) -- um import estático
 // executaria `GlobalWorkerOptions.workerSrc = new URL(...)` durante o SSR,
@@ -124,11 +142,22 @@ const REGIAO_PAGINA_INTEIRA = { x0: 0, y0: 0, x1: 1, y1: 1 };
 //      LISTA -- tentamos várias resoluções em sequência (inclui uma escala
 //      "nativa", pedida como um alvo bem alto que na prática vira a
 //      resolução real do PDF nessa região) até uma decodificar.
-const ALVOS_PX_CANTO = [1800, 2400, 1200, 3000];
-const ALVOS_PX_CANTO_AMPLO = [2200, 2800, 1500];
+//
+// [2026-08] REDUZIDO de 4 pra 2 alvos por região (e de 4 pra 2 no fallback
+// de página inteira): testado com boletos reais, a leitura acerta sempre no
+// primeiro alvo (1800px) ou no segundo -- os alvos extras (1200, 3000/3200)
+// nunca foram necessários nesses casos e só adicionavam tempo de
+// processamento (cada alvo a mais é outro render() completo do pdfjs +
+// outra rodada de jsQR). Mantido UM alvo de segurança além do que já
+// funcionou, não zero -- se aparecer um boleto de layout diferente que
+// precise de mais tentativas, ainda há uma segunda chance antes de cair pro
+// fallback de página inteira (que também foi enxugado, mesma lógica).
+const ALVOS_PX_CANTO = [1800, 2600];
+const ALVOS_PX_CANTO_AMPLO = [2200, 2800];
 // Fallback de página inteira -- só entra se o canto (em nenhuma combinação
-// de escala/blocos) achar nada. Mesma lógica de múltiplos alvos.
-const ALVOS_PX_PAGINA_INTEIRA = [1800, 2400, 1200, 3200];
+// de escala/blocos) achar nada. Mesma lógica de múltiplos alvos, mesmo
+// corte de 4 pra 2.
+const ALVOS_PX_PAGINA_INTEIRA = [1800, 2600];
 
 // Varredura em blocos -- cobre boletos com mais de um QR Code na mesma
 // região (QR de app/parceiro + Pix, o caso mais comum: os dois ficam
@@ -314,8 +343,11 @@ function comTimeout<T>(promise: Promise<T>, ms: number, valorPadrao: T): Promise
   ]);
 }
 
-// Ponto de entrada: extrai o Pix de UM PDF, 100% local.
-export async function extrairPixLocal(arquivo: File | Blob): Promise<ResultadoPix | null> {
+// Ponto de entrada síncrono (roda na thread atual) -- usado como FALLBACK
+// quando Worker/OffscreenCanvas não existem no ambiente. Ver
+// `extrairPixLocal` logo abaixo, que é o ponto de entrada público de
+// verdade e tenta o worker primeiro.
+async function extrairPixLocalSincrono(arquivo: File | Blob): Promise<ResultadoPix | null> {
   if (typeof document === "undefined") {
     console.warn("[pixExtractor] chamado fora do navegador (SSR?) -- ignorando.");
     return null;
@@ -354,6 +386,148 @@ export async function extrairPixLocal(arquivo: File | Blob): Promise<ResultadoPi
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------
+// Orquestração do pool de Web Workers
+// ---------------------------------------------------------------------
+//
+// [2026-08] POOL (não mais um único worker): com uploads grandes (a tela de
+// Pix aceita até 100 PDFs de uma vez, processados em pacotes -- ver
+// `routes/pix.tsx`), várias extrações rodam com concorrência real ao mesmo
+// tempo. Um único worker compartilhado processa tudo em FILA (uma extração
+// de cada vez, mesmo que 3-10 pedidos cheguem juntos) -- funciona (não trava
+// a UI), mas não usa mais de um núcleo de CPU nunca, o que é desperdício em
+// qualquer aparelho com mais de 1-2 núcleos livres. Um pool pequeno (2
+// workers, round-robin) dá paralelismo real sem exagerar -- cada render de
+// PDF já é pesado sozinho (múltiplos renders em resolução alta, ver
+// `ALVOS_PX_CANTO`), então workers demais competindo por CPU só pioraria a
+// latência de cada um; 2 é um meio-termo que ajuda em qualquer aparelho com
+// 2+ núcleos livres sem arriscar saturar os mais fracos (ex: celular
+// antigo). O tamanho do pool é limitado por `navigator.hardwareConcurrency`
+// quando disponível, pra não criar mais workers do que núcleos existem.
+//
+// Cada pedido usa um `id` incremental (ainda único globalmente, não por
+// worker) pra casar request/response -- o pool escolhe o próximo worker via
+// round-robin simples (`proximoWorkerDoPool`), sem se importar com qual
+// worker está mais/menos ocupado (round-robin simples já distribui bem o
+// suficiente pro volume esperado aqui, e evita a complexidade de rastrear
+// fila por worker).
+
+type RespostaWorker =
+  | { id: number; ok: true; resultado: ResultadoPix | null }
+  | { id: number; ok: false; erro: string };
+
+const TAMANHO_POOL_WORKERS = 2;
+
+let poolDeWorkers: Worker[] = [];
+let proximoWorkerDoPool = 0;
+let proximoIdPedido = 1;
+const pedidosPendentes = new Map<number, { resolve: (r: ResultadoPix | null) => void; reject: (e: Error) => void }>();
+
+function suportaWorkerDeExtracao(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof Worker !== "undefined" &&
+    typeof OffscreenCanvas !== "undefined"
+  );
+}
+
+function tamanhoDesejadoDoPool(): number {
+  const nucleos = typeof navigator !== "undefined" ? navigator.hardwareConcurrency : undefined;
+  if (!nucleos || nucleos < 2) return 1; // aparelho com pouco núcleo -- não força paralelismo
+  return Math.min(TAMANHO_POOL_WORKERS, nucleos - 1); // deixa 1 núcleo livre pra UI/resto do app
+}
+
+function criarWorkerDoPool(): Worker {
+  // `new URL(..., import.meta.url)` + `{ type: "module" }` é o padrão do
+  // Vite pra workers -- o bundler reconhece esse formato em build time e
+  // empacota `pixExtractor.worker.ts` (com suas próprias dependências,
+  // incluindo jsqr e pdfjs-dist) como um chunk separado. Cada worker do
+  // pool importa esse MESMO chunk -- o navegador já cacheia o download, só
+  // paga o custo de inicializar uma nova instância do módulo.
+  const worker = new Worker(new URL("./pixExtractor.worker.ts", import.meta.url), { type: "module" });
+
+  worker.onmessage = (evento: MessageEvent<RespostaWorker>) => {
+    const resposta = evento.data;
+    const pendente = pedidosPendentes.get(resposta.id);
+    if (!pendente) return;
+    pedidosPendentes.delete(resposta.id);
+    if (resposta.ok) pendente.resolve(resposta.resultado);
+    else pendente.reject(new Error(resposta.erro));
+  };
+
+  worker.onerror = (evento: ErrorEvent) => {
+    // Erro no nível do worker (ex: falha ao carregar o módulo) -- não dá
+    // pra saber qual pedido causou (podem ser vários, já que o worker
+    // processa em fila), então rejeita todos os pendentes conhecidos e
+    // derruba o pool inteiro pra próxima chamada recriar do zero. Mais
+    // simples e seguro do que tentar rastrear "quais pedidos foram deste
+    // worker especificamente" -- erro de worker é raro o bastante (falha de
+    // carregar o chunk, etc.) pra não valer essa complexidade extra.
+    console.error("[pixExtractor] worker do pool falhou:", evento.message);
+    for (const pendente of pedidosPendentes.values()) {
+      pendente.reject(new Error(evento.message || "worker de extração de Pix falhou"));
+    }
+    pedidosPendentes.clear();
+    for (const w of poolDeWorkers) w.terminate();
+    poolDeWorkers = [];
+  };
+
+  return worker;
+}
+
+function obterWorkerDoPool(): Worker {
+  if (poolDeWorkers.length === 0) {
+    const tamanho = tamanhoDesejadoDoPool();
+    poolDeWorkers = Array.from({ length: tamanho }, () => criarWorkerDoPool());
+  }
+  const worker = poolDeWorkers[proximoWorkerDoPool % poolDeWorkers.length]!;
+  proximoWorkerDoPool++;
+  return worker;
+}
+
+function extrairPixViaWorker(arquivo: File | Blob): Promise<ResultadoPix | null> {
+  return new Promise((resolve, reject) => {
+    arquivo
+      .arrayBuffer()
+      .then((buffer) => {
+        const worker = obterWorkerDoPool();
+        const id = proximoIdPedido++;
+        pedidosPendentes.set(id, { resolve, reject });
+        // O ArrayBuffer é transferido (não copiado) pro worker -- mais
+        // rápido pra PDFs grandes, mas isso "esvazia" o buffer original
+        // nesta thread; como já lemos ele só pra esse propósito, não tem
+        // problema.
+        worker.postMessage({ id, buffer }, [buffer]);
+      })
+      .catch(reject);
+  });
+}
+
+// Ponto de entrada PÚBLICO: extrai o Pix de UM PDF, 100% local. Tenta rodar
+// no Web Worker (não trava a UI); se o ambiente não suportar Worker/
+// OffscreenCanvas, ou se o worker falhar de forma inesperada, cai pro
+// caminho síncrono de sempre.
+export async function extrairPixLocal(arquivo: File | Blob): Promise<ResultadoPix | null> {
+  if (typeof document === "undefined") {
+    console.warn("[pixExtractor] chamado fora do navegador (SSR?) -- ignorando.");
+    return null;
+  }
+
+  if (suportaWorkerDeExtracao()) {
+    try {
+      return await extrairPixViaWorker(arquivo);
+    } catch (err) {
+      console.warn(
+        "[pixExtractor] worker falhou, caindo pro caminho síncrono:",
+        (err as Error).message,
+      );
+      // segue pro fallback abaixo
+    }
+  }
+
+  return extrairPixLocalSincrono(arquivo);
 }
 
 // ---------------------------------------------------------------------

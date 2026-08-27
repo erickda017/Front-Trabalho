@@ -15,6 +15,7 @@ import { AppStateProvider, useAppState } from "../lib/app-state";
 import { TemaProvider, temaBootstrapScript } from "../lib/theme";
 import { LoginScreen } from "../components/LoginScreen";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function NotFoundComponent() {
   return (
@@ -155,8 +156,10 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <TemaProvider>
         <AppStateProvider>
-          <AuthGate />
-          <Toaster />
+          <TooltipProvider delayDuration={200}>
+            <AuthGate />
+            <Toaster />
+          </TooltipProvider>
         </AppStateProvider>
       </TemaProvider>
     </QueryClientProvider>

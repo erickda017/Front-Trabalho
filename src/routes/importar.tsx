@@ -21,6 +21,16 @@ import { cn } from "@/lib/utils";
 import { api } from "@/api";
 import { processarImportacaoNoBrowser, type ProgressoImportacao } from "@/lib/importacaoBrowser";
 
+// "2026-09-24" -> "24/09/2026" (mesmo padrão de exibição usado no resto do
+// sistema, ver formatarDataIsoParaBr no backend).
+function formatarPrazo(iso?: string | null) {
+  if (!iso) return "—";
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return iso;
+  const [, ano, mes, dia] = match;
+  return `${dia}/${mes}/${ano}`;
+}
+
 export const Route = createFileRoute("/importar")({
   head: () => ({
     meta: [
@@ -49,7 +59,17 @@ type Resultado = {
   envio: { id: string } | null;
 };
 
-type ItemConvertido = { nome: string; numero: string; valor: number | null; arquivo: string };
+type ItemConvertido = {
+  nome: string;
+  numero: string;
+  valor: number | null;
+  arquivo: string;
+  // [2026-08] Ver CONTEXTO.md ("Safras") -- vêm preenchidos quando a lista
+  // crua trouxer "Fatura N" + data de prazo; null em listas sem essa info.
+  tipo_fatura?: "FPD" | "SPD" | null;
+  data_prazo?: string | null; // "YYYY-MM-DD"
+  numero_contrato?: string | null;
+};
 
 const COLUNAS_ESPERADAS = [
   "nome",
@@ -327,6 +347,8 @@ function ConversorLista() {
                     <th className="th-cell">Nome</th>
                     <th className="th-cell">Telefone</th>
                     <th className="th-cell">Valor</th>
+                    <th className="th-cell">Fatura</th>
+                    <th className="th-cell">Prazo</th>
                     <th className="th-cell">Arquivo esperado</th>
                   </tr>
                 </thead>
@@ -338,6 +360,21 @@ function ConversorLista() {
                       <td className="td-cell font-mono">
                         {i.valor != null ? i.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
                       </td>
+                      <td className="td-cell">
+                        {i.tipo_fatura ? (
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              i.tipo_fatura === "FPD" ? "bg-blue-500/10 text-blue-500" : "bg-purple-500/10 text-purple-500",
+                            )}
+                          >
+                            {i.tipo_fatura}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="td-cell font-mono">{formatarPrazo(i.data_prazo)}</td>
                       <td className="td-cell font-mono text-[11px]">{i.arquivo}</td>
                     </tr>
                   ))}

@@ -11,11 +11,13 @@ import {
   Smartphone,
   Upload,
   Users,
+  Wallet,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ptBR } from "date-fns/locale";
 import { formatDistanceToNow } from "date-fns";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell, statusConexao } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -48,6 +50,14 @@ function formatarData(iso: string | null) {
   } catch {
     return "—";
   }
+}
+
+const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function formatarDiaCurto(data: string) {
+  // "data" vem como YYYY-MM-DD (ver backend/src/routes/dashboard.routes.js)
+  const [, mes, dia] = data.split("-");
+  return `${dia}/${mes}`;
 }
 
 function Dashboard() {
@@ -110,6 +120,62 @@ function Dashboard() {
               />
             ))}
           </div>
+        </SectionCard>
+
+        {/* [2026-08] "Dashboard: média dos valores das faturas e dados mais
+            dinâmicos" -- valor médio/total (calculado no backend, ver
+            dashboard.routes.js:resumoValores) + gráfico de disparos por dia. */}
+        <SectionCard titulo="Faturas em valor" eyebrow="Financeiro">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <MetricCard
+              label="Valor médio por fatura"
+              valor={erro ? null : carregando ? null : resumo?.valor_medio !== undefined ? formatoMoeda.format(resumo.valor_medio) : "—"}
+              carregando={carregando}
+              icon={Wallet}
+              destaque
+            />
+            <MetricCard
+              label="Valor total das faturas"
+              valor={erro ? null : carregando ? null : resumo?.valor_total !== undefined ? formatoMoeda.format(resumo.valor_total) : "—"}
+              carregando={carregando}
+              icon={Wallet}
+            />
+            <MetricCard
+              label="Faturas com valor cadastrado"
+              valor={erro ? null : resumo?.faturas_com_valor}
+              carregando={carregando}
+              icon={Gauge}
+            />
+          </div>
+        </SectionCard>
+
+        <SectionCard titulo="Disparos por dia" eyebrow="Últimos 7 dias">
+          {carregando ? (
+            <div className="bg-surface-sunken h-48 w-full animate-pulse rounded-md" />
+          ) : resumo?.serie_disparos_7dias?.length ? (
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={resumo.serie_disparos_7dias}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                  <XAxis
+                    dataKey="data"
+                    tickFormatter={formatarDiaCurto}
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                  <Tooltip
+                    labelFormatter={(v) => formatarDiaCurto(String(v))}
+                    formatter={(v: number) => [v, "Disparos"]}
+                  />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary, #6366f1)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-subtle py-8 text-center text-xs">Nenhum disparo enviado nos últimos 7 dias.</p>
+          )}
         </SectionCard>
 
         <SectionCard

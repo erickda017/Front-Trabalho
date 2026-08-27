@@ -20,7 +20,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { api } from "@/api";
+import { api, abrirArquivoProtegido, buscarBlobUrlProtegida } from "@/api";
 import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
 import { Aviso } from "@/components/shared/Controls";
@@ -314,6 +314,66 @@ function rotuloDia(iso: string) {
   const ontem = new Date(hoje.getTime() - 86400000);
   if (d.toDateString() === ontem.toDateString()) return "Ontem";
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+// [2026-08] Wrapper pra exibir imagem/áudio anexados a uma mensagem sem
+// nunca usar `anexo_url` direto como `src` -- desde a migração pro proxy de
+// arquivos (ver api.js/arquivos.routes.js), `anexo_url` é um path relativo
+// autenticado, não uma URL pública que `<img>`/`<audio>` conseguem carregar
+// sozinhos (eles não anexam o header Authorization). Este componente busca
+// o Blob via fetch autenticado e só then define `src`, revogando a blob URL
+// anterior sempre que o path mudar ou o componente desmontar (evita
+// acumular URLs "presas" na memória ao rolar uma conversa longa).
+function MidiaProtegida({
+  path,
+  tipo,
+  alt,
+}: {
+  path: string;
+  tipo: "imagem" | "audio";
+  alt?: string;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [erro, setErro] = useState(false);
+
+  useEffect(() => {
+    let cancelado = false;
+    let urlCriada: string | null = null;
+    setErro(false);
+
+    buscarBlobUrlProtegida(path)
+      .then((url) => {
+        if (cancelado) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        urlCriada = url;
+        setBlobUrl(url);
+      })
+      .catch(() => {
+        if (!cancelado) setErro(true);
+      });
+
+    return () => {
+      cancelado = true;
+      if (urlCriada) URL.revokeObjectURL(urlCriada);
+    };
+  }, [path]);
+
+  if (erro) {
+    return <p className="text-muted-foreground mb-1 text-xs italic">Não foi possível carregar</p>;
+  }
+  if (!blobUrl) {
+    return <div className="bg-foreground/10 mb-1 h-40 w-40 animate-pulse rounded-md" />;
+  }
+  if (tipo === "imagem") {
+    return (
+      <button type="button" onClick={() => window.open(blobUrl, "_blank")} className="mb-1 block">
+        <img src={blobUrl} alt={alt ?? "imagem"} className="max-h-72 rounded-md" />
+      </button>
+    );
+  }
+  return <audio controls src={blobUrl} className="mb-1 max-w-full" />;
 }
 
 function Ticks({ status }: { status: string | null }) {
@@ -731,32 +791,22 @@ function Chat() {
                             )}
                           >
                             {m.anexo_url && m.tipo === "imagem" && (
-                              <a
-                                href={m.anexo_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mb-1 block"
-                              >
-                                <img
-                                  src={m.anexo_url}
-                                  alt={m.anexo_nome ?? "imagem"}
-                                  className="max-h-72 rounded-md"
-                                />
-                              </a>
+                              <MidiaProtegida path={m.anexo_url} tipo="imagem" alt={m.anexo_nome ?? "imagem"} />
                             )}
-                            {m.anexo_url && m.tipo === "audio" && (
-                              <audio controls src={m.anexo_url} className="mb-1 max-w-full" />
-                            )}
+                            {m.anexo_url && m.tipo === "audio" && <MidiaProtegida path={m.anexo_url} tipo="audio" />}
                             {m.anexo_url && m.tipo === "documento" && (
-                              <a
-                                href={m.anexo_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mb-1 flex items-center gap-2 rounded-md bg-foreground/10 px-2 py-2 font-mono text-[11px]"
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  abrirArquivoProtegido(m.anexo_url).catch(() =>
+                                    setErro("Não foi possível abrir o anexo"),
+                                  )
+                                }
+                                className="mb-1 flex w-full items-center gap-2 rounded-md bg-foreground/10 px-2 py-2 text-left font-mono text-[11px]"
                               >
                                 <FileText className="size-4 shrink-0" />
                                 <span className="truncate">{m.anexo_nome}</span>
-                              </a>
+                              </button>
                             )}
                             {m.texto && (
                               <p className="pr-14 leading-relaxed whitespace-pre-wrap">{m.texto}</p>

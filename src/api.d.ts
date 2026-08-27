@@ -8,6 +8,7 @@ declare module "@/api" {
     EnvioStatus,
     PixExtracao,
     PixExtracaoStatus,
+    SafraResumo,
     WhatsappConexao,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
@@ -46,6 +47,19 @@ declare module "@/api" {
     pix_code: string | null;
     ultimo_envio_em: string | null;
     ultimo_envio_status: string | null;
+  };
+
+  // Item devolvido por /clientes/converter-lista e aceito por /clientes/importar-lista
+  // -- ver backend/src/lib/parseListaClientes.js e CONTEXTO.md ("Safras").
+  type ItemConvertido = {
+    nome: string;
+    numero: string;
+    valor: number | null;
+    arquivo: string;
+    tipo_fatura?: "FPD" | "SPD" | null;
+    data_prazo?: string | null;
+    numero_contrato?: string | null;
+    data_contrato?: string | null;
   };
 
   export const api: {
@@ -109,8 +123,15 @@ declare module "@/api" {
         }[]
       >;
       uploadPdf: (id: string, file: File, dadosPixPrecalculado?: DadosPix | null) => Promise<Cliente>;
-      converterLista: (texto: string) => Promise<{ itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]; avisos: string[]; total: number }>;
-      importarLista: (itens: { nome: string; numero: string; valor: number | null; arquivo: string }[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
+      converterLista: (texto: string) => Promise<{ itens: ItemConvertido[]; avisos: string[]; total: number }>;
+      importarLista: (itens: ItemConvertido[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
+    };
+    // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado")
+    // e README_CLAUDE_BACKEND.md seção 11.
+    safras: {
+      listar: () => Promise<SafraResumo[]>;
+      detalhe: (safra: string) => Promise<SafraResumo>;
+      consolidar: (safra: string) => Promise<unknown>;
     };
     importacao: {
       enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;

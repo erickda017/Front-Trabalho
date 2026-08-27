@@ -24,6 +24,7 @@ import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { HelpTooltip } from "@/components/shared/HelpTooltip";
 import { Botao, Aviso } from "@/components/shared/Controls";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -279,21 +280,23 @@ function EtapaAnexo({ comPdf, setComPdf }: { comPdf: boolean; setComPdf: (v: boo
           onChange={(e) => setComPdf(e.target.checked)}
           className="accent-primary mt-0.5 size-4"
         />
-        <span>
-          <span className="flex items-center gap-1.5 text-sm font-medium">
-            <Paperclip className="size-3.5" /> Enviar PDF da fatura
-          </span>
-          <span className="text-muted-foreground block text-xs">
-            O arquivo é o PDF já cadastrado em cada cliente. Clientes sem PDF cadastrado recebem só a mensagem de texto.
-          </span>
+        <span className="flex items-center gap-1.5 text-sm font-medium">
+          <Paperclip className="size-3.5" /> Enviar PDF da fatura
+          <HelpTooltip texto="O arquivo é o PDF já cadastrado em cada cliente. Clientes sem PDF cadastrado recebem só a mensagem de texto." />
         </span>
       </label>
       {!comPdf && (
-        <p className="text-muted-foreground mt-3 text-xs">
-          Desligado: ninguém recebe PDF neste lote — só a mensagem, com o código PIX de cada cliente (use{" "}
-          <code className="bg-surface-sunken rounded px-1 py-0.5 font-mono">{"{{pix}}"}</code> no texto, ou ele é
-          adicionado automaticamente no fim). Só entram clientes com PIX cadastrado — quem não tem fica de fora do
-          lote (mesma lógica de quem não tem PDF, no modo normal).
+        <p className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+          Desligado: ninguém recebe PDF neste lote.
+          <HelpTooltip
+            texto={
+              <>
+                Só a mensagem, com o código PIX de cada cliente (use <code>{"{{pix}}"}</code> no texto, ou ele é
+                adicionado automaticamente no fim). Só entram clientes com PIX cadastrado — quem não tem fica de
+                fora do lote (mesma lógica de quem não tem PDF, no modo normal).
+              </>
+            }
+          />
         </p>
       )}
     </SectionCard>

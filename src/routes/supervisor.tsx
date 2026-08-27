@@ -12,16 +12,20 @@ import {
   Trash2,
   Upload,
   Users,
+  Wallet,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { MetricCard } from "@/components/shared/MetricCard";
 import { Aviso, Botao, Busca, Seletor, TabelaWrap } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { api } from "@/api";
+import { api, abrirArquivoProtegido } from "@/api";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
 import {
@@ -92,6 +96,24 @@ type ResumoOperador = {
   falhas: number;
 };
 type IndicePixItem = { id: string; nome: string; telefone: string; pix_code: string; usuario_id: string; operador: Operador | null };
+type SerieDia = { data: string; total: number };
+type DashboardSupervisor = {
+  totais: {
+    operadores: number;
+    clientes: number;
+    com_pix: number;
+    disparos_em_andamento: number;
+    disparos_concluidos: number;
+    enviados?: number;
+    falhas?: number;
+    pendentes?: number;
+    valor_medio?: number;
+    valor_total?: number;
+    faturas_com_valor?: number;
+  };
+  serie_disparos_7dias?: SerieDia[];
+  por_operador: ResumoOperador[];
+};
 
 const ABAS = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -120,6 +142,14 @@ function formatarValor(v: string | null) {
   if (!v) return "—";
   const n = Number(v);
   return Number.isNaN(n) ? v : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function formatarDiaCurto(data: string) {
+  // "data" vem como YYYY-MM-DD (ver backend/src/routes/supervisor.routes.js)
+  const [, mes, dia] = data.split("-");
+  return `${dia}/${mes}`;
 }
 
 function Supervisor() {
@@ -173,21 +203,14 @@ function CarregandoBloco({ linhas = 5 }: { linhas?: number }) {
   );
 }
 
-function CardMetrica({ label, valor }: { label: string; valor: string | number }) {
-  return (
-    <div className="border-border bg-surface rounded-lg border p-4">
-      <p className="text-subtle text-xs tracking-wide uppercase">{label}</p>
-      <p className="font-display mt-1 text-2xl font-semibold">{valor}</p>
-    </div>
-  );
-}
-
 function AbaDashboard() {
-  const [dados, setDados] = useState<{ totais: Record<string, number>; por_operador: ResumoOperador[] } | null>(null);
+  const [dados, setDados] = useState<DashboardSupervisor | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => {
+  const carregar = useCallback(() => {
+    setCarregando(true);
+    setErro(null);
     api.supervisor
       .dashboard()
       .then(setDados)
@@ -195,62 +218,128 @@ function AbaDashboard() {
       .finally(() => setCarregando(false));
   }, []);
 
-  if (carregando) return <CarregandoBloco linhas={4} />;
-  if (erro) return <Aviso tone="danger">{erro}</Aviso>;
-  if (!dados) return null;
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  if (erro) {
+    return (
+      <Aviso tone="danger" className="flex flex-wrap items-center justify-between gap-2">
+        <span>Não foi possível carregar os indicadores: {erro}</span>
+        <Botao tamanho="sm" variante="outline" onClick={carregar}>
+          Tentar novamente
+        </Botao>
+      </Aviso>
+    );
+  }
+
+  const totais = dados?.totais;
+  const metrics: { label: string; valor: number | null | undefined; icon: any }[] = [
+    { label: "Operadores", valor: totais?.operadores, icon: Users },
+    { label: "Clientes", valor: totais?.clientes, icon: Users },
+    { label: "Com PIX", valor: totais?.com_pix, icon: KeyRound },
+    { label: "Disparos em andamento", valor: totais?.disparos_em_andamento, icon: BarChart3 },
+    { label: "Disparos concluídos", valor: totais?.disparos_concluidos, icon: Check },
+    { label: "Enviados", valor: totais?.enviados, icon: Check },
+    { label: "Falhas", valor: totais?.falhas, icon: XCircle },
+    { label: "Pendentes", valor: totais?.pendentes, icon: Loader2 },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <CardMetrica label="Operadores" valor={dados.totais.operadores} />
-        <CardMetrica label="Clientes" valor={dados.totais.clientes} />
-        <CardMetrica label="Com PIX" valor={dados.totais.com_pix} />
-        <CardMetrica label="Disparos em andamento" valor={dados.totais.disparos_em_andamento} />
-        <CardMetrica label="Disparos concluídos" valor={dados.totais.disparos_concluidos} />
+        {metrics.map((m) => (
+          <MetricCard key={m.label} label={m.label} valor={carregando ? null : (m.valor ?? null)} carregando={carregando} icon={m.icon} />
+        ))}
       </div>
 
+      {/* Mesmo bloco "Faturas em valor" que já existe no Painel do operador
+          (ver routes/index.tsx), agora agregado de todos os operadores. */}
+      <SectionCard titulo="Faturas em valor" eyebrow="Financeiro (todos os operadores)">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard
+            label="Valor médio por fatura"
+            valor={carregando ? null : totais?.valor_medio !== undefined ? formatoMoeda.format(totais.valor_medio) : "—"}
+            carregando={carregando}
+            icon={Wallet}
+            destaque
+          />
+          <MetricCard
+            label="Valor total das faturas"
+            valor={carregando ? null : totais?.valor_total !== undefined ? formatoMoeda.format(totais.valor_total) : "—"}
+            carregando={carregando}
+            icon={Wallet}
+          />
+          <MetricCard
+            label="Faturas com valor cadastrado"
+            valor={carregando ? null : totais?.faturas_com_valor}
+            carregando={carregando}
+            icon={FileText}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard titulo="Disparos por dia" eyebrow="Últimos 7 dias · todos os operadores">
+        {carregando ? (
+          <div className="bg-surface-sunken h-48 w-full animate-pulse rounded-md" />
+        ) : dados?.serie_disparos_7dias?.length ? (
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dados.serie_disparos_7dias}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                <XAxis dataKey="data" tickFormatter={formatarDiaCurto} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                <Tooltip labelFormatter={(v) => formatarDiaCurto(String(v))} formatter={(v: number) => [v, "Disparos"]} />
+                <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary, #6366f1)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="text-subtle py-8 text-center text-xs">Nenhum disparo enviado nos últimos 7 dias.</p>
+        )}
+      </SectionCard>
+
       <SectionCard titulo="Por operador" descricao="Carteira e disparos de cada operador." flush bodyClassName="p-0">
-        <TabelaWrap>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-subtle border-b text-left text-xs uppercase">
-                <th className="px-4 py-2.5">Operador</th>
-                <th className="px-4 py-2.5">Clientes</th>
-                <th className="px-4 py-2.5">Com PDF</th>
-                <th className="px-4 py-2.5">Com PIX</th>
-                <th className="px-4 py-2.5">Em andamento</th>
-                <th className="px-4 py-2.5">Concluídos</th>
-                <th className="px-4 py-2.5">Entregues / lidos</th>
-                <th className="px-4 py-2.5">Falhas</th>
-              </tr>
-            </thead>
-            <tbody className="divide-border divide-y">
-              {dados.por_operador.map((op) => (
-                <tr key={op.operador.id}>
-                  <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
-                  <td className="px-4 py-2.5">{op.total_clientes}</td>
-                  <td className="px-4 py-2.5">{op.com_pdf}</td>
-                  <td className="px-4 py-2.5">{op.com_pix}</td>
-                  <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
-                  <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
-                  <td className="px-4 py-2.5">
-                    {op.entregues} / {op.lidos}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {op.falhas > 0 ? <span className="text-destructive">{op.falhas}</span> : "0"}
-                  </td>
+        {carregando ? (
+          <CarregandoBloco linhas={4} />
+        ) : !dados?.por_operador.length ? (
+          <EmptyState icon={Users} titulo="Nenhum operador logou ainda" compacto />
+        ) : (
+          <TabelaWrap>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border text-subtle border-b text-left text-xs uppercase">
+                  <th className="px-4 py-2.5">Operador</th>
+                  <th className="px-4 py-2.5">Clientes</th>
+                  <th className="px-4 py-2.5">Com PDF</th>
+                  <th className="px-4 py-2.5">Com PIX</th>
+                  <th className="px-4 py-2.5">Em andamento</th>
+                  <th className="px-4 py-2.5">Concluídos</th>
+                  <th className="px-4 py-2.5">Entregues / lidos</th>
+                  <th className="px-4 py-2.5">Falhas</th>
                 </tr>
-              ))}
-              {dados.por_operador.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="text-subtle px-4 py-6 text-center text-sm">
-                    Nenhum operador logou ainda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </TabelaWrap>
+              </thead>
+              <tbody className="divide-border divide-y">
+                {dados.por_operador.map((op) => (
+                  <tr key={op.operador.id}>
+                    <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
+                    <td className="px-4 py-2.5">{op.total_clientes}</td>
+                    <td className="px-4 py-2.5">{op.com_pdf}</td>
+                    <td className="px-4 py-2.5">{op.com_pix}</td>
+                    <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
+                    <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
+                    <td className="px-4 py-2.5">
+                      {op.entregues} / {op.lidos}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {op.falhas > 0 ? <span className="text-destructive">{op.falhas}</span> : "0"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TabelaWrap>
+        )}
       </SectionCard>
     </div>
   );
@@ -277,21 +366,42 @@ function SeletorOperador({
   );
 }
 
+// [2026-08] Mesmas opções de com_pdf/sem_pdf/com_pix/sem_pix que a tela de
+// Clientes do Operador já tem (routes/clientes.tsx) -- faltavam aqui, agora
+// que o backend (GET /api/supervisor/clientes) também aceita com_pdf/sem_pdf.
+const FILTRO_PDF_PIX = [
+  { value: "", label: "Todos" },
+  { value: "com_pix", label: "Com PIX" },
+  { value: "sem_pix", label: "Sem PIX" },
+  { value: "com_pdf", label: "Com PDF" },
+  { value: "sem_pdf", label: "Sem PDF" },
+] as const;
+type FiltroPdfPix = (typeof FILTRO_PDF_PIX)[number]["value"];
+
 function AbaClientes({ operadores }: { operadores: Operador[] }) {
   const [clientes, setClientes] = useState<ClienteSup[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [operadorId, setOperadorId] = useState("");
+  const [filtro, setFiltro] = useState<FiltroPdfPix>("");
 
   const carregar = useCallback(() => {
     setCarregando(true);
+    setErro(null);
     api.supervisor
-      .clientes({ busca: busca || undefined, operador_id: operadorId || undefined })
+      .clientes({
+        busca: busca || undefined,
+        operador_id: operadorId || undefined,
+        com_pix: filtro === "com_pix" ? "true" : undefined,
+        sem_pix: filtro === "sem_pix" ? "true" : undefined,
+        com_pdf: filtro === "com_pdf" ? "true" : undefined,
+        sem_pdf: filtro === "sem_pdf" ? "true" : undefined,
+      })
       .then((data) => setClientes(Array.isArray(data) ? data : []))
       .catch((e) => setErro((e as Error).message))
       .finally(() => setCarregando(false));
-  }, [busca, operadorId]);
+  }, [busca, operadorId, filtro]);
 
   useEffect(() => {
     const t = setTimeout(carregar, 300);
@@ -303,8 +413,15 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
       titulo="Clientes (todos os operadores)"
       descricao="A quem cada cliente está atribuído."
       acoes={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Busca placeholder="Buscar por nome ou telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <Seletor value={filtro} onChange={(e) => setFiltro(e.target.value as FiltroPdfPix)} className="max-w-[160px]">
+            {FILTRO_PDF_PIX.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </Seletor>
           <SeletorOperador operadores={operadores} valor={operadorId} onChange={setOperadorId} />
         </div>
       }
@@ -313,10 +430,17 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
     >
       {erro ? (
         <div className="p-5">
-          <Aviso tone="danger">{erro}</Aviso>
+          <Aviso tone="danger">
+            {erro}
+            <button onClick={carregar} className="ml-3 font-medium underline">
+              Tentar novamente
+            </button>
+          </Aviso>
         </div>
       ) : carregando ? (
         <CarregandoBloco linhas={6} />
+      ) : clientes.length === 0 ? (
+        <EmptyState icon={Users} titulo="Nenhum cliente encontrado" descricao="Ajuste a busca ou os filtros acima." compacto />
       ) : (
         <TabelaWrap>
           <table className="w-full text-sm">
@@ -325,6 +449,7 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
                 <th className="px-4 py-2.5">Cliente</th>
                 <th className="px-4 py-2.5">Telefone</th>
                 <th className="px-4 py-2.5">Valor</th>
+                <th className="px-4 py-2.5">PDF</th>
                 <th className="px-4 py-2.5">PIX</th>
                 <th className="px-4 py-2.5">Atribuído a</th>
               </tr>
@@ -336,18 +461,14 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
                   <td className="px-4 py-2.5 font-mono text-xs">{c.telefone}</td>
                   <td className="px-4 py-2.5">{formatarValor(c.valor)}</td>
                   <td className="px-4 py-2.5">
+                    {c.pdf_path ? <StatusPill tone="success">Com PDF</StatusPill> : <StatusPill tone="muted">Sem PDF</StatusPill>}
+                  </td>
+                  <td className="px-4 py-2.5">
                     {c.pix_code ? <StatusPill tone="success">Com PIX</StatusPill> : <StatusPill tone="muted">Sem PIX</StatusPill>}
                   </td>
                   <td className="px-4 py-2.5">{nomeOperador(c.operador)}</td>
                 </tr>
               ))}
-              {clientes.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-subtle px-4 py-6 text-center text-sm">
-                    Nenhum cliente encontrado.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </TabelaWrap>
@@ -365,6 +486,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
 
   const carregar = useCallback(() => {
     setCarregando(true);
+    setErro(null);
     api.supervisor
       .faturas({ busca: busca || undefined, operador_id: operadorId || undefined })
       .then((data) => setFaturas(Array.isArray(data) ? data : []))
@@ -392,10 +514,17 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
     >
       {erro ? (
         <div className="p-5">
-          <Aviso tone="danger">{erro}</Aviso>
+          <Aviso tone="danger">
+            {erro}
+            <button onClick={carregar} className="ml-3 font-medium underline">
+              Tentar novamente
+            </button>
+          </Aviso>
         </div>
       ) : carregando ? (
         <CarregandoBloco linhas={6} />
+      ) : faturas.length === 0 ? (
+        <EmptyState icon={FileText} titulo="Nenhuma fatura encontrada" descricao="Ajuste a busca ou o filtro de operador acima." compacto />
       ) : (
         <TabelaWrap>
           <table className="w-full text-sm">
@@ -416,9 +545,13 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
                   <td className="px-4 py-2.5">{f.vencimento || "—"}</td>
                   <td className="px-4 py-2.5">
                     {f.pdf_url ? (
-                      <a href={f.pdf_url} target="_blank" rel="noreferrer" className="text-primary-strong inline-flex items-center gap-1 hover:underline">
+                      <button
+                        type="button"
+                        onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErro((e as Error).message))}
+                        className="text-primary-strong inline-flex items-center gap-1 hover:underline"
+                      >
                         <FileText className="size-3.5" /> Ver
-                      </a>
+                      </button>
                     ) : (
                       <span className="text-subtle">—</span>
                     )}
@@ -426,13 +559,6 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
                   <td className="px-4 py-2.5">{nomeOperador(f.operador)}</td>
                 </tr>
               ))}
-              {faturas.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-subtle px-4 py-6 text-center text-sm">
-                    Nenhuma fatura encontrada.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </TabelaWrap>
@@ -459,6 +585,7 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
 
   const carregar = useCallback(() => {
     setCarregando(true);
+    setErro(null);
     api.supervisor
       .disparos({ status, operador_id: operadorId || undefined })
       .then((data) => setDisparos(Array.isArray(data) ? data : []))
@@ -493,10 +620,17 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
     >
       {erro ? (
         <div className="p-5">
-          <Aviso tone="danger">{erro}</Aviso>
+          <Aviso tone="danger">
+            {erro}
+            <button onClick={carregar} className="ml-3 font-medium underline">
+              Tentar novamente
+            </button>
+          </Aviso>
         </div>
       ) : carregando ? (
         <CarregandoBloco linhas={6} />
+      ) : disparos.length === 0 ? (
+        <EmptyState icon={KeyRound} titulo="Nenhum disparo encontrado" descricao="Ajuste o status ou o filtro de operador acima." compacto />
       ) : (
         <TabelaWrap>
           <table className="w-full text-sm">
@@ -531,13 +665,6 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
                   </tr>
                 );
               })}
-              {disparos.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-subtle px-4 py-6 text-center text-sm">
-                    Nenhum disparo encontrado.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </TabelaWrap>

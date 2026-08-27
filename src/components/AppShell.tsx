@@ -6,6 +6,7 @@ import {
   Gauge,
   History,
   KeyRound,
+  Layers,
   LogOut,
   Menu,
   MessageSquare,
@@ -25,6 +26,14 @@ import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { StatusPill, type Tone } from "@/components/shared/StatusPill";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Gauge, grupo: "Operação" },
@@ -33,6 +42,8 @@ const nav = [
   { to: "/chat", label: "Chat", icon: MessageSquare, grupo: "Operação" },
   { to: "/clientes", label: "Clientes", icon: Users, grupo: "Gestão" },
   { to: "/faturas", label: "Faturas", icon: FileText, grupo: "Gestão" },
+  // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado").
+  { to: "/safras", label: "Safras", icon: Layers, grupo: "Gestão" },
   { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Gestão" },
   { to: "/importar", label: "Importar", icon: Upload, grupo: "Gestão" },
   { to: "/tags", label: "Tags", icon: Tag, grupo: "Gestão" },
@@ -66,12 +77,7 @@ function SidebarContent({
   onToggleCollapse?: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { conexao, logout, session, perfil, isSupervisor } = useAppState();
-  const nomeExibido = perfil.nome.trim() || session?.user?.email || "—";
-  const iniciais = (perfil.nome.trim() || session?.user?.email || "?")
-    .trim()
-    .charAt(0)
-    .toUpperCase();
+  const { conexao, isSupervisor } = useAppState();
 
   return (
     <div className="bg-sidebar text-sidebar-foreground flex h-full flex-col">
@@ -141,7 +147,7 @@ function SidebarContent({
 
       <div className={cn("border-sidebar-border mt-auto border-t p-3", collapsed && "p-2")}>
         {!collapsed && (
-          <div className="mb-2.5 space-y-1.5">
+          <div className="space-y-1.5">
             {(() => {
               const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
               return (
@@ -166,54 +172,55 @@ function SidebarContent({
             })()}
           </div>
         )}
-        <Link
-          to="/configuracoes"
-          onClick={onNavigate}
-          title="Editar perfil do operador"
-          className={cn(
-            "hover:bg-sidebar-accent/60 mb-1.5 flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors",
-            collapsed && "justify-center px-0",
-          )}
+      </div>
+    </div>
+  );
+}
+
+// [2026-08] Perfil do operador -- movido do rodapé da sidebar pro canto
+// superior direito do cabeçalho (ver AppShell abaixo). Só mostra nome +
+// avatar (iniciais ou foto) -- o e-mail deixou de aparecer aqui de
+// propósito (era exibido por padrão antes; agora só quem entra em "Editar
+// perfil" vê o e-mail, na própria tela de Configurações).
+function ProfileMenu() {
+  const { logout, perfil, session } = useAppState();
+  const nomeExibido = perfil.nome.trim() || "Operador";
+  const iniciais = (perfil.nome.trim() || session?.user?.email || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label="Perfil"
+          className="hover:bg-surface-raised flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors"
         >
           {perfil.fotoUrl ? (
-            <img
-              src={perfil.fotoUrl}
-              alt=""
-              className="bg-sidebar-accent size-7 shrink-0 rounded-full object-cover"
-            />
+            <img src={perfil.fotoUrl} alt="" className="bg-surface-raised size-7 shrink-0 rounded-full object-cover" />
           ) : (
-            <span className="bg-sidebar-accent text-sidebar-foreground/70 grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold">
+            <span className="bg-surface-raised text-foreground/70 grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold">
               {iniciais}
             </span>
           )}
-          {!collapsed && (
-            <span className="text-sidebar-foreground/70 min-w-0 truncate text-[11px] font-medium">
-              {nomeExibido}
-            </span>
-          )}
-        </Link>
-        <div
-          className={cn(
-            "flex items-center gap-2",
-            collapsed ? "flex-col" : "justify-between",
-          )}
-        >
-          {!collapsed && (
-            <span className="text-sidebar-foreground/45 min-w-0 truncate text-[11px]">
-              {session?.user?.email ?? "—"}
-            </span>
-          )}
-          <button
-            onClick={logout}
-            aria-label="Sair"
-            title="Sair"
-            className="text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent grid size-7 shrink-0 place-items-center rounded-md transition-colors"
-          >
-            <LogOut className="size-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
+          <span className="text-foreground/80 hidden max-w-[9rem] truncate text-[13px] font-medium sm:inline">
+            {nomeExibido}
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel className="truncate">{nomeExibido}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/configuracoes" className="flex items-center gap-2">
+            <Settings className="size-3.5" />
+            Editar perfil
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={logout} className="text-destructive flex items-center gap-2">
+          <LogOut className="size-3.5" />
+          Sair
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -325,6 +332,7 @@ export function AppShell({
             <div className="toolbar shrink-0">
               {actions}
               <ThemeToggle />
+              <ProfileMenu />
             </div>
           </div>
         </header>

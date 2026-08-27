@@ -20,6 +20,8 @@ import { Route as FaturasRouteImport } from './routes/faturas'
 import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as PixRouteImport } from './routes/pix'
+import { Route as SafrasRouteImport } from './routes/safras'
+import { Route as SupervisorRouteImport } from './routes/supervisor'
 import { Route as TagsRouteImport } from './routes/tags'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +79,16 @@ const PixRoute = PixRouteImport.update({
   path: '/pix',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SafrasRoute = SafrasRouteImport.update({
+  id: '/safras',
+  path: '/safras',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupervisorRoute = SupervisorRouteImport.update({
+  id: '/supervisor',
+  path: '/supervisor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TagsRoute = TagsRouteImport.update({
   id: '/tags',
   path: '/tags',
@@ -95,6 +107,8 @@ export interface FileRoutesByFullPath {
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
   '/pix': typeof PixRoute
+  '/safras': typeof SafrasRoute
+  '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
 }
 export interface FileRoutesByTo {
@@ -109,6 +123,8 @@ export interface FileRoutesByTo {
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
   '/pix': typeof PixRoute
+  '/safras': typeof SafrasRoute
+  '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
 }
 export interface FileRoutesById {
@@ -124,6 +140,8 @@ export interface FileRoutesById {
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
   '/pix': typeof PixRoute
+  '/safras': typeof SafrasRoute
+  '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +158,8 @@ export interface FileRouteTypes {
     | '/historico'
     | '/importar'
     | '/pix'
+    | '/safras'
+    | '/supervisor'
     | '/tags'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -154,6 +174,8 @@ export interface FileRouteTypes {
     | '/historico'
     | '/importar'
     | '/pix'
+    | '/safras'
+    | '/supervisor'
     | '/tags'
   id:
     | '__root__'
@@ -168,6 +190,8 @@ export interface FileRouteTypes {
     | '/historico'
     | '/importar'
     | '/pix'
+    | '/safras'
+    | '/supervisor'
     | '/tags'
   fileRoutesById: FileRoutesById
 }
@@ -183,6 +207,8 @@ export interface RootRouteChildren {
   HistoricoRoute: typeof HistoricoRoute
   ImportarRoute: typeof ImportarRoute
   PixRoute: typeof PixRoute
+  SafrasRoute: typeof SafrasRoute
+  SupervisorRoute: typeof SupervisorRoute
   TagsRoute: typeof TagsRoute
 }
 
@@ -265,6 +291,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PixRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/safras': {
+      id: '/safras'
+      path: '/safras'
+      fullPath: '/safras'
+      preLoaderRoute: typeof SafrasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/supervisor': {
+      id: '/supervisor'
+      path: '/supervisor'
+      fullPath: '/supervisor'
+      preLoaderRoute: typeof SupervisorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tags': {
       id: '/tags'
       path: '/tags'
@@ -287,6 +327,8 @@ const rootRouteChildren: RootRouteChildren = {
   HistoricoRoute: HistoricoRoute,
   ImportarRoute: ImportarRoute,
   PixRoute: PixRoute,
+  SafrasRoute: SafrasRoute,
+  SupervisorRoute: SupervisorRoute,
   TagsRoute: TagsRoute,
 }
 export const routeTree = rootRouteImport

@@ -63,6 +63,9 @@ export type Cliente = {
   pdf_url: string | null;
   pdf_path: string | null;
   pix_code: string | null;
+  /** Quantos disparos (status enviado) este cliente já recebeu no total --
+   *  ver backend/src/routes/clientes.routes.js (GET /). */
+  disparos_recebidos?: number;
   tags: Tag[];
   ultimo_envio_em?: string | null;
   ultimo_envio_status?: ItemStatus | null;
@@ -70,6 +73,48 @@ export type Cliente = {
    *  POST /clientes/:id/vincular/:outroId. Só vem preenchido no GET de um
    *  cliente específico, não na listagem. */
   vinculados?: { id: string; nome: string; telefone: string }[];
+  /** Se preenchido, esta linha é um número extra vinculado a outro cliente
+   *  (aponta pro id da linha "principal") -- ver migration-15. Nulo/ausente
+   *  = linha é a principal do seu próprio grupo (ou não tem vínculo). Vem
+   *  em toda listagem, permitindo agrupar por cliente no front. */
+  cliente_principal_id?: string | null;
+  /** [2026-08] Safras -- preenchidos quando o cliente veio da lista crua com
+   *  essa informação (ver backend/src/lib/parseListaClientes.js e
+   *  migration-19-safras-faturas.sql). Nulos para cadastro manual ou
+   *  planilha sem essa coluna. */
+  tipo_fatura?: TipoFatura | null;
+  /** "YYYY-MM-DD". Fonte de verdade pra cálculo/filtro por data -- `vencimento`
+   *  acima continua sendo texto livre só pra exibição/mensagem. */
+  data_prazo?: string | null;
+  numero_contrato?: string | null;
+  /** Hoje sempre null (nenhum formato de lista crua observado traz essa data
+   *  separada da data de prazo) -- reservado pra uma variação futura. */
+  data_contrato?: string | null;
+  /** "YYYY-MM", GERADO no banco a partir de data_prazo -- nunca enviar em POST/PUT. */
+  safra?: string | null;
+};
+
+/** FPD = primeira fatura, SPD = segunda fatura -- ver CONTEXTO.md ("Safras"). */
+export type TipoFatura = "FPD" | "SPD";
+
+/** Resumo de métricas de uma safra -- ver GET /safras, /safras/:safra. */
+export type SafraResumo = {
+  safra: string; // "2026-09"
+  rotulo: string; // "Setembro/2026"
+  total_clientes: number;
+  total_fpd: number;
+  total_spd: number;
+  sem_tipo_fatura: number;
+  pagos: number;
+  nao_pagos: number;
+  receberam_disparo: number;
+  nao_receberam_disparo: number;
+  valor_total: number;
+  valor_medio: number;
+  duplicidades_detectadas: number;
+  consolidado_em: string | null;
+  /** true = sem cliente ativo nessa safra hoje, métricas vêm só do snapshot histórico. */
+  arquivada: boolean;
 };
 
 export type DashboardResumo = {
@@ -82,6 +127,10 @@ export type DashboardResumo = {
   falhas: number;
   numeros_invalidos: number;
   pendentes: number;
+  valor_medio?: number;
+  valor_total?: number;
+  faturas_com_valor?: number;
+  serie_disparos_7dias?: { data: string; total: number }[];
 };
 
 export type PixExtracaoStatus =

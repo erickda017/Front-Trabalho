@@ -92,21 +92,37 @@ PixExtracao = {
 
 | Método | Rota |
 | --- | --- |
-| GET | `/clientes?busca&tag&com_pix&sem_pix&page&per_page` → `{ items: Cliente[], total }` |
+| GET | `/clientes?busca&tag&com_pix&sem_pix&com_pdf&sem_pdf&recebeu_disparo&safra&tipo_fatura&page&per_page` → `Cliente[]` |
 | GET | `/clientes/:id` → `Cliente` |
 | POST | `/clientes` → `Cliente` |
-| PUT | `/clientes/:id` → `Cliente` |
+| PUT | `/clientes/:id` → `Cliente` (aceita `nome`, `telefone`, `valor`, `vencimento`, `tipo_fatura`, `data_prazo`, `numero_contrato`, `data_contrato` — os 4 últimos propagam pro grupo de números vinculados, mesmo tratamento de `valor`/`vencimento`; nunca envie `safra`, é coluna gerada) |
 | DELETE | `/clientes/:id` |
 | GET | `/clientes/:id/historico` → `EnvioItem[]` (envios do cliente) |
 | POST | `/clientes/:id/pdf` → `multipart` campo `pdf` → `Cliente` atualizado |
+| POST | `/clientes/converter-lista` → `{ texto }` → `{ itens: ItemConvertido[], avisos: string[], total }` |
+| POST | `/clientes/importar-lista` → `{ itens: ItemConvertido[] }` → `{ criados, erros, total }` |
 
 ```ts
 Cliente = {
   id, nome, telefone, valor: string|null, vencimento: string|null,
   pdf_url: string|null, pdf_path: string|null, pix_code: string|null,
-  tags: Tag[], ultimo_envio_em?: string|null, ultimo_envio_status?: ItemStatus|null
+  tags: Tag[], ultimo_envio_em?: string|null, ultimo_envio_status?: ItemStatus|null,
+  // [2026-08] Safras (ver seção 11) -- preenchidos quando o cliente veio da
+  // lista crua com essa informação (nulos para cadastro manual/planilha antiga).
+  tipo_fatura: "FPD"|"SPD"|null,       // FPD = primeira fatura, SPD = segunda fatura
+  data_prazo: string|null,             // "YYYY-MM-DD"
+  numero_contrato: string|null,
+  data_contrato: string|null,          // "YYYY-MM-DD" -- hoje sempre null (ver seção 11)
+  safra: string|null,                  // "YYYY-MM", GERADO a partir de data_prazo -- nunca enviar no PUT/POST
 }
 Tag = { id, nome, cor }
+
+// Item devolvido por /converter-lista e aceito por /importar-lista.
+ItemConvertido = {
+  nome, numero, valor: number|null, arquivo,
+  tipo_fatura: "FPD"|"SPD"|null, data_prazo: string|null,
+  numero_contrato: string|null, data_contrato: string|null,
+}
 ```
 
 ## 6. Faturas
@@ -165,6 +181,39 @@ Variáveis interpoladas na mensagem (substituição no backend):
 - `GET/POST /tags`, `PUT/DELETE /tags/:id`
 - `POST/DELETE /tags/:tagId/clientes/:clienteId`
 - `GET/POST /respostas-rapidas`, `PUT/DELETE /respostas-rapidas/:id` (`{ titulo, texto }`)
+
+## 11. Safras (FPD/SPD) e histórico
+
+Acompanhamento por safra de 60 dias (FPD = primeira fatura, SPD = segunda fatura --
+ver CONTEXTO.md pra regra de negócio completa). Não existe tabela operacional própria:
+é uma visão sobre `clientes` agrupada pela coluna gerada `safra` ('YYYY-MM', mês/ano da
+`data_prazo`) -- mesmo espírito de `/faturas` (visão sobre `clientes` filtrada por PDF).
+
+| Método | Rota | Observações |
+| --- | --- | --- |
+| GET | `/safras` | Lista todas as safras (ativas com métrica ao vivo + históricas arquivadas) |
+| GET | `/safras/:safra` | Detalhe de uma safra (`YYYY-MM`) -- ao vivo se tiver cliente ativo, senão cai pro snapshot do histórico |
+| POST | `/safras/:safra/consolidar` | Força o snapshot em `safras_historico` agora (o job automático roda 1x/dia) |
+
+```ts
+SafraResumo = {
+  safra: string,               // "2026-09"
+  rotulo: string,               // "Setembro/2026"
+  total_clientes: number,
+  total_fpd: number,
+  total_spd: number,
+  sem_tipo_fatura: number,
+  pagos: number,                // tag "Pago" (ver /clientes/importar-pagos)
+  nao_pagos: number,
+  receberam_disparo: number,
+  nao_receberam_disparo: number,
+  valor_total: number,
+  valor_medio: number,
+  duplicidades_detectadas: number,
+  consolidado_em: string | null, // última vez que essa safra foi salva em safras_historico
+  arquivada: boolean,            // true = sem cliente ativo, métricas vêm só do snapshot
+}
+```
 
 ---
 

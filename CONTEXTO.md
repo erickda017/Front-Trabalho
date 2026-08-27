@@ -150,9 +150,125 @@ Duas formas de gerar um disparo:
   `pix_extracoes.criado_em`). Remove do Storage e limpa/apaga a linha no
   banco; nunca apaga o cliente em si, só o PDF associado.
 
+- **[2026-08] SUPERVISOR alinhado ao padrão do Dashboard do Operador** —
+  `GET /api/supervisor/dashboard` (`backend/src/routes/supervisor.routes.js`)
+  passou a devolver os mesmos blocos que o dashboard do operador já tinha
+  (`dashboard.routes.js`), só que agregados de TODOS os operadores: "Faturas
+  em valor" (`valor_medio`/`valor_total`/`faturas_com_valor`, via
+  `resumoValoresGlobal()`) e o gráfico "Disparos por dia" dos últimos 7 dias
+  (`serie_disparos_7dias`, via `serieDisparosGlobalPorDia()`) — mais os totais
+  `enviados`/`falhas`/`pendentes` que já existiam por operador em
+  `por_operador[]` mas não estavam somados no nível `totais`. No front
+  (`frontend/src/routes/supervisor.tsx`), a aba Dashboard trocou o card de
+  métrica caseiro (`CardMetrica`) pelo componente padrão `MetricCard` (mesmo
+  do painel do operador, `components/shared/MetricCard.tsx`) e ganhou o
+  gráfico (`recharts`, mesmo padrão de `routes/index.tsx`). As abas Clientes/
+  Faturas/Disparos do Supervisor também passaram a seguir o mesmo padrão de
+  estado do resto do sistema: erro com botão "Tentar novamente" (em vez de só
+  mostrar a mensagem) e `EmptyState` no lugar da linha de tabela "Nenhum ...
+  encontrado". A aba Clientes ganhou filtro "Com PDF"/"Sem PDF" (já existia em
+  `GET /api/clientes` do operador, mas nunca tinha sido replicado em
+  `GET /api/supervisor/clientes`) e uma coluna "PDF" na tabela.
+
+## [2026-08] Safras (FPD/SPD) e histórico consolidado
+
+Pedido: acompanhar clientes por "safra" mensal de 60 dias (primeira fatura + segunda
+fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
+`backend/src/lib/parseListaClientes.js`).
+
+- **Regra de negócio**: a safra de um cliente é o **mês/ano da data de PRAZO** da
+  fatura em acompanhamento (não o mês em que o cliente foi importado). Ex.: cliente
+  com prazo 24/09/2026 pertence à safra "2026-09" ("Setembro/2026"), esteja ele sendo
+  trabalhado em agosto ou setembro. FPD (Fatura 1) e SPD (Fatura 2) são as duas
+  faturas de ~30 dias cada que, juntas, cobrem o ciclo de ~60 dias por cliente.
+- **Parser (`backend/src/lib/parseListaClientes.js`) ampliado**: até essa mudança, a
+  linha "Fatura N" e a data de prazo (formato real: depois do valor, uma linha
+  "— DD/MM/AAAA") eram **descartadas silenciosamente** -- confirmado escrevendo um
+  teste com o exemplo de dado real antes de mexer no código. Agora extrai
+  `tipo_fatura` ("Fatura 1"→"FPD", "Fatura 2"→"SPD"), `data_prazo` (ISO,
+  `YYYY-MM-DD`) e `numero_contrato` (a linha de dígitos logo após o nome, que já era
+  parseada por posição mas nunca guardada). 100% retrocompatível: listas sem essas
+  linhas continuam funcionando exatamente como antes (campos ficam `null`).
+  **Decisão consciente**: não existe "data de contrato" separada em nenhum formato de
+  lista crua observado até hoje (a linha de dígitos após o nome é um número
+  identificador, não uma data) -- a coluna `data_contrato` foi reservada no schema
+  pra um formato futuro que eventualmente traga isso, mas fica sempre `null` por
+  enquanto. Não inventei um valor pra ela.
+- **Schema (`migration-19-safras-faturas.sql`)**: `clientes` ganhou `tipo_fatura`
+  ("FPD"|"SPD"|null), `data_prazo` (date), `numero_contrato` (text), `data_contrato`
+  (date, reservado) e a coluna **gerada** `safra` (`to_char(data_prazo, 'YYYY-MM')`
+  stored) -- gerada de propósito pra nunca ficar dessincronizada de `data_prazo` sem
+  precisar de trigger. A coluna `vencimento` (texto livre, já usada em
+  `{{vencimento}}` na mensagem) foi mantida como estava; `data_prazo` é a fonte de
+  verdade nova para cálculo/filtro por data, `vencimento` continua sendo só exibição.
+  Nova tabela `safras_historico` (1 linha por usuário+safra, upsert) guarda o
+  snapshot permanente das métricas.
+- **`POST /clientes/importar-lista` ampliado**: persiste os 4 campos novos no upsert
+  e passou a também preencher `vencimento` (formatado `DD/MM/AAAA`) a partir de
+  `data_prazo` -- esse fluxo nunca preenchia `vencimento`, então `{{vencimento}}` na
+  mensagem ficava sempre vazio pra quem vinha da lista crua; agora fica preenchido.
+- **`GET /clientes` ganhou os filtros `?safra=` e `?tipo_fatura=`** (mesmo padrão dos
+  filtros existentes `com_pix`/`sem_pdf`/etc.). **`PUT /clientes/:id` também passou a
+  aceitar `tipo_fatura`/`data_prazo`/`numero_contrato`/`data_contrato`** -- adicionados
+  em `CAMPOS_FATURA` (`lib/faturaPropagacao.js`), então uma edição manual propaga pro
+  grupo de números vinculados igual já acontecia com `valor`/`vencimento` (migration-15).
+  `safra` nunca entra nesse allowlist -- é coluna gerada, um UPDATE nela falharia.
+- **Métricas de safra (`backend/src/lib/safras.js`)**: "pagou" reaproveita a tag
+  "Pago" que já existe (`POST /clientes/importar-pagos`) -- não é um status novo por
+  baixo. "Recebeu disparo" reaproveita a mesma contagem de
+  `envio_itens.status='enviado'` já usada em `GET /clientes`/dashboard. Só a linha
+  principal de cada grupo de números vinculados conta (mesmo critério de
+  `dashboard.routes.js`/`supervisor.routes.js`, migration-15), pra não contar a mesma
+  pessoa 2x. Também calcula uma contagem simples de "duplicidade" (nomes idênticos
+  normalizados dentro da mesma safra), como alerta pro operador -- não corrige nada
+  sozinho.
+- **`GET /safras`, `GET /safras/:safra`, `POST /safras/:safra/consolidar`**
+  (`backend/src/routes/safras.routes.js`) -- "safra" não tem tabela operacional
+  própria, é uma visão sobre `clientes` (mesmo espírito de `/faturas`, que também é
+  uma visão sobre `clientes`). Ver contrato completo em `README_CLAUDE_BACKEND.md`,
+  seção 11.
+- **Consolidação automática (`iniciarConsolidacaoSafras`, chamada em `server.js`,
+  mesmo padrão de `iniciarLimpezaAutomatica`)**: roda 1x/dia, grava (upsert) em
+  `safras_historico` toda safra cujo mês de prazo já passou há mais de
+  `SAFRA_DIAS_FOLGA_FECHAMENTO` dias (default 75 -- cobre o ciclo de ~60 dias
+  FPD+SPD com folga). **Importante**: hoje o sistema **não apaga clientes** (só PDFs,
+  ver `limpezaAutomatica.js` mais abaixo) -- então tecnicamente nada obrigava
+  consolidar antes de uma exclusão que não existe. Decidi consolidar por TEMPO
+  mesmo assim (não atrelado a nenhum evento de exclusão), pra que o histórico já
+  fique protegido e disponível via `GET /safras` independentemente de qualquer
+  mudança futura na política de retenção de `clientes` -- é a interpretação mais
+  segura de "antes que esses dados sejam eliminados" dado que a exclusão de fato
+  ainda não existe. Se um dia `clientes` passar a ser apagado de verdade, esse job
+  já garante que a safra correspondente foi consolidada bem antes disso acontecer.
+- **Frontend**: `src/lib/types.ts` ganhou os campos novos em `Cliente` + tipo
+  `SafraResumo`; `src/api.js` ganhou `api.safras.*`; a tela `/importar` (conversor de
+  lista crua) mostra as colunas "Fatura" e "Prazo" no preview; nova tela `/safras`
+  (`src/routes/safras.tsx`, item de menu novo em `AppShell.tsx`) lista as safras com
+  os totais acima, incluindo as já arquivadas (só no histórico).
+- **Não fiz** (fora do escopo do pedido, risco desnecessário): não toquei em
+  `services/importLote.js` (fluxo de planilha+zip) -- esse fluxo tem sua própria
+  lógica de colunas (`nome`/`telefone`/`valor`/`vencimento`) e não recebe uma "lista
+  crua" no formato que `parseListaClientes.js` entende; se um dia a planilha também
+  precisar trazer fatura/prazo, dá pra reconhecer uma coluna `fatura`/`prazo`
+  seguindo o mesmo padrão de `nome`/`telefone`, mas não implementei isso agora pra
+  não arriscar regressão num fluxo já usado em produção sem necessidade.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
+
+- **[2026-08] Dashboard do Supervisor contava clientes com números vinculados
+  em dobro.** `GET /api/supervisor/dashboard` (`backend/src/routes/
+  supervisor.routes.js`) contava toda linha da tabela `clientes` sem filtrar
+  `cliente_principal_id` — um cliente com 2+ números vinculados
+  (migration-15, PDF/Pix/valor propagados pra todas as linhas do grupo via
+  `faturaPropagacao.js`) virava 2+ "clientes" nos cards "Clientes", "Com PDF"
+  e "Com PIX", tanto por operador (`por_operador[]`) quanto no total geral
+  (`totais`). A mesma regra já valia em `GET /api/supervisor/operadores`
+  (só a linha principal conta) e no dashboard do próprio operador
+  (`dashboard.routes.js`) — só o Dashboard do Supervisor tinha ficado pra
+  trás. Corrigido com um helper único (`somenteLinhasPrincipais()`) aplicado
+  em toda contagem de clientes da rota.
 
 - **[2026-08] `render.yaml` sobrescrevia o `DAILY_LIMIT` do código.** Ao subir o
   limite diário pra 300 direto no default de `dispatchQueue.js`, o
@@ -280,3 +396,91 @@ Duas formas de gerar um disparo:
   muito idênticas/genéricas.
 - Free tier do Render "dorme" o serviço — ao acordar, a conexão do WhatsApp precisa
   reconectar (a sessão salva evita reescanear QR, mas leva alguns segundos).
+
+## [2026-08] Rodada de features: extração no servidor, clientes pagos, dashboard, disparos por cliente, perfil no header, upload avulso
+
+Seis mudanças pedidas numa tacada só. Documentando juntas porque se apoiam nas mesmas
+libs novas.
+
+- **Libs novas compartilhadas no backend** (`backend/src/lib/`): `pixValidacao.js`
+  (CRC16 do payload Pix, espelha `pixExtractor.ts`), `nomeMatch.js` (espelha
+  `clienteMatch.ts` do frontend, pro backend também poder casar nome de cliente sem
+  depender do navegador), `pixPersistencia.js` (resolver cliente + gravar
+  `pix_extracoes` + propagar pro cliente — usada por `boletos.routes.js` e pela nova
+  extração no servidor), `tagsEfeito.js` (cancelamento de itens pendentes ao aplicar
+  tag `permite_disparo:false`, extraída de `tags.routes.js`), `faturasPendentes.js`
+  (fila de PDFs avulsos sem cliente correspondente ainda).
+
+- **Extração de Pix no servidor ("opção 2")** — `backend/src/services/
+  extratorServidorPix.js` + `POST /api/pix/extracoes/extrair-servidor`. A extração
+  PADRÃO continua 100% no navegador (ver decisão de 2026-08 mais acima nesse mesmo
+  arquivo sobre por que o servidor não deve tocar em bytes de PDF). Esta é uma
+  alternativa explícita, escolhida pelo operador na tela `/pix`, pra quando o
+  navegador não dá conta. **O que evita repetir o erro de RAM de antes:** processa
+  UM PDF por requisição (nunca um lote inteiro), usa `diskStorage` (nunca guarda o
+  PDF inteiro num Buffer da aplicação), tem uma fila em memória
+  (`executarSequencial`) que serializa as extrações mesmo se chegarem requisições
+  concorrentes, e faz cleanup explícito de canvas/página/documento entre um PDF e o
+  próximo (mais `global.gc()` opcional se o processo subir com `--expose-gc` — ver
+  `render.yaml`/`package.json`, `npm start` agora usa essa flag). Usa `pdfjs-dist`
+  (build legacy, sem DOM) + `@napi-rs/canvas` (binário pré-compilado, não precisa de
+  libs nativas do sistema) + `jsqr` — três dependências novas, **rodar `npm install`
+  antes do deploy**. Este endpoint só extrai o Pix (texto) — não sobe o PDF em si pro
+  Storage (isso é papel do upload de faturas avulsas ou do modo navegador).
+  Limite `PIX_SERVIDOR_MAX_ARQUIVO_MB` (padrão 12MB, só por arquivo já que é 1 por
+  vez).
+
+- **Importar clientes PAGOS** — `POST /api/clientes/importar-pagos` (tela Clientes,
+  botão "Importar pagos"). Cola uma lista de nomes (1 por linha), casa cada um contra
+  os clientes já cadastrados (mesmo critério de nome usado no resto do sistema) e
+  aplica a tag "Pago" (criada automaticamente na primeira vez, já como
+  `permite_disparo:false` — então quem leva essa tag sai dos disparos pendentes e
+  futuros, efeito reaproveitado de `lib/tagsEfeito.js`). Devolve quem foi encontrado
+  e quem não bateu com ninguém, pra revisão manual.
+
+- **Dashboard: valores e dados dinâmicos** — `GET /api/dashboard/resumo` ganhou
+  `valor_medio`, `valor_total`, `faturas_com_valor` (média/soma de `clientes.valor`
+  não nulo) e `serie_disparos_7dias` (contagem diária de `envio_itens` enviados, fuso
+  de SP). Front (`routes/index.tsx`) ganhou 3 cards novos + um `BarChart` (recharts,
+  já era dependência do projeto) dos disparos por dia.
+
+- **Disparos recebidos por cliente** — `GET /api/clientes` agora devolve
+  `disparos_recebidos` (contagem de `envio_itens` com `status='enviado'`, histórico
+  completo, calculada só pra página atual) em cada cliente, e aceita
+  `?recebeu_disparo=true|false` como filtro (resolvido via subquery antes da query
+  principal, mesmo padrão já usado pro filtro por tag). O front (`clientes.tsx`)
+  filtra client-side sobre esse campo (mesma filosofia do resto da tela, que já
+  carrega a lista inteira via `useAppState` e filtra em memória) e mostra uma coluna
+  "Disparos" na tabela.
+
+- **Perfil no canto superior direito, sem e-mail** — o bloco de perfil (avatar + nome
+  + e-mail + sair) saiu do rodapé da sidebar (`AppShell.tsx`) e virou um
+  `DropdownMenu` no header, ao lado do `ThemeToggle`. Só mostra nome + avatar — o
+  e-mail não aparece mais por padrão em lugar nenhum do shell (só em Configurações,
+  se o operador for lá editar o perfil). A sidebar manteve o indicador de status do
+  WhatsApp no rodapé, só perdeu o bloco de perfil/logout.
+
+- **Upload de faturas avulsas, sem planilha** — `POST /api/faturas/avulsas` (tela
+  Faturas, nova seção no topo). Sobe 1 PDF por vez (front chama uma vez por arquivo),
+  tenta casar pelo nome do arquivo com um cliente já cadastrado — achando, associa na
+  hora (mesmo efeito de `POST /clientes/:id/pdf`); não achando, o PDF fica guardado
+  no Storage sob `pendentes/<usuario_id>/...` e uma linha em `faturas_pendentes`
+  (`migration-18-faturas-pendentes.sql`) registra a pendência. **A parte que fecha o
+  ciclo:** `associarPendentesAoCliente` (lib/faturasPendentes.js) é chamada logo após
+  qualquer criação de cliente (`POST /clientes` e `POST /clientes/importar-lista`) —
+  se o nome bater com alguma pendência, o PDF é movido pra pasta do cliente e
+  associado automaticamente, sem o operador precisar voltar e re-subir nada. **Não
+  fiz o mesmo wiring em `services/importLote.js`** (upsert da importação em
+  massa/zip): esse arquivo já tem uma lógica própria de "sem PDF correspondente = não
+  cria o cliente" que teria que ser repensada pra caber a checagem de pendências sem
+  risco de regressão — deixei de fora por segurança, não por esquecimento. Se algum
+  dia isso for pedido, é o lugar certo pra olhar. A tela de Faturas também lista as
+  pendências com um botão de vínculo manual (`POST /faturas/avulsas/pendentes/:id/
+  associar`) e de descarte.
+
+- **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
+  só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente
+  a extração no servidor num ambiente real do Render antes de confiar nela em
+  produção (rendering de PDF com `@napi-rs/canvas` é a parte mais nova/arriscada
+  desta rodada).
+

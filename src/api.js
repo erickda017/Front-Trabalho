@@ -49,6 +49,94 @@ async function download(path, fallbackName) {
   URL.revokeObjectURL(url);
 }
 
+// [2026-08] PROXY DE ARQUIVOS: `pdf_url`/`anexo_url` que vêm da API não são
+// mais links diretos pro Supabase Storage -- são paths relativos deste
+// backend (ver Backend-Trabalho/src/routes/arquivos.routes.js), pensados
+// pra esconder o domínio do Supabase da barra de endereço do navegador.
+//
+// Só que um `<a href="/api/arquivos/...">` ou `<img src="/api/arquivos/...">`
+// comum NÃO funcionam pra isso: a rota exige `Authorization: Bearer
+// <token>`, e nem navegação de link nem carregamento de `<img>`/`<audio>`
+// conseguem anexar headers -- só `fetch` (chamado do JS) controla isso. Duas
+// funções cobrem os dois jeitos de usar isso no app:
+//
+//   - `abrirArquivoProtegido(path)`: pra cliques que devem ABRIR o arquivo
+//     numa nova aba (link "Ver PDF", documento no chat). Chamada num
+//     onClick.
+//   - `buscarBlobUrlProtegida(path)`: pra exibir o arquivo INLINE na própria
+//     página (`<img src>`, `<audio src>` -- ex: miniatura de foto e player
+//     de áudio no chat). Devolve a blob URL pronta; quem chama decide o que
+//     fazer com ela (ver `MidiaProtegida` em routes/chat.tsx).
+//
+// Em ambos os casos a barra de endereço (se o usuário abrir em nova aba)
+// mostra só "blob:https://seu-dominio/<uuid>", nunca o domínio do Supabase.
+//
+// `pdfUrlOuPath` pode ser:
+//   - um path relativo (o formato novo, ex: "/api/arquivos/faturas/x.pdf")
+//     -- é o caso normal a partir de agora.
+//   - `null`/`undefined` -- ignorado silenciosamente (mesmo padrão que o
+//     resto do app já usa pra "sem PDF ainda").
+// Não aceita mais URL absoluta do Supabase como entrada válida -- se algum
+// dado antigo em cache/estado local ainda tiver isso, a chamada ao backend
+// (que é sempre relativa a BASE_URL) vai falhar de forma visível (erro
+// tratado por quem chama) em vez de silenciosamente vazar a URL do Supabase
+// de novo.
+
+/** Busca o arquivo autenticado e devolve uma blob URL local pronta pra usar
+ * em `src`/`href`. Quem chama é responsável por `URL.revokeObjectURL` se
+ * quiser liberar a memória antes do componente desmontar (opcional -- o
+ * navegador libera sozinho quando a página/aba fecha). */
+/** Busca o arquivo autenticado e devolve o `Blob` cru -- pra quem vai
+ * PROCESSAR o conteúdo (ex: reler o QR do Pix) em vez de exibir/baixar.
+ * Mesmo padrão de auth de `buscarBlobUrlProtegida`, mas sem criar uma blob
+ * URL (que só serve pra `src`/`href`, não pra passar pro extrator). */
+export async function buscarBlobArquivoProtegido(pdfUrlOuPath) {
+  if (!pdfUrlOuPath) return null;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  const res = await fetch(`${BASE_URL}${pdfUrlOuPath}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`falha ao baixar PDF (${res.status})`);
+  return res.blob();
+}
+
+export async function buscarBlobUrlProtegida(pdfUrlOuPath) {
+  const blob = await buscarBlobArquivoProtegido(pdfUrlOuPath);
+  if (!blob) return null;
+  return URL.createObjectURL(blob);
+}
+
+export async function abrirArquivoProtegido(pdfUrlOuPath) {
+  if (!pdfUrlOuPath) return;
+
+  // Abre a aba ANTES do fetch (síncrono, na mesma pilha do clique) --
+  // Safari/iOS bloqueia `window.open` chamado depois de um `await`, tratando
+  // como pop-up não solicitado pelo usuário. Preenchemos essa aba com a
+  // blob URL assim que o fetch terminar.
+  const abaDestino = window.open('', '_blank');
+
+  try {
+    const blobUrl = await buscarBlobUrlProtegida(pdfUrlOuPath);
+
+    if (abaDestino && !abaDestino.closed) {
+      abaDestino.location.href = blobUrl;
+    } else {
+      // Pop-up bloqueado (usuário desabilitou, ou navegador antigo que não
+      // segurou a referência) -- fallback: abre agora mesmo, ainda dentro
+      // do fluxo do clique original.
+      window.open(blobUrl, '_blank');
+    }
+    // Não revoga a blob URL aqui de propósito: a aba/visualizador de PDF
+    // nativo do navegador pode continuar lendo o Blob por streaming
+    // enquanto a aba estiver aberta. O navegador libera a memória sozinho
+    // quando a aba fecha (ou, no pior caso, quando a aba principal recarrega).
+  } catch (err) {
+    if (abaDestino && !abaDestino.closed) abaDestino.close();
+    throw err instanceof Error ? err : new Error('Não foi possível abrir o arquivo');
+  }
+}
+
 export const api = {
   dashboard: {
     resumo: () => request('/dashboard/resumo'),
@@ -77,6 +165,21 @@ export const api = {
         `/pix/extracoes/exportar${qs({ ...(params || {}), formato })}`,
         `pix-extracoes.${formato}`,
       ),
+    // [2026-08] "Opção 2" de extração -- roda no BACKEND, 1 PDF por
+    // requisição (ver backend/src/services/extratorServidorPix.js pro
+    // porquê disso ser seguro em RAM). Usada como alternativa quando o
+    // navegador não dá conta (aparelho fraco, muitos arquivos, sem suporte
+    // a Worker) -- o padrão continua sendo extrairDadosPixViaWorker no
+    // navegador. Quem chama deve mandar 1 arquivo por vez e esperar a
+    // resposta antes do próximo -- é o que garante "uma por vez" de ponta a
+    // ponta (ver src/routes/pix.tsx).
+    extrairNoServidor: (file, { arquivo, clienteId } = {}) => {
+      const formData = new FormData();
+      formData.append('pdf', file, file.name);
+      if (arquivo || file.name) formData.append('arquivo', arquivo || file.name);
+      if (clienteId) formData.append('clienteId', clienteId);
+      return request('/pix/extracoes/extrair-servidor', { method: 'POST', body: formData });
+    },
   },
   // Fluxo novo do extrator de PIX: o PDF NUNCA é enviado ao back-end pra
   // processamento. O navegador (ver src/lib/pixWorkerClient.ts) fatia o PDF
@@ -100,6 +203,38 @@ export const api = {
     listar: (params) => request(`/faturas${qs(params)}`),
     exportar: (formato, params) =>
       download(`/faturas/exportar${qs({ ...(params || {}), formato })}`, `faturas.${formato}`),
+    // [2026-08] "Upload de faturas avulsas, sem planilha" -- 1 PDF por
+    // chamada. O back-end tenta casar pelo nome do arquivo com um cliente
+    // já cadastrado (associado na hora); não achando, o PDF fica pendente
+    // e a associação acontece sozinha quando o cliente certo for criado
+    // depois (ver backend/src/lib/faturasPendentes.js).
+    uploadAvulso: (file, dadosPixPrecalculado) => {
+      const formData = new FormData();
+      formData.append('pdf', file, file.name);
+      if (dadosPixPrecalculado?.pixCopiaCola) formData.append('pixCode', dadosPixPrecalculado.pixCopiaCola);
+      if (dadosPixPrecalculado?.valor) formData.append('valor', dadosPixPrecalculado.valor);
+      if (dadosPixPrecalculado?.vencimento) formData.append('vencimento', dadosPixPrecalculado.vencimento);
+      if (dadosPixPrecalculado?.linhaDigitavel) formData.append('linhaDigitavel', dadosPixPrecalculado.linhaDigitavel);
+      return request('/faturas/avulsas', { method: 'POST', body: formData });
+    },
+    pendentes: {
+      listar: () => request('/faturas/avulsas/pendentes'),
+      associar: (id, clienteId) =>
+        request(`/faturas/avulsas/pendentes/${id}/associar`, {
+          method: 'POST',
+          body: JSON.stringify({ cliente_id: clienteId }),
+        }),
+      remover: (id) => request(`/faturas/avulsas/pendentes/${id}`, { method: 'DELETE' }),
+    },
+  },
+  // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado") e
+  // README_CLAUDE_BACKEND.md seção 11. "Safra" não tem tabela própria de
+  // dado operacional -- é uma visão sobre clientes agrupada por mês/ano de
+  // data_prazo, mesmo espírito do objeto `faturas` acima.
+  safras: {
+    listar: () => request('/safras'),
+    detalhe: (safra) => request(`/safras/${safra}`),
+    consolidar: (safra) => request(`/safras/${safra}/consolidar`, { method: 'POST' }),
   },
   clientes: {
     listar: (params) => request(`/clientes${qs(params)}`),
@@ -137,6 +272,11 @@ export const api = {
     desvincular: (id) => request(`/clientes/${id}/vincular`, { method: 'DELETE' }),
     // Grava só o Pix (sem PDF novo) -- usado pela "rodar verificação".
     atualizarPix: (id, pixCode) => request(`/clientes/${id}/pix`, { method: 'PATCH', body: JSON.stringify({ pixCode }) }),
+    // [2026-08] "Importar clientes PAGOS" -- cola uma lista de nomes (1 por
+    // linha), o back-end casa cada um com um cliente já cadastrado e marca
+    // todos com a tag "Pago" (criada automaticamente, já como "não
+    // dispara" -- ver backend/src/routes/clientes.routes.js).
+    importarPagos: (texto) => request('/clientes/importar-pagos', { method: 'POST', body: JSON.stringify({ texto }) }),
   },
   perfil: {
     // Papel (operador|supervisor) do usuário logado -- decide se o menu

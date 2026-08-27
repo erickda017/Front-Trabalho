@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api } from "@/api";
+import { api, buscarBlobArquivoProtegido } from "@/api";
 import { extrairDadosPix } from "@/lib/pixWorkerClient";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorArquivo } from "@/lib/clienteMatch";
@@ -157,12 +157,15 @@ function Dropzone({
 // o PDF nesse fluxo).
 const MAX_ARQUIVOS = 100;
 const MAX_TOTAL_MB = 300;
-// Processa em PACOTES de 10: sobe os 10 primeiros arquivos em paralelo,
-// espera TODOS os 10 terminarem (sucesso ou falha, não interessa) e só então
-// pega os próximos 10 da fila. Nada de esteira contínua -- é pacote fechado
-// mesmo, do jeito que foi pedido. Isso também dá um resultado parcial visível
-// a cada pacote, em vez de só no fim do arquivo 100.
+// Processa em PACOTES de 10 (checkpoint visual de progresso -- ver
+// `processarEmLotes` pro motivo de não processar os 10 de uma vez de
+// verdade). Nada de esteira contínua -- é pacote fechado mesmo, do jeito
+// que foi pedido: só avança pro próximo pacote quando o atual termina.
 const TAMANHO_LOTE_EXTRACAO = 10;
+// Dentro de cada pacote de 10, quantos PDFs são de fato lidos/processados ao
+// mesmo tempo -- ver o comentário de `processarEmLotes` pra o motivo de não
+// ser os 10 de uma vez (memória + fila do worker único de extração).
+const CONCORRENCIA_REAL_DENTRO_DO_PACOTE = 3;
 
 type ResumoEnvio = {
   total: number;
@@ -196,6 +199,13 @@ function Pix() {
   const [verificando, setVerificando] = useState(false);
   const [resumoVerificacao, setResumoVerificacao] = useState<ResumoVerificacao | null>(null);
   const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
+
+  // [2026-08] "Opção 2": extração rodando no BACKEND em vez do navegador --
+  // útil quando o aparelho é fraco ou o navegador trava com muitos PDFs.
+  // Mais lenta de propósito (1 arquivo por vez, esperando cada resposta
+  // antes do próximo) -- é o que garante não faltar RAM no servidor (ver
+  // backend/src/services/extratorServidorPix.js).
+  const [modoExtracao, setModoExtracao] = useState<"navegador" | "servidor">("navegador");
 
   const carregar = useCallback(async () => {
     try {
@@ -237,14 +247,49 @@ function Pix() {
     setArquivos((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // Processa `itens` em pacotes de `tamanhoLote`: dispara todos os itens do
-  // pacote atual em paralelo (Promise.allSettled -- um item com erro não
-  // derruba os outros do mesmo pacote) e só avança pro próximo pacote quando
-  // TODOS os itens do atual já terminaram, com sucesso ou falha.
+  // Processa `itens` em PACOTES de `tamanhoLote` (checkpoint visual: só
+  // avança pro próximo pacote quando TODOS os itens do atual terminaram,
+  // com sucesso ou falha -- dá resultado parcial a cada pacote, não só no
+  // fim dos 100). DENTRO de cada pacote, porém, a concorrência real é
+  // limitada a `CONCORRENCIA_REAL_DENTRO_DO_PACOTE` (não os 10 de uma vez).
+  //
+  // [2026-08] Por quê: com 100 PDFs, os pacotes de 10 disparavam as 10
+  // chamadas a `extrairDadosPix` TODAS de uma vez (`Promise.allSettled` com
+  // o pacote inteiro). Isso travava a aba mesmo com o Web Worker de
+  // extração do Pix (ver pixExtractor.worker.ts): o pool de workers (2, ver
+  // `TAMANHO_POOL_WORKERS` em pixExtractor.ts) já dá algum paralelismo real
+  // de CPU, mas 10 chamadas simultâneas ainda é MUITO mais que o pool
+  // consegue processar ao mesmo tempo -- e cada uma das 10 lê o PDF inteiro
+  // pra `ArrayBuffer` e mantém isso em memória até sua vez, então com 10
+  // PDFs de ~5MB cada em voo ao mesmo tempo (mais o OCR em paralelo pelo
+  // outro lado do Promise.all dentro de `extrairDadosPix`), a pressão de
+  // memória + a fila de requests de rede do Worker Cloudflare é o que
+  // trava a aba, não CPU de um render só. Reduzindo a concorrência REAL
+  // dentro do pacote (poucos PDFs sendo lidos/processados ao mesmo tempo,
+  // alinhado ao tamanho do pool), o pacote de 10 ainda é a unidade
+  // "visível" de progresso, mas o trabalho de fato roda em ondas menores.
   async function processarEmLotes<T>(itens: T[], tamanhoLote: number, tarefa: (item: T) => Promise<void>) {
     for (let inicio = 0; inicio < itens.length; inicio += tamanhoLote) {
       const pacote = itens.slice(inicio, inicio + tamanhoLote);
-      await Promise.allSettled(pacote.map((item) => tarefa(item)));
+
+      let proximoNoPacote = 0;
+      async function processador() {
+        while (proximoNoPacote < pacote.length) {
+          const item = pacote[proximoNoPacote++];
+          if (item === undefined) continue;
+          try {
+            await tarefa(item);
+          } catch {
+            // erro de um item não derruba os outros -- mesma garantia de
+            // antes (Promise.allSettled), só que agora com concorrência
+            // limitada em vez de todos de uma vez.
+          }
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(CONCORRENCIA_REAL_DENTRO_DO_PACOTE, pacote.length) }, () => processador()),
+      );
     }
   }
 
@@ -316,6 +361,53 @@ function Pix() {
     await carregar();
   }
 
+  // Mesma ideia de `extrair()` (mesmo pacote de arquivos, mesmo resumo de
+  // progresso na tela), mas manda CADA PDF pro backend processar, UM DE CADA
+  // VEZ -- espera a resposta de um antes de mandar o próximo (nunca em
+  // paralelo, nem em pacotes de 10 como o modo navegador). É o próprio
+  // front que garante isso aqui: o backend até tem uma fila interna também
+  // (ver executarSequencial em extratorServidorPix.js), mas essa dupla
+  // garantia é intencional -- não depende só do servidor se comportar bem.
+  //
+  // Diferença importante pro modo navegador: aqui o servidor só extrai o
+  // Pix e já tenta casar/gravar no cliente pelo nome do arquivo -- ele NÃO
+  // sobe o PDF em si pro Storage (evita todo tráfego/armazenamento extra
+  // nesse modo, que já é mais pesado por natureza). Se também quiser
+  // guardar o PDF anexado ao cliente, use "Upload de faturas avulsas" (aba
+  // Faturas) depois, ou o modo navegador (que já faz os dois juntos).
+  async function extrairNoServidor() {
+    if (!arquivos.length || loteExcedeLimite) return;
+    setEnviando(true);
+    setErroEnvio(null);
+    const total = arquivos.length;
+    setResumoEnvio({ total, processados: 0, sucesso: 0, falha: 0 });
+
+    for (const arquivo of arquivos) {
+      try {
+        const resultado = await api.pix.extrairNoServidor(arquivo);
+        setResumoEnvio((prev) =>
+          prev
+            ? {
+                ...prev,
+                processados: prev.processados + 1,
+                sucesso: prev.sucesso + (resultado?.encontrado ? 1 : 0),
+                falha: prev.falha + (resultado?.encontrado ? 0 : 1),
+              }
+            : prev,
+        );
+      } catch (e) {
+        setErroEnvio((e as Error).message);
+        setResumoEnvio((prev) =>
+          prev ? { ...prev, processados: prev.processados + 1, falha: prev.falha + 1 } : prev,
+        );
+      }
+    }
+
+    setArquivos([]);
+    setEnviando(false);
+    await carregar();
+  }
+
   // "Rodar verificação": varre clientes que já têm PDF mas ficaram sem Pix
   // (Worker fora do ar na hora, boleto com layout raro, etc.) e tenta achar
   // o QR de novo, 100% local -- baixa o PDF já salvo (signed URL) e roda o
@@ -335,9 +427,12 @@ function Pix() {
       await processarEmLotes(lista, TAMANHO_LOTE_EXTRACAO, async (cliente) => {
         try {
           if (!cliente.pdf_url) throw new Error("sem pdf_url");
-          const resposta = await fetch(cliente.pdf_url);
-          if (!resposta.ok) throw new Error(`falha ao baixar PDF (${resposta.status})`);
-          const blob = await resposta.blob();
+          // `cliente.pdf_url` é um path do proxy autenticado (ver
+          // arquivos.routes.js) -- exige Authorization: Bearer, que um
+          // `fetch` cru não manda. Sem isso, cai em 401 na hora pra TODO
+          // cliente (por isso a verificação parecia "instantânea" e nunca
+          // achava nada -- ver api.js pro helper certo).
+          const blob = await buscarBlobArquivoProtegido(cliente.pdf_url);
           const resultado = await extrairPixLocal(blob);
 
           if (resultado?.pixCopiaCola) {
@@ -392,11 +487,11 @@ function Pix() {
         <div className="space-y-6 lg:col-span-8">
           <SectionCard
             titulo="Enviar faturas"
-            descricao={`Selecione um ou mais PDFs de fatura para extrair a chave PIX no seu navegador. Até ${MAX_ARQUIVOS} arquivos (${MAX_TOTAL_MB}MB) por vez.`}
+            descricao={`Selecione um ou mais PDFs de fatura para extrair a chave PIX. Até ${MAX_ARQUIVOS} arquivos (${MAX_TOTAL_MB}MB) por vez.`}
             acoes={
               <Botao
                 variante="primary"
-                onClick={extrair}
+                onClick={modoExtracao === "servidor" ? extrairNoServidor : extrair}
                 disabled={enviando || arquivos.length === 0 || loteExcedeLimite}
               >
                 {enviando ? "Enviando…" : "Extrair PIX"}
@@ -404,6 +499,47 @@ function Pix() {
             }
           >
             <div className="space-y-4">
+              {/* [2026-08] "Opção 2" de extração: no servidor, 1 PDF por vez --
+                  ver comentário de extrairNoServidor() acima e CONTEXTO.md. */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-subtle font-medium">Onde processar:</span>
+                <button
+                  type="button"
+                  onClick={() => setModoExtracao("navegador")}
+                  disabled={enviando}
+                  className={cn(
+                    "rounded-full border px-3 py-1 font-medium transition-colors",
+                    modoExtracao === "navegador"
+                      ? "border-primary bg-primary-soft text-primary-strong"
+                      : "border-border text-subtle hover:border-border-strong",
+                  )}
+                >
+                  No navegador (recomendado)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoExtracao("servidor")}
+                  disabled={enviando}
+                  className={cn(
+                    "rounded-full border px-3 py-1 font-medium transition-colors",
+                    modoExtracao === "servidor"
+                      ? "border-primary bg-primary-soft text-primary-strong"
+                      : "border-border text-subtle hover:border-border-strong",
+                  )}
+                >
+                  No servidor (1 por vez, mais lento)
+                </button>
+              </div>
+              {modoExtracao === "servidor" && (
+                <Aviso tone="warning">
+                  Modo alternativo: cada PDF é processado no servidor, um de cada vez (o próximo só
+                  começa quando o anterior terminar), pra não sobrecarregar a memória do servidor. É
+                  mais lento que o modo navegador — use quando o aparelho não conseguir processar
+                  localmente. Neste modo o PDF em si não é anexado ao cliente, só a chave PIX
+                  encontrada.
+                </Aviso>
+              )}
+
               <Dropzone onFiles={adicionarArquivos} />
 
               {arquivos.length > 0 && (
