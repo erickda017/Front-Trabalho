@@ -43,13 +43,13 @@ import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo } from "@/lib/type
 export const Route = createFileRoute("/disparos")({
   head: () => ({
     meta: [
-      { title: "Disparo de faturas — Veloce Faturas" },
+      { title: "Disparo de faturas — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Monte e acompanhe um lote de disparo de faturas via WhatsApp: destinatários, mensagem, conexão, estratégia, agendamento e progresso em tempo real.",
       },
-      { property: "og:title", content: "Disparo de faturas — Veloce Faturas" },
+      { property: "og:title", content: "Disparo de faturas — Voxcel Faturas" },
       {
         property: "og:description",
         content: "Passo a passo do disparo: destinatários, mensagem, conexão, estratégia e progresso.",

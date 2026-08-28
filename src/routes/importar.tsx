@@ -35,13 +35,13 @@ function formatarPrazo(iso?: string | null) {
 export const Route = createFileRoute("/importar")({
   head: () => ({
     meta: [
-      { title: "Importar planilha e PDFs — Veloce Faturas" },
+      { title: "Importar planilha e PDFs — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Suba a planilha de cobrança e o zip com os PDFs: cada linha é casada com a fatura correta e o lote de disparo já sai pronto.",
       },
-      { property: "og:title", content: "Importar planilha e PDFs — Veloce Faturas" },
+      { property: "og:title", content: "Importar planilha e PDFs — Voxcel Faturas" },
       {
         property: "og:description",
         content: "Planilha + zip de PDFs casados automaticamente, com upsert por telefone.",

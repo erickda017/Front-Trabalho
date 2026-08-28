@@ -17,7 +17,8 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ptBR } from "date-fns/locale";
 import { formatDistanceToNow } from "date-fns";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -29,18 +30,17 @@ import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
-import type { DashboardResumo, SafraResumo } from "@/lib/types";
 import { formatoMoeda } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Painel — Veloce Faturas" },
+      { title: "Painel — Voxcel Faturas" },
       {
         name: "description",
         content: "Visão geral da conexão e dos indicadores de disparo de faturas.",
       },
-      { property: "og:title", content: "Painel — Veloce Faturas" },
+      { property: "og:title", content: "Painel — Voxcel Faturas" },
       { property: "og:description", content: "Indicadores de disparo e status da conexão do WhatsApp." },
     ],
   }),
@@ -73,49 +73,42 @@ function rotuloSafraCurto(safra: string) {
 
 function Dashboard() {
   const { conexao } = useAppState();
-  const [resumo, setResumo] = useState<DashboardResumo | null>(null);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
+
+  // [perf] useQuery (react-query) em vez de useEffect+useState manual -- o
+  // resultado fica em cache por `queryKey`, então trocar de aba e voltar pra
+  // cá mostra os dados na hora (sem loading) em vez de refazer o fetch do
+  // zero toda vez. `staleTime` evita refetch imediato ao revisitar a tela
+  // dentro da janela; passado isso, refaz em segundo plano sem esconder o
+  // dado já exibido (`isLoading` só é true na 1ª carga, sem cache nenhum).
+  const {
+    data: resumo,
+    isLoading: carregando,
+    error: erroResumo,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["dashboard-resumo"],
+    queryFn: () => api.dashboard.resumo(),
+    staleTime: 30_000,
+  });
+  const erro = erroResumo ? (erroResumo as Error).message : null;
 
   // [2026-08] Painel de safras no dashboard -- reusa o mesmo endpoint da
   // tela /safras (GET /api/safras), sem duplicar lógica de cálculo no
   // backend. Erro aqui não bloqueia o resto do painel (fetch independente).
-  const [safras, setSafras] = useState<SafraResumo[] | null>(null);
-  const [safrasCarregando, setSafrasCarregando] = useState(true);
-  const [safrasErro, setSafrasErro] = useState<string | null>(null);
-
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro(null);
-    try {
-      const data = await api.dashboard.resumo();
-      setResumo(data);
-    } catch (e) {
-      setResumo(null);
-      setErro((e as Error).message);
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
-
-  const carregarSafras = useCallback(async () => {
-    setSafrasCarregando(true);
-    setSafrasErro(null);
-    try {
+  const {
+    data: safras,
+    isLoading: safrasCarregando,
+    error: erroSafras,
+    refetch: carregarSafras,
+  } = useQuery({
+    queryKey: ["safras-lista"],
+    queryFn: async () => {
       const data = await api.safras.listar();
-      setSafras(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setSafras(null);
-      setSafrasErro((e as Error).message);
-    } finally {
-      setSafrasCarregando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    carregar();
-    carregarSafras();
-  }, [carregar, carregarSafras]);
+      return Array.isArray(data) ? data : [];
+    },
+    staleTime: 30_000,
+  });
+  const safrasErro = erroSafras ? (erroSafras as Error).message : null;
 
   // Só as safras ainda AO VIVO (arquivada=false) entram no painel do
   // dashboard -- é o acompanhamento "do momento"; o histórico consolidado já
@@ -180,7 +173,7 @@ function Dashboard() {
         {erro && (
           <Aviso tone="danger" className="flex flex-wrap items-center justify-between gap-2">
             <span>Não foi possível carregar os indicadores: {erro}</span>
-            <Botao tamanho="sm" variante="outline" onClick={carregar}>
+            <Botao tamanho="sm" variante="outline" onClick={() => carregar()}>
               Tentar novamente
             </Botao>
           </Aviso>
@@ -312,7 +305,7 @@ function Dashboard() {
           {safrasErro ? (
             <Aviso tone="danger" className="flex flex-wrap items-center justify-between gap-2">
               <span>Não foi possível carregar as safras: {safrasErro}</span>
-              <Botao tamanho="sm" variante="outline" onClick={carregarSafras}>
+              <Botao tamanho="sm" variante="outline" onClick={() => carregarSafras()}>
                 Tentar novamente
               </Botao>
             </Aviso>

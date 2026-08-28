@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -52,7 +53,7 @@ import type {
 export const Route = createFileRoute("/supervisor")({
   head: () => ({
     meta: [
-      { title: "Supervisor — Veloce Faturas" },
+      { title: "Supervisor — Voxcel Faturas" },
       { name: "description", content: "Visão geral de todos os operadores: clientes, faturas, disparos e ferramentas de PIX." },
     ],
   }),
@@ -152,29 +153,25 @@ function ErroCarregamento({ erro, onRetry }: { erro: string; onRetry: () => void
 }
 
 function AbaDashboard() {
-  const [dados, setDados] = useState<DashboardSupervisor | null>(null);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
-
-  const carregar = useCallback(() => {
-    setCarregando(true);
-    setErro(null);
-    api.supervisor
-      .dashboard()
-      .then(setDados)
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
-  }, []);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
+  // [perf] useQuery em vez de useEffect+useState -- cacheia entre trocas de
+  // aba (voltar pro Supervisor não recarrega do zero).
+  const {
+    data: dados,
+    isLoading: carregando,
+    error: erroObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["supervisor-dashboard"],
+    queryFn: () => api.supervisor.dashboard(),
+    staleTime: 30_000,
+  });
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   if (erro) {
     return (
       <Aviso tone="danger" className="flex flex-wrap items-center justify-between gap-2">
         <span>Não foi possível carregar os indicadores: {erro}</span>
-        <Botao tamanho="sm" variante="outline" onClick={carregar}>
+        <Botao tamanho="sm" variante="outline" onClick={() => carregar()}>
           Tentar novamente
         </Botao>
       </Aviso>

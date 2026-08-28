@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Archive, Layers, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
@@ -10,19 +11,18 @@ import { Aviso, Botao, LinhasEsqueleto, TabelaWrap } from "@/components/shared/C
 import { MetricCard } from "@/components/shared/MetricCard";
 import { api } from "@/api";
 import { cn, formatoMoeda } from "@/lib/utils";
-import type { SafraResumo } from "@/lib/types";
 
 // [2026-08] Ver CONTEXTO.md, seção "Safras (FPD/SPD) e histórico
 // consolidado", e README_CLAUDE_BACKEND.md seção 11.
 export const Route = createFileRoute("/safras")({
   head: () => ({
     meta: [
-      { title: "Safras — Veloce Faturas" },
+      { title: "Safras — Voxcel Faturas" },
       {
         name: "description",
         content: "Acompanhamento por safra mensal (FPD/SPD): quantos pagaram, quantos receberam disparo e o histórico consolidado.",
       },
-      { property: "og:title", content: "Safras — Veloce Faturas" },
+      { property: "og:title", content: "Safras — Voxcel Faturas" },
       { property: "og:description", content: "Totais por safra, incluindo as já arquivadas." },
     ],
   }),
@@ -31,23 +31,22 @@ export const Route = createFileRoute("/safras")({
 
 
 function Safras() {
-  const [safras, setSafras] = useState<SafraResumo[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
   const [consolidando, setConsolidando] = useState<string | null>(null);
 
-  async function carregar() {
-    setErro(null);
-    try {
-      const data = await api.safras.listar();
-      setSafras(data);
-    } catch (e) {
-      setErro((e as Error).message);
-    }
-  }
-
-  useEffect(() => {
-    carregar();
-  }, []);
+  // [perf] useQuery em vez de useEffect+useState -- cacheia o resultado por
+  // `queryKey`, então voltar pra esta aba depois de já ter visitado mostra os
+  // dados na hora (sem esperar o fetch de novo).
+  const {
+    data: safras,
+    error: erroObj,
+    refetch: carregar,
+    isLoading,
+  } = useQuery({
+    queryKey: ["safras-lista"],
+    queryFn: () => api.safras.listar(),
+    staleTime: 30_000,
+  });
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   async function consolidarAgora(safra: string) {
     setConsolidando(safra);
@@ -62,7 +61,7 @@ function Safras() {
     }
   }
 
-  const carregando = safras === null && !erro;
+  const carregando = isLoading && !erro;
   const totalGeral = safras?.reduce((soma, s) => soma + s.total_clientes, 0) ?? 0;
   const pagosGeral = safras?.reduce((soma, s) => soma + s.pagos, 0) ?? 0;
   const disparoGeral = safras?.reduce((soma, s) => soma + s.receberam_disparo, 0) ?? 0;

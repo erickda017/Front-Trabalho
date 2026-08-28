@@ -30,9 +30,9 @@ import type { Tag } from "@/lib/app-state";
 export const Route = createFileRoute("/tags")({
   head: () => ({
     meta: [
-      { title: "Tags — Veloce Faturas" },
+      { title: "Tags — Voxcel Faturas" },
       { name: "description", content: "Crie e organize tags para segmentar clientes." },
-      { property: "og:title", content: "Tags — Veloce Faturas" },
+      { property: "og:title", content: "Tags — Voxcel Faturas" },
       { property: "og:description", content: "Crie, renomeie e exclua tags usadas para segmentar clientes." },
     ],
   }),

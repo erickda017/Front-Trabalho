@@ -82,13 +82,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Veloce Faturas — Disparo de faturas via WhatsApp" },
+      { title: "Voxcel Faturas — Disparo de faturas via WhatsApp" },
       {
         name: "description",
         content:
           "Painel interno para disparar faturas em PDF via WhatsApp: importação em massa, fila controlada e status de entrega.",
       },
-      { property: "og:title", content: "Veloce Faturas — Disparo de faturas via WhatsApp" },
+      { property: "og:title", content: "Voxcel Faturas — Disparo de faturas via WhatsApp" },
       {
         property: "og:description",
         content: "Importação em massa, fila controlada e status de entrega por cliente.",

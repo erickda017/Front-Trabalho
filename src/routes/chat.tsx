@@ -38,13 +38,13 @@ import {
 export const Route = createFileRoute("/chat")({
   head: () => ({
     meta: [
-      { title: "Chat com clientes — Veloce Faturas" },
+      { title: "Chat com clientes — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Caixa de entrada do WhatsApp dentro do painel: fila de mensagens, respostas rápidas e histórico de conversas por cliente.",
       },
-      { property: "og:title", content: "Chat com clientes — Veloce Faturas" },
+      { property: "og:title", content: "Chat com clientes — Voxcel Faturas" },
       {
         property: "og:description",
         content: "Fila de mensagens recebidas e respostas aos clientes em um só lugar.",

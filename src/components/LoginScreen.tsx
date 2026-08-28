@@ -75,7 +75,7 @@ export function LoginScreen() {
           <div className="bg-sidebar-primary grid size-8 place-items-center rounded-md">
             <span className="font-display text-sidebar-primary-foreground text-sm font-bold">V</span>
           </div>
-          <span className="font-display text-sm font-semibold">Veloce Faturas</span>
+          <span className="font-display text-sm font-semibold">Voxcel Faturas</span>
         </div>
 
         <div>
@@ -126,7 +126,7 @@ export function LoginScreen() {
             <div className="bg-primary grid size-8 place-items-center rounded-md">
               <span className="font-display text-primary-foreground text-sm font-bold">V</span>
             </div>
-            <span className="font-display text-sm font-semibold">Veloce Faturas</span>
+            <span className="font-display text-sm font-semibold">Voxcel Faturas</span>
           </div>
 
           <h1 className="font-display text-xl font-semibold">

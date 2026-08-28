@@ -1,4 +1,4 @@
-# Contrato de Backend — Veloce Faturas
+# Contrato de Backend — Voxcel Faturas
 
 Documento técnico do que o **frontend** já implementa e espera do backend.
 O frontend não contém mocks: toda tela consome exclusivamente `src/api.js`.

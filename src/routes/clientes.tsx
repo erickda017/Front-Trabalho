@@ -1,10 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { paraIso, paraBr } from "@/lib/dataBr";
 import {
   Check,
   Copy,
+  FileSearch,
   FileText,
   KeyRound,
   Link2,
@@ -90,13 +90,13 @@ import { cn, formatoMoeda } from "@/lib/utils";
 export const Route = createFileRoute("/clientes")({
   head: () => ({
     meta: [
-      { title: "Clientes e faturas — Veloce Faturas" },
+      { title: "Clientes e faturas — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Base de clientes com telefone normalizado, valor, vencimento e PDF da fatura anexado, pronta para o próximo disparo.",
       },
-      { property: "og:title", content: "Clientes e faturas — Veloce Faturas" },
+      { property: "og:title", content: "Clientes e faturas — Voxcel Faturas" },
       {
         property: "og:description",
         content: "Telefone normalizado, valor, vencimento e PDF anexo por cliente.",
@@ -117,11 +117,15 @@ function formatarValor(valor: string | null): string {
   return valor;
 }
 
+// [CRÍTICO] Usa parseDataFlexivel (dataBr.ts) em vez de `new Date(texto)`
+// direto -- `vencimento` é texto livre "DD/MM/AAAA" e o construtor Date do JS
+// interpreta "/" como formato AMERICANO (MM/DD/AAAA), invertendo dia e mês
+// (10/08 virava 08/10). `data_prazo` também passa por aqui (já é ISO) e
+// continua funcionando normalmente.
 function formatarData(data: string | null): string {
   if (!data) return "—";
-  const d = new Date(data);
-  if (Number.isNaN(d.getTime())) return data;
-  return format(d, "dd/MM/yyyy", { locale: ptBR });
+  const br = paraBr(data);
+  return br || data;
 }
 
 type FiltroPix = "todos" | "com_pix" | "sem_pix" | "com_fatura" | "sem_fatura";
@@ -182,7 +186,12 @@ function ClienteFormModal({
   const [nome, setNome] = useState(cliente?.nome ?? "");
   const [telefone, setTelefone] = useState(cliente?.telefone ?? "");
   const [valor, setValor] = useState(cliente?.valor ?? "");
-  const [vencimento, setVencimento] = useState(cliente?.vencimento ?? "");
+  // Estado do campo fica em ISO (é o que o `<input type="date">` nativo exige
+  // pra exibir/editar corretamente) -- `cliente.vencimento` vem em texto livre
+  // (BR ou ISO, dependendo de como foi preenchido, ver dataBr.ts), por isso
+  // sempre passa por `paraIso` aqui. Convertido de volta pra BR só na hora de
+  // salvar (formato usado na exibição e na variável {{vencimento}} da mensagem).
+  const [vencimento, setVencimento] = useState(paraIso(cliente?.vencimento));
   const [pdf, setPdf] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -191,11 +200,12 @@ function ClienteFormModal({
     e.preventDefault();
     setSalvando(true);
     setErro(null);
+    const vencimentoBr = paraBr(vencimento) || undefined;
     try {
       if (cliente) {
-        await api.clientes.atualizar(cliente.id, { nome, telefone, valor, vencimento });
+        await api.clientes.atualizar(cliente.id, { nome, telefone, valor, vencimento: vencimentoBr });
       } else {
-        const novo = await api.clientes.criar({ nome, telefone, valor, vencimento });
+        const novo = await api.clientes.criar({ nome, telefone, valor, vencimento: vencimentoBr });
         if (pdf) await api.clientes.uploadPdf(novo.id, pdf);
       }
       onSalvo();
@@ -439,6 +449,7 @@ function FichaCliente({
               <Campo1 label="Nome" valor={cliente.nome} />
               <Campo1 label="Telefone" valor={cliente.telefone} mono />
               <Campo1 label="Valor" valor={formatarValor(cliente.valor)} />
+              <Campo1 label="Prazo" valor={formatarData(cliente.data_prazo ?? null)} />
               <Campo1 label="Vencimento" valor={formatarData(cliente.vencimento)} />
               <div>
                 <p className="label-eyebrow mb-1">Chave PIX</p>
@@ -677,6 +688,118 @@ type PendenciaAvulsa = {
   vencimento: string | null;
   criado_em: string;
 };
+
+// [CRÍTICO] Botão + progresso da verificação em massa de VENCIMENTO (lê o PDF
+// já anexado de cada cliente, ver backend/src/services/verificacaoVencimentos.js
+// e api.clientes.verificarVencimentos). Roda em background no servidor -- este
+// componente só dispara o job e faz polling do status (mesmo padrão de
+// polling usado pra conexão WhatsApp em app-state.tsx, só que aqui sob
+// demanda, não o tempo todo).
+type StatusVerificacaoVencimentos = {
+  rodando: boolean;
+  total: number;
+  processados: number;
+  encontrados: number;
+  nao_encontrados: number;
+  erros: { cliente_id: string; cliente_nome: string; erro: string }[];
+  iniciado_em: string | null;
+  concluido_em: string | null;
+};
+
+function VerificacaoVencimentos({ onAtualizado }: { onAtualizado: () => void }) {
+  const [status, setStatus] = useState<StatusVerificacaoVencimentos | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const avisouConclusaoRef = useRef(false);
+
+  useEffect(() => {
+    if (!status?.rodando) return;
+    const id = setInterval(async () => {
+      try {
+        const atual = await api.clientes.statusVerificarVencimentos();
+        setStatus(atual);
+      } catch {
+        // Falha de rede isolada no polling não derruba o job (que continua
+        // rodando no servidor) -- só tenta de novo no próximo tick.
+      }
+    }, 2500);
+    return () => clearInterval(id);
+  }, [status?.rodando]);
+
+  useEffect(() => {
+    if (status && !status.rodando && status.concluido_em && !avisouConclusaoRef.current) {
+      avisouConclusaoRef.current = true;
+      toast.success(
+        `Verificação concluída: ${status.encontrados} vencimento(s) encontrado(s) de ${status.total} PDF(s) verificado(s).`,
+      );
+      onAtualizado();
+    }
+    if (status?.rodando) avisouConclusaoRef.current = false;
+  }, [status, onAtualizado]);
+
+  async function iniciar(apenasPendentes: boolean) {
+    setErro(null);
+    try {
+      const estado = await api.clientes.verificarVencimentos(apenasPendentes);
+      setStatus(estado);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  if (!status) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Botao variante="outline" onClick={() => iniciar(true)}>
+          <FileSearch className="size-3.5" />
+          Verificar vencimentos nos PDFs
+        </Botao>
+        {/* [CRÍTICO] Clientes que passaram pela lista crua ou promoção FPD->SPD
+            ANTES da correção do bug de vencimento=prazo (ver CONTEXTO.md) podem
+            já ter um `vencimento` preenchido, só que ERRADO -- "apenas
+            pendentes" (o padrão) nunca revê quem já tem algum vencimento
+            gravado. Esta opção força reverificar todo mundo com PDF. */}
+        <button
+          type="button"
+          onClick={() => iniciar(false)}
+          title="Reverifica todo mundo com PDF anexado, mesmo quem já tem vencimento gravado -- útil pra corrigir dados salvos antes da correção do bug de vencimento=prazo."
+          className="text-muted-foreground hover:text-foreground text-[11px] underline decoration-dotted underline-offset-2"
+        >
+          revalidar todos
+        </button>
+      </div>
+    );
+  }
+
+  if (status.rodando) {
+    const pct = status.total ? Math.round((status.processados / status.total) * 100) : 0;
+    return (
+      <div className="border-border bg-surface-raised flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
+        <Loader2 className="text-primary size-3.5 shrink-0 animate-spin" />
+        <span className="text-muted-foreground whitespace-nowrap">
+          Verificando PDFs... {status.processados}/{status.total} ({pct}%)
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Botao variante="outline" onClick={() => iniciar(true)}>
+        <FileSearch className="size-3.5" />
+        Verificar vencimentos nos PDFs
+      </Botao>
+      <button
+        type="button"
+        onClick={() => iniciar(false)}
+        title="Reverifica todo mundo com PDF anexado, mesmo quem já tem vencimento gravado -- útil pra corrigir dados salvos antes da correção do bug de vencimento=prazo."
+        className="text-muted-foreground hover:text-foreground text-[11px] underline decoration-dotted underline-offset-2"
+      >
+        revalidar todos
+      </button>
+      {erro && <span className="text-destructive text-xs">{erro}</span>}
+    </div>
+  );
+}
 
 function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
   const { clientes } = useAppState();
@@ -962,8 +1085,17 @@ function Clientes() {
       if (filtroDisparo === "recebeu" && !(c.disparos_recebidos && c.disparos_recebidos > 0)) return false;
       if (filtroDisparo === "nao_recebeu" && (c.disparos_recebidos ?? 0) > 0) return false;
       if (filtroSafra !== "todas" && c.safra !== filtroSafra) return false;
-      if (de && c.vencimento && c.vencimento < de) return false;
-      if (ate && c.vencimento && c.vencimento > ate) return false;
+      // [CRÍTICO] `de`/`ate` vêm do `<input type="date">` (sempre ISO), mas
+      // `c.vencimento` é texto livre (BR ou ISO, ver dataBr.ts) -- comparar as
+      // strings cruas dava resultado errado quase sempre (ex: "10/08/2026" <
+      // "2026-08-01" é sempre verdadeiro por comparação lexicográfica, mesmo
+      // quando a data real é posterior). Normaliza os dois lados pra ISO antes
+      // de comparar.
+      if (de || ate) {
+        const vencIso = paraIso(c.vencimento);
+        if (de && vencIso && vencIso < de) return false;
+        if (ate && vencIso && vencIso > ate) return false;
+      }
       if (min !== null || max !== null) {
         const v = valorNumero(c.valor);
         if (v === null) return false; // sem valor não entra num filtro de faixa
@@ -977,8 +1109,11 @@ function Clientes() {
     const comparadores: Record<Exclude<Ordenacao, "nenhuma">, (a: typeof resultado[number], b: typeof resultado[number]) => number> = {
       valor_asc: (a, b) => compararComNuloNoFim(valorNumero(a.valor), valorNumero(b.valor), 1),
       valor_desc: (a, b) => compararComNuloNoFim(valorNumero(a.valor), valorNumero(b.valor), -1),
-      vencimento_asc: (a, b) => compararComNuloNoFim(a.vencimento ?? null, b.vencimento ?? null, 1),
-      vencimento_desc: (a, b) => compararComNuloNoFim(a.vencimento ?? null, b.vencimento ?? null, -1),
+      // [CRÍTICO] Comparar `vencimento` como string crua ordenava errado
+      // (texto BR "DD/MM/AAAA" não ordena cronologicamente por comparação
+      // lexicográfica) -- normaliza pra ISO antes de comparar.
+      vencimento_asc: (a, b) => compararComNuloNoFim(paraIso(a.vencimento) || null, paraIso(b.vencimento) || null, 1),
+      vencimento_desc: (a, b) => compararComNuloNoFim(paraIso(a.vencimento) || null, paraIso(b.vencimento) || null, -1),
     };
     return [...resultado].sort(comparadores[ordenacao]);
   }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
@@ -1072,6 +1207,7 @@ function Clientes() {
       subtitle="Cadastro, faturas em PDF e histórico de envios"
       actions={
         <div className="flex items-center gap-2">
+          <VerificacaoVencimentos onAtualizado={refreshClientes} />
           <Botao variante="outline" onClick={() => setImportarPagosAberto(true)}>
             <TagIcon className="size-3.5" />
             Importar pagos

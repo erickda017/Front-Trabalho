@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, Download, History, RefreshCcw, Send, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -33,13 +34,13 @@ import { statusDoItem, type EnvioResumo, type EnvioStatus, type ItemStatus } fro
 export const Route = createFileRoute("/historico")({
   head: () => ({
     meta: [
-      { title: "Histórico de disparos — Veloce Faturas" },
+      { title: "Histórico de disparos — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Consulte o histórico de lotes de disparo de faturas: totais, entregas, leituras e falhas, com filtros por período, status e conexão.",
       },
-      { property: "og:title", content: "Histórico de disparos — Veloce Faturas" },
+      { property: "og:title", content: "Histórico de disparos — Voxcel Faturas" },
       { property: "og:description", content: "Lotes de disparo com filtros por período, status e conexão." },
     ],
   }),
@@ -385,10 +386,6 @@ function MiniMetrica({ label, valor, tone }: { label: string; valor: number | st
 /* -------------------------------------------------------------------------- */
 
 function Historico() {
-  const [lotes, setLotes] = useState<EnvioResumo[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
-
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [status, setStatus] = useState<EnvioStatus | "todos">("todos");
@@ -411,23 +408,22 @@ function Historico() {
     return p;
   }
 
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro(null);
-    try {
-      const data = await api.envios.listar(buildParams());
-      setLotes(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setCarregando(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [de, ate, status, busca]);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
+  // [perf] useQuery com os filtros na queryKey -- cada combinação de
+  // filtro/período/busca fica cacheada separadamente, então voltar pra um
+  // filtro já visitado (inclusive "todos", o padrão ao abrir a aba) mostra os
+  // dados na hora em vez de esperar o fetch de novo.
+  const {
+    data: lotesData,
+    isLoading: carregando,
+    error: erroObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["envios-lista", de, ate, status, busca],
+    queryFn: () => api.envios.listar(buildParams()),
+    staleTime: 15_000,
+  });
+  const lotes = Array.isArray(lotesData) ? lotesData : [];
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   async function exportar(formato: "csv" | "xlsx") {
     try {
@@ -449,7 +445,7 @@ function Historico() {
           <Botao variante="secondary" tamanho="sm" onClick={() => exportar("xlsx")}>
             <Download className="size-3.5" /> XLSX
           </Botao>
-          <Botao variante="ghost" tamanho="sm" onClick={carregar}>
+          <Botao variante="ghost" tamanho="sm" onClick={() => carregar()}>
             <RefreshCcw className="size-3.5" />
           </Botao>
         </>
@@ -502,7 +498,7 @@ function Historico() {
           <div className="p-5">
             <Aviso tone="danger">
               {erro}
-              <Botao variante="ghost" tamanho="sm" className="ml-2" onClick={carregar}>
+              <Botao variante="ghost" tamanho="sm" className="ml-2" onClick={() => carregar()}>
                 Tentar novamente
               </Botao>
             </Aviso>

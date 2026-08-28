@@ -93,7 +93,7 @@ function SidebarContent({
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="font-display truncate text-sm font-semibold">Veloce Faturas</p>
+            <p className="font-display truncate text-sm font-semibold">Voxcel Faturas</p>
             <p className="text-sidebar-foreground/50 truncate text-[11px]">Painel operacional</p>
           </div>
         )}
@@ -295,21 +295,21 @@ export function AppShell({
         <header className="border-border bg-background/85 sticky top-0 z-20 shrink-0 border-b backdrop-blur-md">
           <div
             className={cn(
-              "flex w-full items-center justify-between gap-3 px-4 py-3 sm:px-6",
+              "flex w-full items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-6 sm:py-3",
               !flush && "mx-auto max-w-[88rem]",
             )}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
               <button
                 onClick={() => setOpen((v) => !v)}
                 aria-label="Alternar menu"
-                className="text-muted-foreground hover:text-foreground hover:bg-surface-raised grid size-9 shrink-0 place-items-center rounded-md transition-colors lg:hidden"
+                className="text-muted-foreground hover:text-foreground hover:bg-surface-raised grid size-8 shrink-0 place-items-center rounded-md transition-colors sm:size-9 lg:hidden"
               >
                 {open ? <X className="size-4" /> : <Menu className="size-4" />}
               </button>
               <div className="flex min-w-0 flex-col">
                 {breadcrumb?.length ? (
-                  <nav aria-label="Trilha" className="flex min-w-0 items-center gap-1">
+                  <nav aria-label="Trilha" className="hidden min-w-0 items-center gap-1 sm:flex">
                     {breadcrumb.map((b, i) => (
                       <span key={i} className="flex min-w-0 items-center gap-1">
                         {i > 0 && <ChevronRight className="text-subtle size-3 shrink-0" />}
@@ -329,9 +329,14 @@ export function AppShell({
                     ))}
                   </nav>
                 ) : null}
-                <h1 className="font-display truncate text-base font-semibold sm:text-lg">{title}</h1>
+                {/* [layout] Título compacto -- a sidebar já destaca a aba
+                    ativa; este <h1> existe principalmente pra quem está no
+                    mobile (sidebar escondida atrás do hamburger). Subtítulo
+                    e trilha só aparecem a partir de `sm:` pra não ocupar
+                    espaço vertical extra numa tela pequena. */}
+                <h1 className="font-display truncate text-sm font-semibold sm:text-lg">{title}</h1>
                 {subtitle && !breadcrumb?.length && (
-                  <p className="text-subtle truncate text-xs">{subtitle}</p>
+                  <p className="text-subtle hidden truncate text-xs sm:block">{subtitle}</p>
                 )}
               </div>
             </div>

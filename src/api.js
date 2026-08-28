@@ -296,6 +296,14 @@ export const api = {
     // Confirma a promoção FPD -> SPD sugerida (ver sugestoes_spd acima) --
     // `dataPrazo` opcional sobrescreve a data sugerida (formato YYYY-MM-DD).
     promoverSpd: (id, dataPrazo) => request(`/clientes/${id}/promover-spd`, { method: 'POST', body: JSON.stringify({ data_prazo: dataPrazo || undefined }) }),
+    // [CRÍTICO] Roda a verificação de VENCIMENTO (não confundir com prazo) em
+    // massa, lendo o PDF já anexado de cada cliente -- ver
+    // backend/src/services/verificacaoVencimentos.js. `apenasPendentes=true`
+    // (padrão) só processa quem ainda não tem vencimento; job roda em
+    // background no servidor, consultar progresso via `statusVerificarVencimentos`.
+    verificarVencimentos: (apenasPendentes = true) =>
+      request('/clientes/verificar-vencimentos', { method: 'POST', body: JSON.stringify({ apenas_pendentes: apenasPendentes }) }),
+    statusVerificarVencimentos: () => request('/clientes/verificar-vencimentos/status'),
   },
   perfil: {
     // Também traz nome/avatar_url além do papel (operador|supervisor, que

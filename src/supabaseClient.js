@@ -11,7 +11,7 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!isSupabaseConfigured && typeof console !== 'undefined') {
   console.warn(
-    '[Veloce] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY ausentes. ' +
+    '[Voxcel] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY ausentes. ' +
       'Login e chamadas autenticadas ficarão indisponíveis até configurar o .env.',
   );
 }

@@ -90,6 +90,17 @@ declare module "@/api" {
     data_contrato?: string | null;
   };
 
+  type StatusVerificacaoVencimentos = {
+    rodando: boolean;
+    total: number;
+    processados: number;
+    encontrados: number;
+    nao_encontrados: number;
+    erros: { cliente_id: string; cliente_nome: string; erro: string }[];
+    iniciado_em: string | null;
+    concluido_em: string | null;
+  };
+
   export const api: {
     dashboard: {
       resumo: () => Promise<DashboardResumo>;
@@ -209,6 +220,8 @@ declare module "@/api" {
         sugestoes_spd: SugestaoSpd[];
       }>;
       promoverSpd: (id: string, dataPrazo?: string | undefined) => Promise<Cliente>;
+      verificarVencimentos: (apenasPendentes?: boolean) => Promise<StatusVerificacaoVencimentos>;
+      statusVerificarVencimentos: () => Promise<StatusVerificacaoVencimentos>;
     };
     // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado")
     // e README_CLAUDE_BACKEND.md seção 11.

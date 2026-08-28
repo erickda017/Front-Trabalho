@@ -27,12 +27,12 @@ import type { WhatsappConexao } from "@/lib/types";
 export const Route = createFileRoute("/conexoes")({
   head: () => ({
     meta: [
-      { title: "Conexão — Veloce Faturas" },
+      { title: "Conexão — Voxcel Faturas" },
       {
         name: "description",
         content: "Gerencie sua sessão de WhatsApp usada para o disparo de faturas.",
       },
-      { property: "og:title", content: "Conexão — Veloce Faturas" },
+      { property: "og:title", content: "Conexão — Voxcel Faturas" },
       { property: "og:description", content: "Conectar, desconectar e acompanhar o status da sua sessão." },
     ],
   }),

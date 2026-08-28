@@ -9,7 +9,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -35,12 +36,12 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/pix")({
   head: () => ({
     meta: [
-      { title: "Extrator de PIX — Veloce Faturas" },
+      { title: "Extrator de PIX — Voxcel Faturas" },
       {
         name: "description",
         content: "Envie faturas em PDF e acompanhe a extração automática da chave PIX de cada cliente.",
       },
-      { property: "og:title", content: "Extrator de PIX — Veloce Faturas" },
+      { property: "og:title", content: "Extrator de PIX — Voxcel Faturas" },
       {
         property: "og:description",
         content: "Upload de faturas em PDF com extração e vínculo automático da chave PIX.",
@@ -188,9 +189,6 @@ function Pix() {
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [resumoEnvio, setResumoEnvio] = useState<ResumoEnvio | null>(null);
 
-  const [extracoes, setExtracoes] = useState<PixExtracao[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erroLista, setErroLista] = useState<string | null>(null);
   const [vinculando, setVinculando] = useState<PixExtracao | null>(null);
   const [clienteEscolhido, setClienteEscolhido] = useState("");
   const [salvandoVinculo, setSalvandoVinculo] = useState(false);
@@ -199,6 +197,29 @@ function Pix() {
   const [verificando, setVerificando] = useState(false);
   const [resumoVerificacao, setResumoVerificacao] = useState<ResumoVerificacao | null>(null);
   const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
+
+  // [perf] useQuery em vez de useEffect+useState -- cacheia entre trocas de
+  // aba (não recarrega do zero toda vez que volta pra Extrator de PIX) e
+  // ainda mantém o polling de 4s enquanto houver extração
+  // aguardando/processando (`refetchInterval` dinâmico, baseado no último
+  // resultado já cacheado -- mesmo comportamento de antes, só sem o
+  // useEffect+setInterval manual).
+  const {
+    data: extracoesData,
+    isLoading: carregando,
+    error: erroListaObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["pix-extracoes"],
+    queryFn: () => api.pix.listar(),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const pendente = Array.isArray(data) && data.some((e) => e.status === "aguardando" || e.status === "processando");
+      return pendente ? 4000 : false;
+    },
+  });
+  const extracoes = useMemo(() => (Array.isArray(extracoesData) ? extracoesData : []), [extracoesData]);
+  const erroLista = erroListaObj ? (erroListaObj as Error).message : null;
 
   // [paginação] 50 extrações por página -- mesma ideia da tela Clientes.
   const TAMANHO_PAGINA = 50;
@@ -216,33 +237,6 @@ function Pix() {
   // antes do próximo) -- é o que garante não faltar RAM no servidor (ver
   // backend/src/services/extratorServidorPix.js).
   const [modoExtracao, setModoExtracao] = useState<"navegador" | "servidor">("navegador");
-
-  const carregar = useCallback(async () => {
-    try {
-      const data = await api.pix.listar();
-      setExtracoes(Array.isArray(data) ? data : []);
-      setErroLista(null);
-    } catch (e) {
-      setErroLista((e as Error).message);
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
-
-  const temPendente = useMemo(
-    () => extracoes.some((e) => e.status === "aguardando" || e.status === "processando"),
-    [extracoes],
-  );
-
-  useEffect(() => {
-    if (!temPendente) return;
-    const interval = setInterval(carregar, 4000);
-    return () => clearInterval(interval);
-  }, [temPendente, carregar]);
 
   const tamanhoTotalMb = useMemo(() => arquivos.reduce((soma, f) => soma + f.size, 0) / (1024 * 1024), [arquivos]);
   const loteExcedeLimite = arquivos.length > MAX_ARQUIVOS || tamanhoTotalMb > MAX_TOTAL_MB;
@@ -678,7 +672,7 @@ function Pix() {
                 <Aviso tone="danger">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <span>{erroLista}</span>
-                    <Botao tamanho="sm" variante="outline" onClick={carregar}>
+                    <Botao tamanho="sm" variante="outline" onClick={() => carregar()}>
                       <RefreshCcw className="size-3.5" />
                       Tentar novamente
                     </Botao>

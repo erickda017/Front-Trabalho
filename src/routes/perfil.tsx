@@ -145,12 +145,12 @@ function PerfilOperador() {
 export const Route = createFileRoute("/perfil")({
   head: () => ({
     meta: [
-      { title: "Perfil — Veloce Faturas" },
+      { title: "Perfil — Voxcel Faturas" },
       {
         name: "description",
         content: "Nome, foto e conexão do WhatsApp do operador.",
       },
-      { property: "og:title", content: "Perfil — Veloce Faturas" },
+      { property: "og:title", content: "Perfil — Voxcel Faturas" },
       { property: "og:description", content: "Perfil do operador e status da conexão." },
     ],
   }),

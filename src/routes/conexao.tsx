@@ -9,13 +9,13 @@ import { api } from "@/api";
 export const Route = createFileRoute("/conexao")({
   head: () => ({
     meta: [
-      { title: "Conexão do WhatsApp — Veloce Faturas" },
+      { title: "Conexão do WhatsApp — Voxcel Faturas" },
       {
         name: "description",
         content:
           "Status da sua sessão do WhatsApp: QR Code de vínculo, instância ativa, uptime e desconexão segura.",
       },
-      { property: "og:title", content: "Conexão do WhatsApp — Veloce Faturas" },
+      { property: "og:title", content: "Conexão do WhatsApp — Voxcel Faturas" },
       {
         property: "og:description",
         content: "QR Code de vínculo, instância ativa, uptime e desconexão da sua sessão.",
