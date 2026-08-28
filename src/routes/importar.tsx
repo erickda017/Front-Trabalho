@@ -15,6 +15,7 @@ import * as XLSX from "xlsx";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
+import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao, TabelaWrap } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
@@ -362,14 +363,9 @@ function ConversorLista() {
                       </td>
                       <td className="td-cell">
                         {i.tipo_fatura ? (
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              i.tipo_fatura === "FPD" ? "bg-blue-500/10 text-blue-500" : "bg-purple-500/10 text-purple-500",
-                            )}
-                          >
+                          <StatusPill tone={i.tipo_fatura === "FPD" ? "info" : "brand"}>
                             {i.tipo_fatura}
-                          </span>
+                          </StatusPill>
                         ) : (
                           "—"
                         )}

@@ -42,8 +42,6 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-strong: var(--primary-strong);
   --color-primary-soft: var(--primary-soft);
-  /* alias legado, mantido para não quebrar estilos existentes */
-  --color-primary-glow: var(--primary-strong);
 
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -72,6 +70,16 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  --color-overlay: var(--overlay);
+  --color-qr-surface: var(--qr-surface);
+
+  --color-chat-wallpaper: var(--chat-wallpaper);
+  --color-chat-bubble-out: var(--chat-bubble-out);
+  --color-chat-bubble-out-foreground: var(--chat-bubble-out-foreground);
+  --color-chat-bubble-in: var(--chat-bubble-in);
+  --color-chat-bubble-in-foreground: var(--chat-bubble-in-foreground);
+  --color-chat-tick-read: var(--chat-tick-read);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -127,7 +135,17 @@
   --chart-2: oklch(0.5133 0.1183 250.11);
   --chart-3: oklch(0.5951 0.1274 60.16);
   --chart-4: oklch(0.5507 0.1885 23.11);
-  --chart-5: oklch(0.6106 0.0139 253.09);
+  --chart-5: oklch(0.5052 0.1398 322.15);
+
+  --overlay: oklch(0.1 0.005 253.09 / 0.72);
+  --qr-surface: oklch(1 0 0);
+
+  --chat-wallpaper: oklch(0.9686 0.0055 145.55);
+  --chat-bubble-out: oklch(0.9227 0.0409 165.8);
+  --chat-bubble-out-foreground: oklch(0.2854 0.0442 167.9);
+  --chat-bubble-in: oklch(1 0 0);
+  --chat-bubble-in-foreground: oklch(0.2481 0.0187 253.09);
+  --chat-tick-read: oklch(0.5133 0.1183 250.11);
 
   --sidebar: oklch(0.2481 0.0187 253.09);
   --sidebar-foreground: oklch(0.9139 0.0055 253.09);
@@ -142,8 +160,6 @@
   --shadow-panel: 0 1px 2px oklch(0.2481 0.0187 253.09 / 0.06);
   --shadow-raised: 0 4px 14px -6px oklch(0.2481 0.0187 253.09 / 0.16);
   --shadow-overlay: 0 18px 44px -20px oklch(0.2481 0.0187 253.09 / 0.28);
-  /* alias legado: sem glow no novo design, apenas sombra discreta */
-  --shadow-glow: var(--shadow-panel);
 }
 
 /* ---------------------------------------------------------------------------
@@ -192,7 +208,10 @@
   --chart-2: oklch(0.6767 0.1183 250.11);
   --chart-3: oklch(0.7563 0.1266 74.16);
   --chart-4: oklch(0.6739 0.1712 23.11);
-  --chart-5: oklch(0.7106 0.0116 253.09);
+  --chart-5: oklch(0.6963 0.1398 322.15);
+
+  --overlay: oklch(0 0 0 / 0.7);
+  --qr-surface: oklch(1 0 0);
 
   --sidebar: oklch(0.1614 0.0143 253.09);
   --sidebar-foreground: oklch(0.9139 0.0055 253.09);
@@ -207,7 +226,6 @@
   --shadow-panel: 0 1px 2px oklch(0 0 0 / 0.4);
   --shadow-raised: 0 4px 14px -6px oklch(0 0 0 / 0.55);
   --shadow-overlay: 0 18px 44px -20px oklch(0 0 0 / 0.7);
-  --shadow-glow: var(--shadow-panel);
 
   --chat-wallpaper: oklch(0.1793 0.0148 253.09);
   --chat-bubble-out: oklch(0.3049 0.0509 167.9);
@@ -337,26 +355,8 @@ html.dark {
 }
 
 /* ---------------------------------------------------------------------------
- * Chat (thread estilo mensageria, agora em tema claro)
+ * Chat (thread estilo mensageria, com tokens dedicados por tema)
  * ------------------------------------------------------------------------ */
-
-:root {
-  --chat-wallpaper: oklch(0.9686 0.0055 145.55);
-  --chat-bubble-out: oklch(0.9227 0.0409 165.8);
-  --chat-bubble-out-foreground: oklch(0.2854 0.0442 167.9);
-  --chat-bubble-in: oklch(1 0 0);
-  --chat-bubble-in-foreground: oklch(0.2481 0.0187 253.09);
-  --chat-tick-read: oklch(0.5133 0.1183 250.11);
-}
-
-@theme inline {
-  --color-chat-wallpaper: var(--chat-wallpaper);
-  --color-chat-bubble-out: var(--chat-bubble-out);
-  --color-chat-bubble-out-foreground: var(--chat-bubble-out-foreground);
-  --color-chat-bubble-in: var(--chat-bubble-in);
-  --color-chat-bubble-in-foreground: var(--chat-bubble-in-foreground);
-  --color-chat-tick-read: var(--chat-tick-read);
-}
 
 @utility chat-wallpaper {
   background-color: var(--chat-wallpaper);

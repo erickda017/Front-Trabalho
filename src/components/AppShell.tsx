@@ -292,11 +292,11 @@ export function AppShell({
         <header className="border-border bg-background/85 sticky top-0 z-20 shrink-0 border-b backdrop-blur-md">
           <div
             className={cn(
-              "flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6",
+              "flex w-full items-center justify-between gap-3 px-4 py-3 sm:px-6",
               !flush && "mx-auto max-w-[88rem]",
             )}
           >
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <button
                 onClick={() => setOpen((v) => !v)}
                 aria-label="Alternar menu"

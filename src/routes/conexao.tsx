@@ -88,9 +88,9 @@ function Conexao() {
 
           <div className="bg-foreground mb-4 aspect-square max-w-52 rounded-lg p-4">
             {conexao.status === "qr" && conexao.qr ? (
-              <img src={conexao.qr} alt="QR Code do WhatsApp" className="h-full w-full rounded bg-white object-contain p-2" />
+              <img src={conexao.qr} alt="QR Code do WhatsApp" className="bg-qr-surface h-full w-full rounded object-contain p-2" />
             ) : (
-              <div className="grid h-full w-full place-items-center rounded bg-white/90 outline-1 -outline-offset-1 outline-black/5">
+              <div className="bg-qr-surface/90 grid h-full w-full place-items-center rounded outline-1 -outline-offset-1 outline-black/5">
                 <span className="text-subtle px-4 text-center text-[10px] font-medium tracking-[0.15em] uppercase">
                   {conexao.status === "connected"
                     ? "Dispositivo conectado"
@@ -110,7 +110,7 @@ function Conexao() {
           )}
 
           {erro && (
-            <div className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 ring-1 ring-red-500/20">
+            <div className="bg-destructive/10 text-destructive ring-destructive/20 mb-3 rounded-md px-3 py-2 text-xs ring-1">
               {erro}
             </div>
           )}
@@ -119,7 +119,7 @@ function Conexao() {
             <button
               onClick={conectar}
               disabled={acao !== null || !podeConectar}
-              className="bg-surface-raised text-foreground hover:bg-surface-raised/70 inline-flex h-9 items-center gap-2 rounded-md px-4 text-sm font-medium ring-1 ring-white/10 transition-colors disabled:opacity-50"
+              className="bg-surface-raised text-foreground hover:bg-surface-raised/70 ring-border inline-flex h-9 items-center gap-2 rounded-md px-4 text-sm font-medium ring-1 transition-colors disabled:opacity-50"
             >
               {acao === "conectar" ? <RefreshCw className="size-3.5 animate-spin" /> : <Plug className="size-3.5" />}
               {conexao.status === "qr" || conexao.status === "connecting" ? "Gerar novo QR" : "Conectar"}
@@ -140,19 +140,19 @@ function Conexao() {
         <h3 className="font-display mb-4 text-sm font-medium">Proteções de envio</h3>
         <ul className="text-muted-foreground space-y-3 text-xs">
           <li className="flex gap-3">
-            <span className="text-primary-glow shrink-0 font-mono">01</span>
+            <span className="text-primary-strong shrink-0 font-mono">01</span>
             Delay aleatório entre mensagens, simulando digitação humana.
           </li>
           <li className="flex gap-3">
-            <span className="text-primary-glow shrink-0 font-mono">02</span>
+            <span className="text-primary-strong shrink-0 font-mono">02</span>
             Pausa longa a cada bloco de mensagens enviadas.
           </li>
           <li className="flex gap-3">
-            <span className="text-primary-glow shrink-0 font-mono">03</span>
+            <span className="text-primary-strong shrink-0 font-mono">03</span>
             Limite diário (por operador) com retomada à meia-noite (Brasília).
           </li>
           <li className="flex gap-3">
-            <span className="text-primary-glow shrink-0 font-mono">04</span>
+            <span className="text-primary-strong shrink-0 font-mono">04</span>
             Número validado no WhatsApp antes de tentar o envio.
           </li>
         </ul>

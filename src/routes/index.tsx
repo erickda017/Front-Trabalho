@@ -168,8 +168,19 @@ function Dashboard() {
                   <Tooltip
                     labelFormatter={(v) => formatarDiaCurto(String(v))}
                     formatter={(v: number) => [v, "Disparos"]}
+                    cursor={{ fill: "var(--color-muted)" }}
+                    contentStyle={{
+                      backgroundColor: "var(--color-popover)",
+                      color: "var(--color-popover-foreground)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius-md)",
+                      boxShadow: "var(--shadow-raised)",
+                      fontSize: "0.75rem",
+                    }}
+                    labelStyle={{ color: "var(--color-muted-foreground)" }}
+                    itemStyle={{ color: "var(--color-popover-foreground)" }}
                   />
-                  <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary, #6366f1)" />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="var(--color-primary)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

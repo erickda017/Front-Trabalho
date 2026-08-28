@@ -208,7 +208,7 @@ function TagPicker({
           <span
             key={t.id}
             className="rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-border"
-            style={{ backgroundColor: `${t.cor}22`, color: t.cor }}
+            style={{ backgroundColor: `color-mix(in oklab, ${t.cor} 18%, transparent)`, color: t.cor }}
           >
             {t.nome}
           </span>
@@ -532,7 +532,7 @@ function FichaCliente({
                       <span
                         key={t.id}
                         className="rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-border"
-                        style={{ backgroundColor: `${t.cor}22`, color: t.cor }}
+                        style={{ backgroundColor: `color-mix(in oklab, ${t.cor} 18%, transparent)`, color: t.cor }}
                       >
                         {t.nome}
                       </span>
@@ -1477,7 +1477,7 @@ function Clientes() {
                             <span
                               key={t.id}
                               className="rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-border"
-                              style={{ backgroundColor: `${t.cor}22`, color: t.cor }}
+                              style={{ backgroundColor: `color-mix(in oklab, ${t.cor} 18%, transparent)`, color: t.cor }}
                             >
                               {t.nome}
                             </span>

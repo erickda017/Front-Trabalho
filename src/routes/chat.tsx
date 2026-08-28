@@ -480,7 +480,7 @@ function MidiaProtegida({
 }
 
 function Ticks({ status }: { status: string | null }) {
-  if (status === "lido") return <CheckCheck className="text-primary size-3.5 shrink-0" />;
+  if (status === "lido") return <CheckCheck className="text-chat-tick-read size-3.5 shrink-0" />;
   if (status === "entregue") return <CheckCheck className="size-3.5 shrink-0 opacity-70" />;
   if (status === "enviado" || status === null)
     return <Check className="size-3.5 shrink-0 opacity-70" />;
@@ -898,14 +898,12 @@ function Chat() {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8">
+            <div className="chat-wallpaper min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8">
               <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
                 {grupos.map((grupo) => (
                   <div key={grupo.dia} className="flex flex-col gap-1.5">
                     <div className="my-3 flex justify-center">
-                      <span className="bg-surface-raised text-muted-foreground rounded-full px-3 py-1 text-[11px] font-medium shadow-panel">
-                        {rotuloDia(grupo.dia)}
-                      </span>
+                      <span className="chat-daypill">{rotuloDia(grupo.dia)}</span>
                     </div>
                     {grupo.itens.map((m, i) => {
                       const meu = m.direcao === "saida";
@@ -924,8 +922,8 @@ function Chat() {
                             className={cn(
                               "max-w-[85%] px-2.5 py-1.5 text-sm shadow-sm sm:max-w-[70%]",
                               meu
-                                ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
-                                : "bg-surface-raised text-foreground rounded-2xl rounded-bl-sm",
+                                ? "bg-chat-bubble-out text-chat-bubble-out-foreground rounded-2xl rounded-br-sm"
+                                : "bg-chat-bubble-in text-chat-bubble-in-foreground rounded-2xl rounded-bl-sm",
                             )}
                           >
                             {m.anexo_url && m.tipo === "imagem" && (

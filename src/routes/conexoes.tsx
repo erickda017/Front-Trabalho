@@ -114,7 +114,7 @@ function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; sl
 
         <div className="bg-surface-sunken flex min-h-40 flex-col items-center justify-center gap-2 rounded-md p-4">
           {conexao.status === "qr" && conexao.qr ? (
-            <img src={conexao.qr} alt="QR Code WhatsApp" className="size-40 rounded-md bg-white p-1" />
+            <img src={conexao.qr} alt="QR Code WhatsApp" className="bg-qr-surface size-40 rounded-md p-1" />
           ) : conexao.status === "connecting" ? (
             <>
               <Loader2 className="text-subtle size-6 animate-spin" />
