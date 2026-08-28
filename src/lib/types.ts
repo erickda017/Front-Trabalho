@@ -92,10 +92,36 @@ export type Cliente = {
   data_contrato?: string | null;
   /** "YYYY-MM", GERADO no banco a partir de data_prazo -- nunca enviar em POST/PUT. */
   safra?: string | null;
+  status_operador?: StatusOperador | null;
+  status_operador_atualizado_em?: string | null;
 };
 
 /** FPD = primeira fatura, SPD = segunda fatura -- ver CONTEXTO.md ("Safras"). */
 export type TipoFatura = "FPD" | "SPD";
+
+/** [2026-08] Desfecho da última tratativa de cobrança (aba Qualidade) -- ver
+ *  backend/src/lib/statusOperador.js, fonte única da verdade sobre a lista.
+ *  null/ausente = cliente ainda sem tratativa registrada. */
+export type StatusOperador =
+  | "iniciado"
+  | "tentativa_contato"
+  | "contato_estabelecido"
+  | "promessa_pagamento"
+  | "pagamento_confirmado"
+  | "recusa_pagamento"
+  | "numero_invalido"
+  | "fraude"
+  | "contrato_cancelado"
+  | "renegociacao";
+
+/** Mesmo conjunto que `STATUS_BLOQUEIA_DISPARO` no backend -- cliente com um
+ *  destes status sai da fila/disparo igual uma tag `permite_disparo: false`. */
+export const STATUS_OPERADOR_BLOQUEIA_DISPARO = new Set<StatusOperador>([
+  "pagamento_confirmado",
+  "numero_invalido",
+  "fraude",
+  "contrato_cancelado",
+]);
 
 /** Resumo de métricas de uma safra -- ver GET /safras, /safras/:safra. */
 export type SafraResumo = {
@@ -171,6 +197,93 @@ export type EnvioResumo = {
   numeros_invalidos: number;
   pendentes: number;
   cancelados: number;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Supervisor -- mesmos formatos devolvidos por /api/supervisor/* (ver         */
+/* backend/src/routes/supervisor.routes.js). Movidos de routes/supervisor.tsx  */
+/* pra cá pra seguir o mesmo padrão dos outros tipos de domínio deste arquivo. */
+/* -------------------------------------------------------------------------- */
+
+export type Operador = { id: string; email: string | null; nome: string | null };
+
+export type ClienteSup = {
+  id: string;
+  nome: string;
+  telefone: string;
+  valor: string | null;
+  vencimento: string | null;
+  pix_code: string | null;
+  pdf_path: string | null;
+  operador: Operador | null;
+};
+
+export type FaturaSup = {
+  cliente_id: string;
+  cliente_nome: string;
+  telefone: string;
+  valor: string | null;
+  vencimento: string | null;
+  pdf_path: string | null;
+  pdf_url: string | null;
+  pix_code: string | null;
+  operador: Operador | null;
+};
+
+export type DisparoSup = {
+  id: string;
+  criado_em: string;
+  lote: string | null;
+  status: string;
+  total: number;
+  enviados: number;
+  entregues: number;
+  lidos: number;
+  falhas: number;
+  pendentes: number;
+  operador: Operador | null;
+};
+
+export type ResumoOperador = {
+  operador: Operador;
+  total_clientes: number;
+  com_pdf: number;
+  com_pix: number;
+  disparos_em_andamento: number;
+  disparos_concluidos: number;
+  enviados: number;
+  entregues: number;
+  lidos: number;
+  falhas: number;
+};
+
+export type IndicePixItem = {
+  id: string;
+  nome: string;
+  telefone: string;
+  pix_code: string;
+  usuario_id: string;
+  operador: Operador | null;
+};
+
+export type SerieDia = { data: string; total: number };
+
+export type DashboardSupervisor = {
+  totais: {
+    operadores: number;
+    clientes: number;
+    com_pix: number;
+    disparos_em_andamento: number;
+    disparos_concluidos: number;
+    enviados?: number;
+    falhas?: number;
+    pendentes?: number;
+    valor_medio?: number;
+    valor_total?: number;
+    faturas_com_valor?: number;
+  };
+  serie_disparos_7dias?: SerieDia[];
+  por_operador: ResumoOperador[];
 };
 
 export type EnvioItem = {

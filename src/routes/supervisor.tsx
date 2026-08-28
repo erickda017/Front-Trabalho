@@ -14,6 +14,7 @@ import {
   Users,
   Wallet,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -23,7 +24,7 @@ import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { MetricCard } from "@/components/shared/MetricCard";
-import { Aviso, Botao, Busca, Seletor, TabelaWrap } from "@/components/shared/Controls";
+import { Aviso, Botao, Busca, LinhasEsqueleto, Paginacao, Seletor, TabelaWrap } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { api, abrirArquivoProtegido } from "@/api";
 import { extrairPixLocal } from "@/lib/pixExtractor";
@@ -36,7 +37,17 @@ import {
   removerExtracaoPessoal,
   type ItemExtraidoPessoal,
 } from "@/lib/extratorPessoal";
-import { cn } from "@/lib/utils";
+import { cn, formatoMoeda } from "@/lib/utils";
+import type {
+  Operador,
+  ClienteSup,
+  FaturaSup,
+  DisparoSup,
+  ResumoOperador,
+  SerieDia,
+  DashboardSupervisor,
+  IndicePixItem,
+} from "@/lib/types";
 
 export const Route = createFileRoute("/supervisor")({
   head: () => ({
@@ -47,73 +58,6 @@ export const Route = createFileRoute("/supervisor")({
   }),
   component: Supervisor,
 });
-
-type Operador = { id: string; email: string | null; nome: string | null };
-type ClienteSup = {
-  id: string;
-  nome: string;
-  telefone: string;
-  valor: string | null;
-  vencimento: string | null;
-  pix_code: string | null;
-  pdf_path: string | null;
-  operador: Operador | null;
-};
-type FaturaSup = {
-  cliente_id: string;
-  cliente_nome: string;
-  telefone: string;
-  valor: string | null;
-  vencimento: string | null;
-  pdf_path: string | null;
-  pdf_url: string | null;
-  pix_code: string | null;
-  operador: Operador | null;
-};
-type DisparoSup = {
-  id: string;
-  criado_em: string;
-  lote: string | null;
-  status: string;
-  total: number;
-  enviados: number;
-  entregues: number;
-  lidos: number;
-  falhas: number;
-  pendentes: number;
-  operador: Operador | null;
-};
-type ResumoOperador = {
-  operador: Operador;
-  total_clientes: number;
-  com_pdf: number;
-  com_pix: number;
-  disparos_em_andamento: number;
-  disparos_concluidos: number;
-  enviados: number;
-  entregues: number;
-  lidos: number;
-  falhas: number;
-};
-type IndicePixItem = { id: string; nome: string; telefone: string; pix_code: string; usuario_id: string; operador: Operador | null };
-type SerieDia = { data: string; total: number };
-type DashboardSupervisor = {
-  totais: {
-    operadores: number;
-    clientes: number;
-    com_pix: number;
-    disparos_em_andamento: number;
-    disparos_concluidos: number;
-    enviados?: number;
-    falhas?: number;
-    pendentes?: number;
-    valor_medio?: number;
-    valor_total?: number;
-    faturas_com_valor?: number;
-  };
-  serie_disparos_7dias?: SerieDia[];
-  por_operador: ResumoOperador[];
-};
 
 const ABAS = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -143,8 +87,6 @@ function formatarValor(v: string | null) {
   const n = Number(v);
   return Number.isNaN(n) ? v : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-
-const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function formatarDiaCurto(data: string) {
   // "data" vem como YYYY-MM-DD (ver backend/src/routes/supervisor.routes.js)
@@ -193,12 +135,18 @@ function Supervisor() {
   );
 }
 
-function CarregandoBloco({ linhas = 5 }: { linhas?: number }) {
+// [2026-08] Erro de carregamento de uma tabela (Clientes/Faturas/Disparos do
+// Supervisor) -- mesmo bloco "Aviso + Tentar novamente" era copy-paste
+// idêntico nos 3 lugares.
+function ErroCarregamento({ erro, onRetry }: { erro: string; onRetry: () => void }) {
   return (
-    <div className="space-y-2 p-4">
-      {Array.from({ length: linhas }).map((_, i) => (
-        <div key={i} className="bg-surface-sunken h-8 animate-pulse rounded-md" />
-      ))}
+    <div className="p-5">
+      <Aviso tone="danger">
+        {erro}
+        <button onClick={onRetry} className="ml-3 font-medium underline">
+          Tentar novamente
+        </button>
+      </Aviso>
     </div>
   );
 }
@@ -234,7 +182,7 @@ function AbaDashboard() {
   }
 
   const totais = dados?.totais;
-  const metrics: { label: string; valor: number | null | undefined; icon: any }[] = [
+  const metrics: { label: string; valor: number | null | undefined; icon: LucideIcon }[] = [
     { label: "Operadores", valor: totais?.operadores, icon: Users },
     { label: "Clientes", valor: totais?.clientes, icon: Users },
     { label: "Com PIX", valor: totais?.com_pix, icon: KeyRound },
@@ -314,9 +262,7 @@ function AbaDashboard() {
       </SectionCard>
 
       <SectionCard titulo="Por operador" descricao="Carteira e disparos de cada operador." flush bodyClassName="p-0">
-        {carregando ? (
-          <CarregandoBloco linhas={4} />
-        ) : !dados?.por_operador.length ? (
+        {!carregando && !dados?.por_operador.length ? (
           <EmptyState icon={Users} titulo="Nenhum operador logou ainda" compacto />
         ) : (
           <TabelaWrap>
@@ -334,22 +280,26 @@ function AbaDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-border divide-y">
-                {dados.por_operador.map((op) => (
-                  <tr key={op.operador.id}>
-                    <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
-                    <td className="px-4 py-2.5">{op.total_clientes}</td>
-                    <td className="px-4 py-2.5">{op.com_pdf}</td>
-                    <td className="px-4 py-2.5">{op.com_pix}</td>
-                    <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
-                    <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
-                    <td className="px-4 py-2.5">
-                      {op.entregues} / {op.lidos}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {op.falhas > 0 ? <span className="text-destructive">{op.falhas}</span> : "0"}
-                    </td>
-                  </tr>
-                ))}
+                {carregando ? (
+                  <LinhasEsqueleto colunas={8} linhas={4} />
+                ) : (
+                  (dados?.por_operador ?? []).map((op) => (
+                    <tr key={op.operador.id}>
+                      <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
+                      <td className="px-4 py-2.5">{op.total_clientes}</td>
+                      <td className="px-4 py-2.5">{op.com_pdf}</td>
+                      <td className="px-4 py-2.5">{op.com_pix}</td>
+                      <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
+                      <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
+                      <td className="px-4 py-2.5">
+                        {op.entregues} / {op.lidos}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {op.falhas > 0 ? <span className="text-destructive">{op.falhas}</span> : "0"}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </TabelaWrap>
@@ -392,13 +342,17 @@ const FILTRO_PDF_PIX = [
 ] as const;
 type FiltroPdfPix = (typeof FILTRO_PDF_PIX)[number]["value"];
 
+const TAMANHO_PAGINA_SUPERVISOR = 50;
+
 function AbaClientes({ operadores }: { operadores: Operador[] }) {
   const [clientes, setClientes] = useState<ClienteSup[]>([]);
+  const [total, setTotal] = useState(0);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [operadorId, setOperadorId] = useState("");
   const [filtro, setFiltro] = useState<FiltroPdfPix>("");
+  const [pagina, setPagina] = useState(1);
 
   const carregar = useCallback(() => {
     setCarregando(true);
@@ -411,10 +365,22 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
         sem_pix: filtro === "sem_pix" ? "true" : undefined,
         com_pdf: filtro === "com_pdf" ? "true" : undefined,
         sem_pdf: filtro === "sem_pdf" ? "true" : undefined,
+        page: pagina,
+        per_page: TAMANHO_PAGINA_SUPERVISOR,
       })
-      .then((data) => setClientes(Array.isArray(data) ? data : []))
+      .then((data) => {
+        setClientes(Array.isArray(data?.itens) ? data.itens : []);
+        setTotal(typeof data?.total === "number" ? data.total : 0);
+      })
       .catch((e) => setErro((e as Error).message))
       .finally(() => setCarregando(false));
+  }, [busca, operadorId, filtro, pagina]);
+
+  // Qualquer mudança de filtro volta pra página 1 -- senão dá pra ficar
+  // "preso" numa página vazia depois de filtrar pra um resultado menor
+  // (mesma regra da tela de Clientes do operador).
+  useEffect(() => {
+    setPagina(1);
   }, [busca, operadorId, filtro]);
 
   useEffect(() => {
@@ -422,13 +388,20 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
     return () => clearTimeout(t);
   }, [carregar]);
 
+  const totalPaginas = Math.max(1, Math.ceil(total / TAMANHO_PAGINA_SUPERVISOR));
+
   return (
     <SectionCard
       titulo="Clientes (todos os operadores)"
       descricao="A quem cada cliente está atribuído."
       acoes={
         <div className="flex flex-wrap gap-2">
-          <Busca placeholder="Buscar por nome ou telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <Busca
+            placeholder="Buscar por nome ou telefone…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="flex-none w-full sm:w-52"
+          />
           <Seletor value={filtro} onChange={(e) => setFiltro(e.target.value as FiltroPdfPix)} className="max-w-[160px]">
             {FILTRO_PDF_PIX.map((f) => (
               <option key={f.value} value={f.value}>
@@ -443,49 +416,55 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <div className="p-5">
-          <Aviso tone="danger">
-            {erro}
-            <button onClick={carregar} className="ml-3 font-medium underline">
-              Tentar novamente
-            </button>
-          </Aviso>
-        </div>
-      ) : carregando ? (
-        <CarregandoBloco linhas={6} />
-      ) : clientes.length === 0 ? (
+        <ErroCarregamento erro={erro} onRetry={carregar} />
+      ) : !carregando && clientes.length === 0 ? (
         <EmptyState icon={Users} titulo="Nenhum cliente encontrado" descricao="Ajuste a busca ou os filtros acima." compacto />
       ) : (
-        <TabelaWrap>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-subtle border-b text-left text-xs uppercase">
-                <th className="px-4 py-2.5">Cliente</th>
-                <th className="px-4 py-2.5">Telefone</th>
-                <th className="px-4 py-2.5">Valor</th>
-                <th className="px-4 py-2.5">PDF</th>
-                <th className="px-4 py-2.5">PIX</th>
-                <th className="px-4 py-2.5">Atribuído a</th>
-              </tr>
-            </thead>
-            <tbody className="divide-border divide-y">
-              {clientes.map((c) => (
-                <tr key={c.id}>
-                  <td className="px-4 py-2.5 font-medium">{c.nome}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs">{c.telefone}</td>
-                  <td className="px-4 py-2.5">{formatarValor(c.valor)}</td>
-                  <td className="px-4 py-2.5">
-                    {c.pdf_path ? <StatusPill tone="success">Com PDF</StatusPill> : <StatusPill tone="muted">Sem PDF</StatusPill>}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {c.pix_code ? <StatusPill tone="success">Com PIX</StatusPill> : <StatusPill tone="muted">Sem PIX</StatusPill>}
-                  </td>
-                  <td className="px-4 py-2.5">{nomeOperador(c.operador)}</td>
+        <>
+          <TabelaWrap>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border text-subtle border-b text-left text-xs uppercase">
+                  <th className="px-4 py-2.5">Cliente</th>
+                  <th className="px-4 py-2.5">Telefone</th>
+                  <th className="px-4 py-2.5">Valor</th>
+                  <th className="px-4 py-2.5">PDF</th>
+                  <th className="px-4 py-2.5">PIX</th>
+                  <th className="px-4 py-2.5">Atribuído a</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TabelaWrap>
+              </thead>
+              <tbody className="divide-border divide-y">
+                {carregando ? (
+                  <LinhasEsqueleto colunas={6} linhas={6} />
+                ) : (
+                  clientes.map((c) => (
+                    <tr key={c.id}>
+                      <td className="px-4 py-2.5 font-medium">{c.nome}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs">{c.telefone}</td>
+                      <td className="px-4 py-2.5">{formatarValor(c.valor)}</td>
+                      <td className="px-4 py-2.5">
+                        {c.pdf_path ? <StatusPill tone="success">Com PDF</StatusPill> : <StatusPill tone="muted">Sem PDF</StatusPill>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {c.pix_code ? <StatusPill tone="success">Com PIX</StatusPill> : <StatusPill tone="muted">Sem PIX</StatusPill>}
+                      </td>
+                      <td className="px-4 py-2.5">{nomeOperador(c.operador)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </TabelaWrap>
+          {!carregando && (
+            <Paginacao
+              paginaAtual={pagina}
+              totalPaginas={totalPaginas}
+              totalItens={total}
+              tamanhoPagina={TAMANHO_PAGINA_SUPERVISOR}
+              onMudarPagina={setPagina}
+            />
+          )}
+        </>
       )}
     </SectionCard>
   );
@@ -493,19 +472,33 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
 
 function AbaFaturas({ operadores }: { operadores: Operador[] }) {
   const [faturas, setFaturas] = useState<FaturaSup[]>([]);
+  const [total, setTotal] = useState(0);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [operadorId, setOperadorId] = useState("");
+  const [pagina, setPagina] = useState(1);
 
   const carregar = useCallback(() => {
     setCarregando(true);
     setErro(null);
     api.supervisor
-      .faturas({ busca: busca || undefined, operador_id: operadorId || undefined })
-      .then((data) => setFaturas(Array.isArray(data) ? data : []))
+      .faturas({
+        busca: busca || undefined,
+        operador_id: operadorId || undefined,
+        page: pagina,
+        per_page: TAMANHO_PAGINA_SUPERVISOR,
+      })
+      .then((data) => {
+        setFaturas(Array.isArray(data?.itens) ? data.itens : []);
+        setTotal(typeof data?.total === "number" ? data.total : 0);
+      })
       .catch((e) => setErro((e as Error).message))
       .finally(() => setCarregando(false));
+  }, [busca, operadorId, pagina]);
+
+  useEffect(() => {
+    setPagina(1);
   }, [busca, operadorId]);
 
   useEffect(() => {
@@ -513,13 +506,24 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
     return () => clearTimeout(t);
   }, [carregar]);
 
+  const totalPaginas = Math.max(1, Math.ceil(total / TAMANHO_PAGINA_SUPERVISOR));
+
   return (
     <SectionCard
       titulo="Faturas (todos os operadores)"
       descricao="PDF, valor, vencimento e a quem está atribuída cada fatura."
       acoes={
-        <div className="flex gap-2">
-          <Busca placeholder="Buscar por nome ou telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="flex flex-wrap gap-2">
+          {/* [2026-08] Sem `flex-wrap` antes, esta barra não tinha pra onde
+              quebrar -- Busca (`flex-1`) e o seletor de operador brigavam
+              pelo mesmo espaço numa tela estreita. Mesmo ajuste de largura
+              fixa da tela Clientes. */}
+          <Busca
+            placeholder="Buscar por nome ou telefone…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="flex-none w-full sm:w-52"
+          />
           <SeletorOperador operadores={operadores} valor={operadorId} onChange={setOperadorId} />
         </div>
       }
@@ -527,55 +531,61 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <div className="p-5">
-          <Aviso tone="danger">
-            {erro}
-            <button onClick={carregar} className="ml-3 font-medium underline">
-              Tentar novamente
-            </button>
-          </Aviso>
-        </div>
-      ) : carregando ? (
-        <CarregandoBloco linhas={6} />
-      ) : faturas.length === 0 ? (
+        <ErroCarregamento erro={erro} onRetry={carregar} />
+      ) : !carregando && faturas.length === 0 ? (
         <EmptyState icon={FileText} titulo="Nenhuma fatura encontrada" descricao="Ajuste a busca ou o filtro de operador acima." compacto />
       ) : (
-        <TabelaWrap>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border text-subtle border-b text-left text-xs uppercase">
-                <th className="px-4 py-2.5">Cliente</th>
-                <th className="px-4 py-2.5">Valor</th>
-                <th className="px-4 py-2.5">Vencimento</th>
-                <th className="px-4 py-2.5">PDF</th>
-                <th className="px-4 py-2.5">Atribuído a</th>
-              </tr>
-            </thead>
-            <tbody className="divide-border divide-y">
-              {faturas.map((f) => (
-                <tr key={f.cliente_id}>
-                  <td className="px-4 py-2.5 font-medium">{f.cliente_nome}</td>
-                  <td className="px-4 py-2.5">{formatarValor(f.valor)}</td>
-                  <td className="px-4 py-2.5">{f.vencimento || "—"}</td>
-                  <td className="px-4 py-2.5">
-                    {f.pdf_url ? (
-                      <button
-                        type="button"
-                        onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErro((e as Error).message))}
-                        className="text-primary-strong inline-flex items-center gap-1 hover:underline"
-                      >
-                        <FileText className="size-3.5" /> Ver
-                      </button>
-                    ) : (
-                      <span className="text-subtle">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">{nomeOperador(f.operador)}</td>
+        <>
+          <TabelaWrap>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border text-subtle border-b text-left text-xs uppercase">
+                  <th className="px-4 py-2.5">Cliente</th>
+                  <th className="px-4 py-2.5">Valor</th>
+                  <th className="px-4 py-2.5">Vencimento</th>
+                  <th className="px-4 py-2.5">PDF</th>
+                  <th className="px-4 py-2.5">Atribuído a</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TabelaWrap>
+              </thead>
+              <tbody className="divide-border divide-y">
+                {carregando ? (
+                  <LinhasEsqueleto colunas={5} linhas={6} />
+                ) : (
+                  faturas.map((f) => (
+                    <tr key={f.cliente_id}>
+                      <td className="px-4 py-2.5 font-medium">{f.cliente_nome}</td>
+                      <td className="px-4 py-2.5">{formatarValor(f.valor)}</td>
+                      <td className="px-4 py-2.5">{f.vencimento || "—"}</td>
+                      <td className="px-4 py-2.5">
+                        {f.pdf_url ? (
+                          <button
+                            type="button"
+                            onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErro((e as Error).message))}
+                            className="text-primary-strong inline-flex items-center gap-1 hover:underline"
+                          >
+                            <FileText className="size-3.5" /> Ver
+                          </button>
+                        ) : (
+                          <span className="text-subtle">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">{nomeOperador(f.operador)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </TabelaWrap>
+          {!carregando && (
+            <Paginacao
+              paginaAtual={pagina}
+              totalPaginas={totalPaginas}
+              totalItens={total}
+              tamanhoPagina={TAMANHO_PAGINA_SUPERVISOR}
+              onMudarPagina={setPagina}
+            />
+          )}
+        </>
       )}
     </SectionCard>
   );
@@ -633,17 +643,8 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <div className="p-5">
-          <Aviso tone="danger">
-            {erro}
-            <button onClick={carregar} className="ml-3 font-medium underline">
-              Tentar novamente
-            </button>
-          </Aviso>
-        </div>
-      ) : carregando ? (
-        <CarregandoBloco linhas={6} />
-      ) : disparos.length === 0 ? (
+        <ErroCarregamento erro={erro} onRetry={carregar} />
+      ) : !carregando && disparos.length === 0 ? (
         <EmptyState icon={KeyRound} titulo="Nenhum disparo encontrado" descricao="Ajuste o status ou o filtro de operador acima." compacto />
       ) : (
         <TabelaWrap>
@@ -659,26 +660,30 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
               </tr>
             </thead>
             <tbody className="divide-border divide-y">
-              {disparos.map((d) => {
-                const st = STATUS_DISPARO[d.status] || { label: d.status, tone: "muted" as const };
-                return (
-                  <tr key={d.id}>
-                    <td className="px-4 py-2.5 font-medium">{d.lote || d.id.slice(0, 8)}</td>
-                    <td className="px-4 py-2.5">{nomeOperador(d.operador)}</td>
-                    <td className="px-4 py-2.5">
-                      <StatusPill tone={st.tone}>{st.label}</StatusPill>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {d.enviados}/{d.total} enviados
-                      {d.falhas > 0 && <span className="text-destructive"> · {d.falhas} falha(s)</span>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {d.entregues} / {d.lidos}
-                    </td>
-                    <td className="px-4 py-2.5">{formatarData(d.criado_em)}</td>
-                  </tr>
-                );
-              })}
+              {carregando ? (
+                <LinhasEsqueleto colunas={6} linhas={6} />
+              ) : (
+                disparos.map((d) => {
+                  const st = STATUS_DISPARO[d.status] || { label: d.status, tone: "muted" as const };
+                  return (
+                    <tr key={d.id}>
+                      <td className="px-4 py-2.5 font-medium">{d.lote || d.id.slice(0, 8)}</td>
+                      <td className="px-4 py-2.5">{nomeOperador(d.operador)}</td>
+                      <td className="px-4 py-2.5">
+                        <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {d.enviados}/{d.total} enviados
+                        {d.falhas > 0 && <span className="text-destructive"> · {d.falhas} falha(s)</span>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {d.entregues} / {d.lidos}
+                      </td>
+                      <td className="px-4 py-2.5">{formatarData(d.criado_em)}</td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </TabelaWrap>

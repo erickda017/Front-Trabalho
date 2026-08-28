@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Aviso, Botao, LinhasEsqueleto, TabelaWrap } from "@/components/shared/Controls";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { api } from "@/api";
-import { cn } from "@/lib/utils";
+import { cn, formatoMoeda } from "@/lib/utils";
 import type { SafraResumo } from "@/lib/types";
 
 // [2026-08] Ver CONTEXTO.md, seção "Safras (FPD/SPD) e histórico
@@ -29,7 +29,6 @@ export const Route = createFileRoute("/safras")({
   component: Safras,
 });
 
-const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function Safras() {
   const [safras, setSafras] = useState<SafraResumo[] | null>(null);

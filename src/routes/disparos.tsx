@@ -1034,7 +1034,7 @@ function Disparo() {
       if (ignoradosSemPdf || ignoradosPorTag) {
         const partes = [];
         if (ignoradosSemPdf) partes.push(comPdf ? `${ignoradosSemPdf} sem PDF vinculado` : `${ignoradosSemPdf} sem PIX cadastrado`);
-        if (ignoradosPorTag) partes.push(`${ignoradosPorTag} com tag que bloqueia disparo (ex.: Pago/Cancelado)`);
+        if (ignoradosPorTag) partes.push(`${ignoradosPorTag} com tag ou status que bloqueia disparo (ex.: Pago/Cancelado/Fraude)`);
         setAvisoIgnorados(`${partes.join(" e ")} ficaram de fora do lote.`);
       } else {
         setAvisoIgnorados(null);

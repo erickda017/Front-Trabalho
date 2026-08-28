@@ -298,9 +298,19 @@ export const api = {
     promoverSpd: (id, dataPrazo) => request(`/clientes/${id}/promover-spd`, { method: 'POST', body: JSON.stringify({ data_prazo: dataPrazo || undefined }) }),
   },
   perfil: {
-    // Papel (operador|supervisor) do usuário logado -- decide se o menu
-    // "Supervisor" aparece (ver AppShell/app-state.tsx).
+    // Também traz nome/avatar_url além do papel (operador|supervisor, que
+    // decide se o menu "Supervisor" aparece -- ver AppShell/app-state.tsx).
     me: () => request('/perfil/me'),
+    // `foto`: File novo (substitui a atual) | null (não mexe na foto) |
+    // "remover" (apaga a foto atual). `nome`: string | undefined (undefined
+    // = não mexe no nome).
+    atualizar: ({ nome, foto } = {}) => {
+      const formData = new FormData();
+      if (nome !== undefined) formData.append('nome', nome);
+      if (foto === 'remover') formData.append('remover_foto', 'true');
+      else if (foto instanceof File) formData.append('foto', foto);
+      return request('/perfil/me', { method: 'PUT', body: formData });
+    },
   },
   supervisor: {
     // Todas as rotas abaixo exigem role=supervisor no backend (ver

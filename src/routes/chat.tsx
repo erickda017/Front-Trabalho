@@ -24,9 +24,16 @@ import { AppShell } from "@/components/AppShell";
 import { api, abrirArquivoProtegido, buscarBlobUrlProtegida } from "@/api";
 import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
-import { useAppState } from "@/lib/app-state";
+import { useAppState, type Tag } from "@/lib/app-state";
 import { Aviso } from "@/components/shared/Controls";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { TagPicker } from "@/components/shared/TagPicker";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -55,7 +62,7 @@ type Conversa = {
   nao_lidas: number;
   ultima_mensagem: string | null;
   ultima_mensagem_em: string | null;
-  clientes: { nome: string; pdf_url: string | null; pix_code: string | null } | null;
+  clientes: { nome: string; pdf_url: string | null; pix_code: string | null; tags: Tag[] } | null;
 };
 
 type Mensagem = {
@@ -85,87 +92,82 @@ function EnviarFaturaModal({
   erro: string | null;
   onEscolher: (modo: "pdf" | "pix" | "pdf_pix") => void;
 }) {
-  if (!aberto || !conversa) return null;
-
-  const temCliente = !!conversa.cliente_id;
-  const temPdf = !!conversa.clientes?.pdf_url;
-  const temPix = !!conversa.clientes?.pix_code;
+  const temCliente = !!conversa?.cliente_id;
+  const temPdf = !!conversa?.clientes?.pdf_url;
+  const temPix = !!conversa?.clientes?.pix_code;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4" onClick={onClose}>
-      <div className="panel w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-sm font-medium">Enviar fatura</h3>
-          <button onClick={onClose} aria-label="Fechar" className="text-subtle hover:text-foreground">
-            <X className="size-4" />
-          </button>
-        </div>
+    <Dialog open={aberto} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        {conversa && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Enviar fatura</DialogTitle>
+            </DialogHeader>
 
-        {!temCliente ? (
-          <p className="text-subtle text-xs">
-            Este contato não está vinculado a um cliente cadastrado -- use "Vincular cliente" no topo da
-            conversa antes de mandar a fatura.
-          </p>
-        ) : !temPdf && !temPix ? (
-          <p className="text-subtle text-xs">
-            Este cliente não tem fatura (PDF) nem código Pix cadastrados. Faça o upload do PDF na aba
-            Clientes primeiro.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            <button
-              type="button"
-              disabled={!temPdf || enviando}
-              onClick={() => onEscolher("pdf")}
-              className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <FileText className="text-primary-strong size-5 shrink-0" />
-              <span>
-                <span className="block font-medium">Só o PDF</span>
-                <span className="text-subtle block text-xs">Manda o arquivo da fatura</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={!temPix || enviando}
-              onClick={() => onEscolher("pix")}
-              className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <QrCode className="text-primary-strong size-5 shrink-0" />
-              <span>
-                <span className="block font-medium">Só o código Pix</span>
-                <span className="text-subtle block text-xs">
-                  {temPix ? "Manda o copia e cola extraído do QR" : "Nenhum código Pix encontrado nesta fatura"}
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={!temPdf || !temPix || enviando}
-              onClick={() => onEscolher("pdf_pix")}
-              className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Receipt className="text-primary-strong size-5 shrink-0" />
-              <span>
-                <span className="block font-medium">PDF + Pix</span>
-                <span className="text-subtle block text-xs">Manda os dois, um atrás do outro</span>
-              </span>
-            </button>
-          </div>
-        )}
+            {!temCliente ? (
+              <p className="text-subtle text-xs">
+                Este contato não está vinculado a um cliente cadastrado -- use "Vincular cliente" no topo da
+                conversa antes de mandar a fatura.
+              </p>
+            ) : !temPdf && !temPix ? (
+              <p className="text-subtle text-xs">
+                Este cliente não tem fatura (PDF) nem código Pix cadastrados. Faça o upload do PDF na aba
+                Clientes primeiro.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  disabled={!temPdf || enviando}
+                  onClick={() => onEscolher("pdf")}
+                  className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FileText className="text-primary-strong size-5 shrink-0" />
+                  <span>
+                    <span className="block font-medium">Só o PDF</span>
+                    <span className="text-subtle block text-xs">Manda o arquivo da fatura</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!temPix || enviando}
+                  onClick={() => onEscolher("pix")}
+                  className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <QrCode className="text-primary-strong size-5 shrink-0" />
+                  <span>
+                    <span className="block font-medium">Só o código Pix</span>
+                    <span className="text-subtle block text-xs">
+                      {temPix ? "Manda o copia e cola extraído do QR" : "Nenhum código Pix encontrado nesta fatura"}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!temPdf || !temPix || enviando}
+                  onClick={() => onEscolher("pdf_pix")}
+                  className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Receipt className="text-primary-strong size-5 shrink-0" />
+                  <span>
+                    <span className="block font-medium">PDF + Pix</span>
+                    <span className="text-subtle block text-xs">Manda os dois, um atrás do outro</span>
+                  </span>
+                </button>
+              </div>
+            )}
 
-        {enviando && (
-          <div className="text-subtle mt-4 flex items-center justify-center gap-2 text-xs">
-            <Loader2 className="size-3.5 animate-spin" /> Enviando...
-          </div>
+            {enviando && (
+              <div className="text-subtle flex items-center justify-center gap-2 text-xs">
+                <Loader2 className="size-3.5 animate-spin" /> Enviando...
+              </div>
+            )}
+            {erro && !enviando && <Aviso tone="danger">{erro}</Aviso>}
+          </>
         )}
-        {erro && !enviando && (
-          <Aviso tone="danger" className="mt-4">
-            {erro}
-          </Aviso>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -197,73 +199,68 @@ function VincularClienteModal({
   const { clientes } = useAppState();
   const [busca, setBusca] = useState("");
 
-  if (!aberto || !conversa) return null;
-
   const q = busca.trim().toLowerCase();
   const filtrados = q
     ? clientes.filter((c) => c.nome.toLowerCase().includes(q) || c.telefone.includes(q)).slice(0, 30)
     : clientes.slice(0, 30);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4" onClick={onClose}>
-      <div className="panel flex max-h-[80vh] w-full max-w-sm flex-col p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-display text-sm font-medium">Vincular cliente</h3>
-          <button onClick={onClose} aria-label="Fechar" className="text-subtle hover:text-foreground">
-            <X className="size-4" />
-          </button>
-        </div>
+    <Dialog open={aberto} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-sm">
+        {conversa && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Vincular cliente</DialogTitle>
+            </DialogHeader>
 
-        {conversa.cliente_id && (
-          <button
-            type="button"
-            disabled={vinculando}
-            onClick={() => onVincular(null)}
-            className="text-destructive hover:bg-surface-raised/60 mb-3 w-full rounded-md border border-border px-3 py-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Desvincular de "{conversa.clientes?.nome}"
-          </button>
+            {conversa.cliente_id && (
+              <button
+                type="button"
+                disabled={vinculando}
+                onClick={() => onVincular(null)}
+                className="text-destructive hover:bg-surface-raised/60 w-full shrink-0 rounded-md border border-border px-3 py-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Desvincular de "{conversa.clientes?.nome}"
+              </button>
+            )}
+
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome ou telefone"
+              autoFocus
+              className="bg-surface-sunken border-border focus-ring h-9 shrink-0 rounded-md border px-3 text-sm"
+            />
+
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {filtrados.length === 0 && (
+                <p className="text-subtle p-2 text-xs">Nenhum cliente encontrado.</p>
+              )}
+              {filtrados.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={vinculando || c.id === conversa.cliente_id}
+                  onClick={() => onVincular(c.id)}
+                  className="hover:bg-surface-raised/60 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="truncate">{c.nome}</span>
+                  <span className="text-subtle shrink-0 font-mono text-xs">{c.telefone}</span>
+                </button>
+              ))}
+            </div>
+
+            {vinculando && (
+              <div className="text-subtle flex shrink-0 items-center justify-center gap-2 text-xs">
+                <Loader2 className="size-3.5 animate-spin" /> Vinculando...
+              </div>
+            )}
+            {erro && !vinculando && <Aviso tone="danger">{erro}</Aviso>}
+          </>
         )}
-
-        <input
-          type="text"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome ou telefone"
-          autoFocus
-          className="bg-surface-sunken border-border focus-ring mb-3 h-9 shrink-0 rounded-md border px-3 text-sm"
-        />
-
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-          {filtrados.length === 0 && (
-            <p className="text-subtle p-2 text-xs">Nenhum cliente encontrado.</p>
-          )}
-          {filtrados.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              disabled={vinculando || c.id === conversa.cliente_id}
-              onClick={() => onVincular(c.id)}
-              className="hover:bg-surface-raised/60 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <span className="truncate">{c.nome}</span>
-              <span className="text-subtle shrink-0 font-mono text-xs">{c.telefone}</span>
-            </button>
-          ))}
-        </div>
-
-        {vinculando && (
-          <div className="text-subtle mt-3 flex items-center justify-center gap-2 text-xs">
-            <Loader2 className="size-3.5 animate-spin" /> Vinculando...
-          </div>
-        )}
-        {erro && !vinculando && (
-          <Aviso tone="danger" className="mt-3">
-            {erro}
-          </Aviso>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -283,8 +280,6 @@ function GerenciarRespostasRapidas({
   const [salvando, setSalvando] = useState(false);
   const [removendo, setRemovendo] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-
-  if (!aberto) return null;
 
   async function criar() {
     if (!atalho.trim() || !texto.trim()) return;
@@ -313,19 +308,13 @@ function GerenciarRespostasRapidas({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4" onClick={onClose}>
-      <div
-        className="panel max-h-[80vh] w-full max-w-lg overflow-y-auto p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-sm font-medium">Mensagens rápidas</h3>
-          <button onClick={onClose} aria-label="Fechar" className="text-subtle hover:text-foreground">
-            <X className="size-4" />
-          </button>
-        </div>
+    <Dialog open={aberto} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Mensagens rápidas</DialogTitle>
+        </DialogHeader>
 
-        <div className="mb-5 space-y-2">
+        <div className="space-y-2">
           <div className="flex gap-2">
             <input
               value={atalho}
@@ -379,8 +368,8 @@ function GerenciarRespostasRapidas({
             <p className="text-subtle py-6 text-center text-xs">Nenhuma mensagem rápida ainda.</p>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -499,6 +488,7 @@ function Chat() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [respostasRapidas, setRespostasRapidas] = useState<{ id: string; atalho: string; texto: string }[]>([]);
+  const [todasTags, setTodasTags] = useState<Tag[]>([]);
   const [sugestaoIndex, setSugestaoIndex] = useState(0);
   const [enviandoFatura, setEnviandoFatura] = useState(false);
   const [modalFaturaAberto, setModalFaturaAberto] = useState(false);
@@ -534,6 +524,19 @@ function Chat() {
 
   function recarregarRespostasRapidas() {
     api.respostasRapidas.listar().then(setRespostasRapidas).catch(() => {});
+  }
+
+  // Tags disponíveis (mesma lista da aba Clientes) -- pro seletor de tag do
+  // cliente vinculado à conversa aberta.
+  useEffect(() => {
+    api.tags.listar().then(setTodasTags).catch(() => {});
+  }, []);
+
+  // TagPicker muda a tag via POST/DELETE /tags/:id/clientes/:clienteId (não
+  // devolve a conversa atualizada) -- recarrega a lista pra refletir no card
+  // e no cabeçalho.
+  function recarregarConversas() {
+    api.chat.listarConversas().then((data: Conversa[]) => setConversas(data)).catch(() => {});
   }
 
   // Histórico da conversa ativa (busca só na primeira vez que ela é aberta)
@@ -824,6 +827,22 @@ function Chat() {
                             </span>
                           )}
                         </span>
+                        {/* [2026-08] Tag do cliente vinculado (ver aba Qualidade/
+                            Clientes) -- só aparece quando existe, não ocupa
+                            linha nenhuma pra quem não tem tag. */}
+                        {c.clientes?.tags && c.clientes.tags.length > 0 && (
+                          <span className="mt-0.5 flex flex-wrap gap-1">
+                            {c.clientes.tags.map((t) => (
+                              <span
+                                key={t.id}
+                                className="rounded-full px-1.5 py-0.5 text-[9px] font-medium ring-1 ring-border"
+                                style={{ backgroundColor: `color-mix(in oklab, ${t.cor} 18%, transparent)`, color: t.cor }}
+                              >
+                                {t.nome}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     </button>
                   </li>
@@ -856,50 +875,74 @@ function Chat() {
               <span className="bg-surface-raised text-muted-foreground grid size-10 shrink-0 place-items-center rounded-full text-xs font-semibold ring-1 ring-border">
                 {iniciais(nomeExibicao(ativo))}
               </span>
-              <div className="flex min-w-0 flex-col">
+              <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-sm font-medium">{nomeExibicao(ativo)}</span>
                 <span className="text-subtle truncate font-mono text-[11px]">{ativo.telefone}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setErroVincular(null);
-                  setModalVincularAberto(true);
-                }}
-                title={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
-                className={cn(
-                  "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                  ativo.cliente_id
-                    ? "text-muted-foreground hover:bg-surface-raised/60"
-                    : "bg-warning/15 text-warning hover:bg-warning/25",
+                {/* [2026-08] Tag do cliente vinculado, editável direto daqui --
+                    só faz sentido quando a conversa já está vinculada a um
+                    cliente cadastrado (a tag é do cliente, não da conversa). */}
+                {ativo.cliente_id && (
+                  <TagPicker
+                    cliente={{ id: ativo.cliente_id, tags: ativo.clientes?.tags ?? [] }}
+                    todasTags={todasTags}
+                    onChange={recarregarConversas}
+                  />
                 )}
-              >
-                <UserPlus className="size-3.5" />
-                {ativo.cliente_id ? "Vinculado" : "Vincular cliente"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setErroFatura(null);
-                  setModalFaturaAberto(true);
-                }}
-                className="bg-primary-soft text-primary-strong hover:bg-primary-soft/70 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-              >
-                <Receipt className="size-3.5" />
-                Enviar fatura
-              </button>
-              <button
-                type="button"
-                aria-label="Apagar conversa"
-                onClick={() => apagarConversa(ativo.id)}
-                className="text-subtle hover:text-destructive hover:bg-surface-raised/50 grid size-8 shrink-0 place-items-center rounded-full transition-colors"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
+              </div>
+
+              {/* [2026-08] "Enviar fatura" é a ação principal daqui, fica
+                  destacada; "Vincular cliente" e "Apagar" são secundárias --
+                  viraram ícones agrupados com um separador, em vez de 3
+                  pills coloridas competindo pela mesma atenção. */}
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErroFatura(null);
+                    setModalFaturaAberto(true);
+                  }}
+                  className="bg-primary-soft text-primary-strong hover:bg-primary-soft/70 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  <Receipt className="size-3.5" />
+                  Enviar fatura
+                </button>
+                <div className="bg-border mx-0.5 h-5 w-px shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErroVincular(null);
+                    setModalVincularAberto(true);
+                  }}
+                  aria-label={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
+                  title={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
+                  className={cn(
+                    "grid size-8 shrink-0 place-items-center rounded-full transition-colors",
+                    ativo.cliente_id
+                      ? "text-muted-foreground hover:bg-surface-raised/60"
+                      : "bg-warning/15 text-warning hover:bg-warning/25",
+                  )}
+                >
+                  <UserPlus className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Apagar conversa"
+                  title="Apagar conversa"
+                  onClick={() => apagarConversa(ativo.id)}
+                  className="text-subtle hover:text-destructive hover:bg-surface-raised/50 grid size-8 shrink-0 place-items-center rounded-full transition-colors"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
             </header>
 
-            <div className="chat-wallpaper min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8">
-              <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
+            {/* [2026-08] `max-w-3xl` (768px) centralizado deixava metade da
+                tela vazia em tela cheia -- as bolhas já têm seu próprio teto
+                de largura (`max-w-[85%] sm:max-w-[70%]` abaixo), então a
+                coluna de mensagens pode ocupar o painel inteiro sem virar
+                uma parede de texto ilegível. */}
+            <div className="chat-wallpaper min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8 lg:px-12">
+              <div className="flex flex-col gap-1.5">
                 {grupos.map((grupo) => (
                   <div key={grupo.dia} className="flex flex-col gap-1.5">
                     <div className="my-3 flex justify-center">
@@ -908,7 +951,14 @@ function Chat() {
                     {grupo.itens.map((m, i) => {
                       const meu = m.direcao === "saida";
                       const anterior = grupo.itens[i - 1];
+                      const proxima = grupo.itens[i + 1];
                       const primeiraDoBloco = !anterior || anterior.direcao !== m.direcao;
+                      // [2026-08] Balão com "rabinho" (ver @utility bubble-out/
+                      // bubble-in em styles.css, existia pronto e nunca era
+                      // usado) só na última mensagem de um bloco consecutivo --
+                      // igual ao WhatsApp de verdade, em vez de repetir o
+                      // rabinho em toda mensagem do mesmo bloco.
+                      const ultimaDoBloco = !proxima || proxima.direcao !== m.direcao;
                       return (
                         <div
                           key={m.id}
@@ -920,10 +970,14 @@ function Chat() {
                         >
                           <div
                             className={cn(
-                              "max-w-[85%] px-2.5 py-1.5 text-sm shadow-sm sm:max-w-[70%]",
+                              "max-w-[85%] px-2.5 py-1.5 text-sm sm:max-w-[70%]",
                               meu
-                                ? "bg-chat-bubble-out text-chat-bubble-out-foreground rounded-2xl rounded-br-sm"
-                                : "bg-chat-bubble-in text-chat-bubble-in-foreground rounded-2xl rounded-bl-sm",
+                                ? ultimaDoBloco
+                                  ? "bubble-out"
+                                  : "bg-chat-bubble-out text-chat-bubble-out-foreground shadow-panel rounded-lg"
+                                : ultimaDoBloco
+                                  ? "bubble-in"
+                                  : "bg-chat-bubble-in text-chat-bubble-in-foreground shadow-panel rounded-lg",
                             )}
                           >
                             {m.anexo_url && m.tipo === "imagem" && (
@@ -972,9 +1026,9 @@ function Chat() {
               </div>
             )}
 
-            <footer className="bg-surface/95 border-border shrink-0 border-t px-3 py-2.5 backdrop-blur">
+            <footer className="bg-surface/95 border-border shrink-0 border-t px-3 py-2.5 sm:px-8 lg:px-12 backdrop-blur">
               {anexo && (
-                <div className="text-muted-foreground bg-surface-raised/60 mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-md px-3 py-2 text-xs">
+                <div className="text-muted-foreground bg-surface-raised/60 mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-xs">
                   <Paperclip className="size-3.5 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{anexo.name}</span>
                   <button
@@ -988,7 +1042,7 @@ function Chat() {
                 </div>
               )}
               {sugestoes.length > 0 && (
-                <div className="panel mx-auto mb-2 max-w-3xl overflow-hidden p-1">
+                <div className="panel mb-2 overflow-hidden p-1">
                   {sugestoes.map((r, i) => (
                     <button
                       key={r.id}
@@ -1015,7 +1069,7 @@ function Chat() {
                   }
                   enviar();
                 }}
-                className="mx-auto flex max-w-3xl items-end gap-2"
+                className="flex items-end gap-2"
               >
                 <input
                   ref={fileInputRef}

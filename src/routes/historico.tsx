@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { StatusPill, type Tone } from "@/components/shared/StatusPill";
 import { Progress } from "@/components/ui/progress";
 import { useAppState } from "@/lib/app-state";
 import {
@@ -54,6 +55,15 @@ const STATUS_OPCOES: { valor: EnvioStatus | "todos"; label: string }[] = [
   { valor: "concluido", label: "Concluído" },
   { valor: "cancelado", label: "Cancelado" },
 ];
+
+const TONE_STATUS_LOTE: Record<EnvioStatus, Tone> = {
+  pendente: "muted",
+  agendado: "info",
+  em_andamento: "brand",
+  pausado: "warning",
+  concluido: "success",
+  cancelado: "danger",
+};
 
 const FILTRO_ITENS: { valor: string; label: string }[] = [
   { valor: "todos", label: "Todos" },
@@ -446,8 +456,11 @@ function Historico() {
       }
     >
       <div className="space-y-3">
-        <div className="toolbar flex flex-wrap items-center gap-3">
-          <Busca placeholder="Cliente, telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="toolbar flex flex-wrap items-center gap-2">
+          {/* [2026-08] Mesmo ajuste da tela Clientes: Busca com largura fixa
+              em vez de `flex-1` -- não disputa espaço com os chips de status
+              e não encolhe a ponto de cortar o próprio texto. */}
+          <Busca placeholder="Cliente, telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} className="flex-none w-full sm:w-52" />
           <FiltroChips valor={status} onChange={setStatus} opcoes={STATUS_OPCOES} />
           <button
             type="button"
@@ -494,54 +507,66 @@ function Historico() {
               </Botao>
             </Aviso>
           </div>
+        ) : !carregando && lotes.length === 0 ? (
+          <div className="p-5">
+            <EmptyState icon={History} titulo="Nenhum disparo realizado ainda." compacto />
+          </div>
         ) : (
-          <TabelaWrap>
-            <thead>
-              <tr>
-                <th className="th-cell">Data</th>
-                <th className="th-cell">Lote</th>
-                <th className="th-cell">Status</th>
-                <th className="th-cell text-right">Total</th>
-                <th className="th-cell text-right">Enviados</th>
-                <th className="th-cell text-right">Entregues</th>
-                <th className="th-cell text-right">Lidos</th>
-                <th className="th-cell text-right">Falhas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {carregando ? (
-                <LinhasEsqueleto colunas={8} linhas={6} />
-              ) : lotes.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>
-                    <EmptyState icon={History} titulo="Nenhum disparo realizado ainda." compacto />
-                  </td>
-                </tr>
-              ) : (
-                lotes.map((envio) => (
-                  <tr
-                    key={envio.id}
-                    onClick={() => setLoteSelecionado(envio)}
-                    className="border-border hover:bg-surface-raised/60 cursor-pointer border-t transition-colors"
-                  >
-                    <td className="td-cell text-xs">{formatarData(envio.criado_em)}</td>
-                    <td className="td-cell font-mono text-xs">
-                      {envio.lote ?? `#${envio.id.slice(0, 8)}`}
-                    </td>
-                    <td className="td-cell">
-                      <span className="text-xs font-medium">{STATUS_OPCOES.find((o) => o.valor === envio.status)?.label ?? envio.status}</span>
-                      <MiniBarraLinha envio={envio} />
-                    </td>
-                    <td className="td-cell tabular text-right">{envio.total}</td>
-                    <td className="td-cell tabular text-right">{envio.enviados}</td>
-                    <td className="td-cell tabular text-right">{envio.entregues}</td>
-                    <td className="td-cell tabular text-right">{envio.lidos}</td>
-                    <td className="td-cell tabular text-right">{envio.falhas}</td>
-                  </tr>
+          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            {carregando
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="panel-flat h-[11.5rem] animate-pulse" />
                 ))
-              )}
-            </tbody>
-          </TabelaWrap>
+              : lotes.map((envio) => {
+                  const statusLabel = STATUS_OPCOES.find((o) => o.valor === envio.status)?.label ?? envio.status;
+                  return (
+                    <button
+                      key={envio.id}
+                      type="button"
+                      onClick={() => setLoteSelecionado(envio)}
+                      className="panel hover:border-border-strong hover:shadow-raised flex flex-col gap-3 p-4 text-left transition-shadow"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-subtle truncate font-mono text-xs">
+                          {envio.lote ?? `#${envio.id.slice(0, 8)}`}
+                        </span>
+                        <StatusPill tone={TONE_STATUS_LOTE[envio.status] ?? "muted"} dot pulse={envio.status === "em_andamento"}>
+                          {statusLabel}
+                        </StatusPill>
+                      </div>
+
+                      <div>
+                        <p className="font-display tabular text-2xl font-semibold">
+                          {envio.enviados}
+                          <span className="text-subtle text-sm font-normal"> / {envio.total}</span>
+                        </p>
+                        <p className="label-eyebrow mt-0.5">Enviados</p>
+                      </div>
+
+                      <MiniBarraLinha envio={envio} />
+
+                      <div className="border-border grid grid-cols-3 gap-2 border-t pt-3 text-center">
+                        <div>
+                          <p className="tabular text-sm font-semibold">{envio.entregues}</p>
+                          <p className="text-subtle text-[10px] uppercase">Entregues</p>
+                        </div>
+                        <div>
+                          <p className="tabular text-sm font-semibold">{envio.lidos}</p>
+                          <p className="text-subtle text-[10px] uppercase">Lidos</p>
+                        </div>
+                        <div>
+                          <p className={cn("tabular text-sm font-semibold", envio.falhas > 0 && "text-destructive")}>
+                            {envio.falhas}
+                          </p>
+                          <p className="text-subtle text-[10px] uppercase">Falhas</p>
+                        </div>
+                      </div>
+
+                      <p className="text-subtle text-[11px]">{formatarData(envio.criado_em)}</p>
+                    </button>
+                  );
+                })}
+          </div>
         )}
       </SectionCard>
 

@@ -56,7 +56,10 @@ const nav = [
   // barreira de segurança de verdade.
   { to: "/supervisor", label: "Supervisor", icon: ShieldCheck, grupo: "Gestão", supervisorOnly: true },
   { to: "/conexoes", label: "Conexão", icon: Smartphone, grupo: "Sistema" },
-  { to: "/configuracoes", label: "Configurações", icon: Settings, grupo: "Sistema" },
+  // [2026-08] Unificada com o perfil do operador (ex-"Configurações" --
+  // sobrava só um card de debug de ambiente e uma conexão duplicada, ver
+  // routes/perfil.tsx). Mesmo destino do "Editar perfil" no menu do avatar.
+  { to: "/perfil", label: "Perfil", icon: Settings, grupo: "Sistema" },
 ] as const;
 
 const grupos = ["Operação", "Gestão", "Sistema"] as const;
@@ -213,7 +216,7 @@ function ProfileMenu() {
         <DropdownMenuLabel className="truncate">{nomeExibido}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/configuracoes" className="flex items-center gap-2">
+          <Link to="/perfil" className="flex items-center gap-2">
             <Settings className="size-3.5" />
             Editar perfil
           </Link>

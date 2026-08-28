@@ -30,6 +30,7 @@ import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import type { DashboardResumo, SafraResumo } from "@/lib/types";
+import { formatoMoeda } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -55,7 +56,6 @@ function formatarData(iso: string | null) {
   }
 }
 
-const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const formatoPercentual = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 
 function formatarDiaCurto(data: string) {

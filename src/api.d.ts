@@ -106,9 +106,14 @@ declare module "@/api" {
       disparo: () => Promise<ConfigDisparo>;
     };
     perfil: {
-      // Papel (operador|supervisor) do usuário logado -- decide se o menu
-      // "Supervisor" aparece (ver AppShell/app-state.tsx).
-      me: () => Promise<{ id: string; email: string; role: string }>;
+      // [2026-08] Nome + foto agora vêm do banco (perfis.nome/avatar_path,
+      // ver migration-21-perfil-avatar.sql), não mais do localStorage.
+      // `role` (operador|supervisor) decide se o menu "Supervisor" aparece.
+      me: () => Promise<{ id: string; email: string; role: string; nome: string | null; avatar_url: string | null }>;
+      atualizar: (payload?: {
+        nome?: string | undefined;
+        foto?: File | "remover" | null | undefined;
+      }) => Promise<{ id: string; email: string; role: string; nome: string | null; avatar_url: string | null }>;
     };
     // [2026-08] tipos faltando pra api.boletos (existe em runtime desde antes,
     // só não estava declarado aqui -- tsc acusava "Property 'boletos' does not exist").
@@ -217,6 +222,9 @@ declare module "@/api" {
     // operador comum (ver routes/supervisor.tsx).
     supervisor: {
       operadores: () => Promise<OperadorComCarteira[]>;
+      // [2026-08] Passou a paginar de verdade (perPageDefault:1000 cortava em
+      // silêncio numa carteira grande, sem o front saber) -- resposta agora é
+      // {itens,total} em vez de um array cru.
       clientes: (params?: {
         busca?: string | undefined;
         operador_id?: string | undefined;
@@ -224,24 +232,34 @@ declare module "@/api" {
         sem_pix?: string | undefined;
         com_pdf?: string | undefined;
         sem_pdf?: string | undefined;
-      } | undefined) => Promise<(Omit<Cliente, "tags"> & { tags: { id: string; nome: string; cor: string }[]; operador: OperadorResumo | null })[]>;
+        page?: number | undefined;
+        per_page?: number | undefined;
+      } | undefined) => Promise<{
+        itens: (Omit<Cliente, "tags"> & { tags: { id: string; nome: string; cor: string }[]; operador: OperadorResumo | null })[];
+        total: number;
+      }>;
       faturas: (params?: {
         busca?: string | undefined;
         operador_id?: string | undefined;
         com_pdf?: string | undefined;
         sem_pdf?: string | undefined;
+        page?: number | undefined;
+        per_page?: number | undefined;
       } | undefined) => Promise<{
-        cliente_id: string;
-        cliente_nome: string;
-        telefone: string;
-        valor: string | null;
-        vencimento: string | null;
-        pdf_path: string | null;
-        pdf_url: string | null;
-        pix_code: string | null;
-        usuario_id: string;
-        operador: OperadorResumo | null;
-      }[]>;
+        itens: {
+          cliente_id: string;
+          cliente_nome: string;
+          telefone: string;
+          valor: string | null;
+          vencimento: string | null;
+          pdf_path: string | null;
+          pdf_url: string | null;
+          pix_code: string | null;
+          usuario_id: string;
+          operador: OperadorResumo | null;
+        }[];
+        total: number;
+      }>;
       disparos: (params?: {
         status?: string | undefined;
         operador_id?: string | undefined;

@@ -14,11 +14,11 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as ConexaoRouteImport } from './routes/conexao'
 import { Route as ConexoesRouteImport } from './routes/conexoes'
-import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as DisparosRouteImport } from './routes/disparos'
 import { Route as FaturasRouteImport } from './routes/faturas'
 import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as ImportarRouteImport } from './routes/importar'
+import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as PixRouteImport } from './routes/pix'
 import { Route as SafrasRouteImport } from './routes/safras'
 import { Route as SupervisorRouteImport } from './routes/supervisor'
@@ -49,11 +49,6 @@ const ConexoesRoute = ConexoesRouteImport.update({
   path: '/conexoes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
-  id: '/configuracoes',
-  path: '/configuracoes',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DisparosRoute = DisparosRouteImport.update({
   id: '/disparos',
   path: '/disparos',
@@ -72,6 +67,11 @@ const HistoricoRoute = HistoricoRouteImport.update({
 const ImportarRoute = ImportarRouteImport.update({
   id: '/importar',
   path: '/importar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PixRoute = PixRouteImport.update({
@@ -101,11 +101,11 @@ export interface FileRoutesByFullPath {
   '/clientes': typeof ClientesRoute
   '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
-  '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
   '/faturas': typeof FaturasRoute
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
+  '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
@@ -117,11 +117,11 @@ export interface FileRoutesByTo {
   '/clientes': typeof ClientesRoute
   '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
-  '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
   '/faturas': typeof FaturasRoute
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
+  '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
@@ -134,11 +134,11 @@ export interface FileRoutesById {
   '/clientes': typeof ClientesRoute
   '/conexao': typeof ConexaoRoute
   '/conexoes': typeof ConexoesRoute
-  '/configuracoes': typeof ConfiguracoesRoute
   '/disparos': typeof DisparosRoute
   '/faturas': typeof FaturasRoute
   '/historico': typeof HistoricoRoute
   '/importar': typeof ImportarRoute
+  '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
@@ -152,11 +152,11 @@ export interface FileRouteTypes {
     | '/clientes'
     | '/conexao'
     | '/conexoes'
-    | '/configuracoes'
     | '/disparos'
     | '/faturas'
     | '/historico'
     | '/importar'
+    | '/perfil'
     | '/pix'
     | '/safras'
     | '/supervisor'
@@ -168,11 +168,11 @@ export interface FileRouteTypes {
     | '/clientes'
     | '/conexao'
     | '/conexoes'
-    | '/configuracoes'
     | '/disparos'
     | '/faturas'
     | '/historico'
     | '/importar'
+    | '/perfil'
     | '/pix'
     | '/safras'
     | '/supervisor'
@@ -184,11 +184,11 @@ export interface FileRouteTypes {
     | '/clientes'
     | '/conexao'
     | '/conexoes'
-    | '/configuracoes'
     | '/disparos'
     | '/faturas'
     | '/historico'
     | '/importar'
+    | '/perfil'
     | '/pix'
     | '/safras'
     | '/supervisor'
@@ -201,11 +201,11 @@ export interface RootRouteChildren {
   ClientesRoute: typeof ClientesRoute
   ConexaoRoute: typeof ConexaoRoute
   ConexoesRoute: typeof ConexoesRoute
-  ConfiguracoesRoute: typeof ConfiguracoesRoute
   DisparosRoute: typeof DisparosRoute
   FaturasRoute: typeof FaturasRoute
   HistoricoRoute: typeof HistoricoRoute
   ImportarRoute: typeof ImportarRoute
+  PerfilRoute: typeof PerfilRoute
   PixRoute: typeof PixRoute
   SafrasRoute: typeof SafrasRoute
   SupervisorRoute: typeof SupervisorRoute
@@ -249,13 +249,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConexoesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/configuracoes': {
-      id: '/configuracoes'
-      path: '/configuracoes'
-      fullPath: '/configuracoes'
-      preLoaderRoute: typeof ConfiguracoesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/disparos': {
       id: '/disparos'
       path: '/disparos'
@@ -282,6 +275,13 @@ declare module '@tanstack/react-router' {
       path: '/importar'
       fullPath: '/importar'
       preLoaderRoute: typeof ImportarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pix': {
@@ -321,11 +321,11 @@ const rootRouteChildren: RootRouteChildren = {
   ClientesRoute: ClientesRoute,
   ConexaoRoute: ConexaoRoute,
   ConexoesRoute: ConexoesRoute,
-  ConfiguracoesRoute: ConfiguracoesRoute,
   DisparosRoute: DisparosRoute,
   FaturasRoute: FaturasRoute,
   HistoricoRoute: HistoricoRoute,
   ImportarRoute: ImportarRoute,
+  PerfilRoute: PerfilRoute,
   PixRoute: PixRoute,
   SafrasRoute: SafrasRoute,
   SupervisorRoute: SupervisorRoute,

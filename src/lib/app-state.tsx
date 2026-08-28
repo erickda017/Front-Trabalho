@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Session } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured, supabase } from "@/supabaseClient";
-import { api } from "@/api";
+import { api, buscarBlobUrlProtegida } from "@/api";
 import type {
   Cliente,
   Tag,
@@ -13,35 +13,19 @@ import type {
 export type { Cliente, Tag, WhatsappConexao, WhatsappStatus } from "@/lib/types";
 
 /**
- * Perfil do operador (nome + foto) exibido na barra lateral. Não é dado de
- * autenticação -- é só identificação de quem está operando o painel no
- * momento (útil quando várias pessoas revezam no mesmo login). Guardado no
- * navegador (localStorage): não existe tabela de "usuários" no backend, só a
- * sessão do Supabase usada pra login.
+ * Perfil do operador (nome + foto) exibido na barra lateral e no menu de
+ * conta. [2026-08] Passou a vir do banco (tabela `perfis`, ver
+ * migration-21-perfil-avatar.sql) via GET/PUT /api/perfil/me -- antes vivia
+ * só no localStorage do navegador (perdia ao trocar de máquina/navegador).
  */
 export type Perfil = {
   nome: string;
-  /** Data URL (base64) da foto escolhida, ou null se nunca configurada. */
+  /** Blob URL já resolvida (autenticada, ver buscarBlobUrlProtegida) da foto
+   *  de perfil -- null se não tem foto ou ainda não carregou. */
   fotoUrl: string | null;
 };
 
-const PERFIL_KEY = "ui:perfilOperador";
 const perfilPadrao: Perfil = { nome: "", fotoUrl: null };
-
-function lerPerfilSalvo(): Perfil {
-  if (typeof window === "undefined") return perfilPadrao;
-  try {
-    const bruto = window.localStorage.getItem(PERFIL_KEY);
-    if (!bruto) return perfilPadrao;
-    const dados = JSON.parse(bruto);
-    return {
-      nome: typeof dados?.nome === "string" ? dados.nome : "",
-      fotoUrl: typeof dados?.fotoUrl === "string" ? dados.fotoUrl : null,
-    };
-  } catch {
-    return perfilPadrao;
-  }
-}
 
 /** Conexão "vazia" (não configurada) — placeholder de UI, não dado fictício. */
 const conexaoVazia: WhatsappConexao = {
@@ -92,7 +76,7 @@ type AppStateValue = {
   setEnvioAtivoId: (id: string | null) => void;
 
   perfil: Perfil;
-  atualizarPerfil: (perfil: Perfil) => void;
+  atualizarPerfil: (payload: { nome?: string; foto?: File | "remover" }) => Promise<void>;
   role: "operador" | "supervisor";
   isSupervisor: boolean;
 };
@@ -117,14 +101,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setEnvioAtivoIdState(window.sessionStorage.getItem(ENVIO_ATIVO_KEY));
-    setPerfil(lerPerfilSalvo());
   }, []);
 
-  const atualizarPerfil = useCallback((novoPerfil: Perfil) => {
-    setPerfil(novoPerfil);
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PERFIL_KEY, JSON.stringify(novoPerfil));
+  // Blob URL atual da foto de perfil -- revogada sempre que uma nova é
+  // resolvida (troca de foto, refetch) ou no logout, pra não acumular URLs
+  // "presas" na memória (mesmo cuidado do MidiaProtegida no Chat).
+  const fotoBlobUrlRef = useRef<string | null>(null);
+
+  const revogarFotoAtual = useCallback(() => {
+    if (fotoBlobUrlRef.current) {
+      URL.revokeObjectURL(fotoBlobUrlRef.current);
+      fotoBlobUrlRef.current = null;
+    }
   }, []);
+
+  const atualizarPerfil = useCallback(
+    async (payload: { nome?: string; foto?: File | "remover" }) => {
+      const p = await api.perfil.atualizar(payload);
+      const fotoUrl = p?.avatar_url ? await buscarBlobUrlProtegida(p.avatar_url) : null;
+      revogarFotoAtual();
+      fotoBlobUrlRef.current = fotoUrl;
+      setPerfil({ nome: p?.nome || "", fotoUrl });
+    },
+    [revogarFotoAtual],
+  );
 
   const setEnvioAtivoId = useCallback((id: string | null) => {
     setEnvioAtivoIdState(id);
@@ -231,21 +231,34 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [session, refreshClientes]);
 
   useEffect(() => {
-    // Papel some/reseta pra 'operador' ao deslogar -- não deixa o menu
-    // "Supervisor" piscando de uma sessão anterior enquanto a próxima carrega.
+    // Papel/perfil somem ao deslogar -- não deixa o menu "Supervisor" nem a
+    // foto de uma sessão anterior piscando enquanto a próxima carrega.
     if (!session) {
       setRole("operador");
+      setPerfil(perfilPadrao);
+      revogarFotoAtual();
       return;
     }
     let cancelado = false;
     api.perfil
       .me()
-      .then((p) => !cancelado && setRole(p?.role === "supervisor" ? "supervisor" : "operador"))
+      .then(async (p) => {
+        if (cancelado) return;
+        setRole(p?.role === "supervisor" ? "supervisor" : "operador");
+        const fotoUrl = p?.avatar_url ? await buscarBlobUrlProtegida(p.avatar_url) : null;
+        if (cancelado) {
+          if (fotoUrl) URL.revokeObjectURL(fotoUrl);
+          return;
+        }
+        revogarFotoAtual();
+        fotoBlobUrlRef.current = fotoUrl;
+        setPerfil({ nome: p?.nome || "", fotoUrl });
+      })
       .catch(() => !cancelado && setRole("operador"));
     return () => {
       cancelado = true;
     };
-  }, [session]);
+  }, [session, revogarFotoAtual]);
 
   const toggleSelecionado = useCallback((id: string) => {
     setSelecionados((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));

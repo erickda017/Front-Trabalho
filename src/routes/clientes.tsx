@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { TagPicker } from "@/components/shared/TagPicker";
 import { Botao, Busca, Campo, FiltroChips, Aviso, LinhasEsqueleto, Paginacao, Rotulo, Seletor } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,7 +45,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppState, type Tag } from "@/lib/app-state";
-import type { Cliente } from "@/lib/types";
+import { STATUS_OPERADOR_BLOQUEIA_DISPARO, type Cliente } from "@/lib/types";
 
 const MESES_PT = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez",
@@ -84,7 +85,7 @@ type SugestaoSpd = {
 };
 import { agruparClientesPorNumero, type ClienteAgrupado } from "@/lib/agruparClientes";
 import { api, abrirArquivoProtegido } from "@/api";
-import { cn } from "@/lib/utils";
+import { cn, formatoMoeda } from "@/lib/utils";
 
 export const Route = createFileRoute("/clientes")({
   head: () => ({
@@ -104,8 +105,6 @@ export const Route = createFileRoute("/clientes")({
   }),
   component: Clientes,
 });
-
-const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function formatarValor(valor: string | null): string {
   if (!valor) return "—";
@@ -168,77 +167,6 @@ function BotaoCopiar({ texto }: { texto: string }) {
     >
       {copiado ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
     </button>
-  );
-}
-
-function TagPicker({
-  cliente,
-  todasTags,
-  onChange,
-}: {
-  cliente: Cliente;
-  todasTags: Tag[];
-  onChange: () => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const atribuidas = new Set(cliente.tags.map((t) => t.id));
-
-  async function alternar(tag: Tag) {
-    if (atribuidas.has(tag.id)) {
-      await api.tags.remover_do_cliente(tag.id, cliente.id);
-    } else {
-      await api.tags.atribuir(tag.id, cliente.id);
-    }
-    onChange();
-  }
-
-  return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        className="flex flex-wrap items-center gap-1.5 text-left"
-      >
-        {cliente.tags.length === 0 && (
-          <span className="text-subtle inline-flex items-center gap-1 text-xs hover:text-foreground">
-            <TagIcon className="size-3" /> Adicionar
-          </span>
-        )}
-        {cliente.tags.map((t) => (
-          <span
-            key={t.id}
-            className="rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-border"
-            style={{ backgroundColor: `color-mix(in oklab, ${t.cor} 18%, transparent)`, color: t.cor }}
-          >
-            {t.nome}
-          </span>
-        ))}
-      </button>
-      {aberto && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
-          <div className="panel absolute top-full left-0 z-20 mt-2 w-48 space-y-1 p-2">
-            {todasTags.length === 0 && (
-              <p className="text-subtle px-2 py-1 text-xs">Crie tags na aba Tags.</p>
-            )}
-            {todasTags.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => alternar(t)}
-                className="hover:bg-surface-raised flex w-full items-center justify-between rounded px-2 py-1.5 text-xs"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span className="size-2 rounded-full" style={{ backgroundColor: t.cor }} />
-                  {t.nome}
-                </span>
-                {atribuidas.has(t.id) && <span className="text-primary-strong">✓</span>}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
@@ -1060,7 +988,7 @@ function Clientes() {
   // inteira de uma vez. Qualquer mudança de filtro/busca/ordenação volta pra
   // página 1 (senão o usuário podia ficar "preso" numa página 5 vazia depois
   // de filtrar pra um resultado menor).
-  const TAMANHO_PAGINA = 50;
+  const TAMANHO_PAGINA = 30;
   const [pagina, setPagina] = useState(1);
   useEffect(() => {
     setPagina(1);
@@ -1071,6 +999,33 @@ function Clientes() {
     () => filtrados.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
     [filtrados, paginaSegura],
   );
+  // [2026-08] Checkbox "marcar todos" do cabeçalho da tabela: só marca a
+  // página atual (não a lista filtrada inteira, que pode ter centenas de
+  // clientes fora de tela) e pula quem tem alguma tag com `permite_disparo:
+  // false` (ex.: Pago/Cancelado) OU um status de tratativa que bloqueia
+  // disparo (ex.: pagamento_confirmado/fraude -- ver aba Qualidade e
+  // backend/src/lib/statusOperador.js) -- esses já saem do lote
+  // automaticamente no backend (ver envios.routes.js, bloqueadosPorTag),
+  // então marcá-los aqui só ia gerar um aviso confuso de "N ficaram de fora"
+  // pro operador.
+  const paginadosElegiveis = useMemo(
+    () =>
+      paginados.filter(
+        (c) =>
+          c.tags.every((t) => t.permite_disparo) &&
+          !(c.status_operador && STATUS_OPERADOR_BLOQUEIA_DISPARO.has(c.status_operador)),
+      ),
+    [paginados],
+  );
+  const idsPaginaElegiveis = paginadosElegiveis.map((c) => c.id);
+  function alternarSelecaoPagina() {
+    const todosSelecionados = idsPaginaElegiveis.length > 0 && idsPaginaElegiveis.every((id) => selecionados.includes(id));
+    if (todosSelecionados) {
+      setSelecionados(selecionados.filter((id) => !idsPaginaElegiveis.includes(id)));
+    } else {
+      setSelecionados(Array.from(new Set([...selecionados, ...idsPaginaElegiveis])));
+    }
+  }
 
   async function remover(id: string) {
     if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
@@ -1132,16 +1087,23 @@ function Clientes() {
       <div className="space-y-4">
         <UploadAvulsoFaturas onAssociado={refreshClientes} />
 
-        <div className="toolbar flex flex-wrap items-center gap-3">
+        <div className="toolbar flex flex-wrap items-center gap-2">
+          {/* [2026-08] Busca é `flex-1` por padrão (Controls.tsx) pra crescer
+              sozinha numa toolbar mais vazia -- aqui, com 2 seletores + 2
+              grupos de chips na mesma linha, isso empurrava o próprio texto
+              pra cima do seletor de tags em telas médias. `flex-none` +
+              largura fixa tira a caixa de busca dessa disputa por espaço,
+              igual ao padrão de busca de largura fixa do CRM da empresa. */}
           <Busca
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome ou telefone"
+            className="flex-none w-full sm:w-52"
           />
           <Seletor
             value={filtroTag}
             onChange={(e) => setFiltroTag(e.target.value)}
-            className="w-auto min-w-[9rem]"
+            className="w-auto min-w-[8rem]"
           >
             <option value="todas">Todas as tags</option>
             {todasTags.map((t) => (
@@ -1154,7 +1116,7 @@ function Clientes() {
             <Seletor
               value={filtroSafra}
               onChange={(e) => setFiltroSafra(e.target.value)}
-              className="w-auto min-w-[9rem]"
+              className="w-auto min-w-[8rem]"
             >
               <option value="todas">Todas as safras</option>
               {safrasDisponiveis.map((s) => (
@@ -1306,15 +1268,8 @@ function Clientes() {
                     <tr>
                       <th className="th-cell w-10">
                         <Checkbox
-                          checked={filtrados.length > 0 && filtrados.every((c) => selecionados.includes(c.id))}
-                          onCheckedChange={() => {
-                            const todosSelecionados = filtrados.every((c) => selecionados.includes(c.id));
-                            if (todosSelecionados) {
-                              setSelecionados(selecionados.filter((id) => !filtrados.some((c) => c.id === id)));
-                            } else {
-                              selecionarTodosFiltrados();
-                            }
-                          }}
+                          checked={idsPaginaElegiveis.length > 0 && idsPaginaElegiveis.every((id) => selecionados.includes(id))}
+                          onCheckedChange={alternarSelecaoPagina}
                         />
                       </th>
                       <th className="th-cell">Nome</th>
