@@ -127,7 +127,14 @@ function Safras() {
                   <tr key={s.safra} className="border-border border-t">
                     <td className="td-cell font-medium">
                       <div className="flex items-center gap-2">
-                        {s.rotulo}
+                        <Link
+                          to="/clientes"
+                          search={{ safra: s.safra }}
+                          className="hover:underline"
+                          title="Ver clientes desta safra"
+                        >
+                          {s.rotulo}
+                        </Link>
                         {s.arquivada && (
                           <span className="bg-surface-sunken text-subtle inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]">
                             <Archive className="size-3" /> arquivada

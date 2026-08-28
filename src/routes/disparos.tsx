@@ -270,39 +270,6 @@ function EtapaMensagem({
 /* 3. Anexo                                                                   */
 /* -------------------------------------------------------------------------- */
 
-function EtapaAnexo({ comPdf, setComPdf }: { comPdf: boolean; setComPdf: (v: boolean) => void }) {
-  return (
-    <SectionCard eyebrow="Etapa 3" titulo="Anexo">
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={comPdf}
-          onChange={(e) => setComPdf(e.target.checked)}
-          className="accent-primary mt-0.5 size-4"
-        />
-        <span className="flex items-center gap-1.5 text-sm font-medium">
-          <Paperclip className="size-3.5" /> Enviar PDF da fatura
-          <HelpTooltip texto="O arquivo é o PDF já cadastrado em cada cliente. Clientes sem PDF cadastrado recebem só a mensagem de texto." />
-        </span>
-      </label>
-      {!comPdf && (
-        <p className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
-          Desligado: ninguém recebe PDF neste lote.
-          <HelpTooltip
-            texto={
-              <>
-                Só a mensagem, com o código PIX de cada cliente (use <code>{"{{pix}}"}</code> no texto, ou ele é
-                adicionado automaticamente no fim). Só entram clientes com PIX cadastrado — quem não tem fica de
-                fora do lote (mesma lógica de quem não tem PDF, no modo normal).
-              </>
-            }
-          />
-        </p>
-      )}
-    </SectionCard>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* 4. WhatsApp                                                                */
 /* -------------------------------------------------------------------------- */
@@ -375,93 +342,149 @@ function StatusBadgeSimples({ status }: { status: string }) {
   return <span className={cn("shrink-0 text-[11px] font-medium", s.cls)}>{s.label}</span>;
 }
 
+
 /* -------------------------------------------------------------------------- */
-/* 6. Intervalo de disparo                                                   */
+/* 5/6/7. Configurações avançadas (Anexo + Intervalo + Agendamento)          */
 /* -------------------------------------------------------------------------- */
 
-function EtapaIntervalo({
+// [layout] As 3 etapas acima eram 3 SectionCard sempre abertos, sempre
+// visíveis -- itens "configura uma vez, raramente revisita" (anexo PDF,
+// espalhar no tempo, agendar) empilhados junto com as etapas realmente
+// importantes de todo disparo (destinatários, mensagem). Compactados aqui
+// num card só, recolhido por padrão, no mesmo padrão de toggle que
+// "Disparo de teste" já usava (ver `aberto`/ChevronDown abaixo) -- reduz o
+// scroll sem esconder nada que já não fosse opcional.
+function ConfiguracoesAvancadas({
+  comPdf,
+  setComPdf,
   janelaHoras,
   setJanelaHoras,
   janelaMinutos,
   setJanelaMinutos,
+  agendarPara,
+  setAgendarPara,
 }: {
+  comPdf: boolean;
+  setComPdf: (v: boolean) => void;
   janelaHoras: string;
   setJanelaHoras: (v: string) => void;
   janelaMinutos: string;
   setJanelaMinutos: (v: string) => void;
-}) {
-  const horas = Number(janelaHoras) || 0;
-  const minutos = Number(janelaMinutos) || 0;
-  const ativo = horas > 0 || minutos > 0;
-
-  return (
-    <SectionCard
-      eyebrow="Etapa 6"
-      titulo="Intervalo de disparo"
-      descricao='Opcional: espalha o lote inteiro dentro de uma janela de tempo (ex: "5 horas" -- a primeira mensagem sai já, a última antes das 5h fecharem), em vez do intervalo padrão entre mensagens. Reduz risco de queda do WhatsApp em lotes grandes.'
-    >
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="label-eyebrow">Horas</span>
-          <input
-            type="number"
-            min={0}
-            value={janelaHoras}
-            onChange={(e) => setJanelaHoras(e.target.value)}
-            placeholder="0"
-            className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="label-eyebrow">Minutos</span>
-          <input
-            type="number"
-            min={0}
-            max={59}
-            value={janelaMinutos}
-            onChange={(e) => setJanelaMinutos(e.target.value)}
-            placeholder="0"
-            className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
-          />
-        </label>
-        <p className="text-subtle mb-2 text-xs">
-          {ativo
-            ? `Mensagens espalhadas ao longo de ${horas > 0 ? `${horas}h` : ""}${minutos > 0 ? `${minutos}min` : ""}.`
-            : "Sem janela definida: usa o intervalo padrão entre mensagens (comportamento atual)."}
-        </p>
-      </div>
-      <p className="text-subtle mt-3 text-xs">
-        Também vale ao continuar um lote pausado -- se sobrarem itens, eles dividem essa mesma
-        duração a partir do momento em que você continuar.
-      </p>
-    </SectionCard>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* 7. Agendamento                                                             */
-/* -------------------------------------------------------------------------- */
-
-function EtapaAgendamento({
-  agendarPara,
-  setAgendarPara,
-}: {
   agendarPara: string;
   setAgendarPara: (v: string) => void;
 }) {
+  const [aberto, setAberto] = useState(false);
+  const horas = Number(janelaHoras) || 0;
+  const minutos = Number(janelaMinutos) || 0;
+  const janelaAtiva = horas > 0 || minutos > 0;
+
+  const resumo = [
+    comPdf ? "com PDF" : "só texto/Pix",
+    janelaAtiva ? `janela ${horas > 0 ? `${horas}h` : ""}${minutos > 0 ? `${minutos}min` : ""}` : null,
+    agendarPara ? "agendado" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <SectionCard eyebrow="Etapa 7" titulo="Agendamento" descricao="Opcional: defina uma data/hora para iniciar o disparo automaticamente.">
-      <label className="flex flex-col gap-1.5 sm:w-64">
-        <span className="label-eyebrow flex items-center gap-1.5">
-          <Calendar className="size-3.5" /> Data e hora
-        </span>
-        <input
-          type="datetime-local"
-          value={agendarPara}
-          onChange={(e) => setAgendarPara(e.target.value)}
-          className="bg-surface text-foreground border-border focus-ring h-9 rounded-md border px-3 text-sm"
-        />
-      </label>
+    <SectionCard
+      eyebrow="Etapas 5-7"
+      titulo="Configurações avançadas"
+      descricao="Anexo, intervalo de envio e agendamento -- opcionais, o padrão já funciona pra maioria dos disparos."
+      acoes={
+        <div className="flex items-center gap-2">
+          {!aberto && <span className="text-subtle hidden text-xs sm:inline">{resumo}</span>}
+          <button
+            onClick={() => setAberto((v) => !v)}
+            className="text-subtle hover:text-foreground focus-ring rounded p-1"
+            aria-label={aberto ? "Recolher" : "Expandir"}
+          >
+            <ChevronDown className={cn("size-4 transition-transform", aberto && "rotate-180")} />
+          </button>
+        </div>
+      }
+    >
+      {aberto ? (
+        <div className="divide-border -m-4 divide-y sm:-m-5">
+          <div className="p-4 sm:p-5">
+            <p className="label-eyebrow mb-3 flex items-center gap-1.5">
+              Anexo
+              <HelpTooltip texto="O arquivo é o PDF já cadastrado em cada cliente. Clientes sem PDF cadastrado recebem só a mensagem de texto." />
+            </p>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={comPdf}
+                onChange={(e) => setComPdf(e.target.checked)}
+                className="accent-primary mt-0.5 size-4"
+              />
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Paperclip className="size-3.5" /> Enviar PDF da fatura
+              </span>
+            </label>
+            {!comPdf && (
+              <p className="text-muted-foreground mt-3 text-xs">
+                Desligado: ninguém recebe PDF neste lote -- só a mensagem, com o Pix de cada cliente. Só entram
+                clientes com PIX cadastrado.
+              </p>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-5">
+            <p className="label-eyebrow mb-3 flex items-center gap-1.5">
+              Intervalo de disparo
+              <HelpTooltip texto='Opcional: espalha o lote inteiro dentro de uma janela de tempo (ex: "5 horas" -- a primeira mensagem sai já, a última antes das 5h fecharem), em vez do intervalo padrão entre mensagens.' />
+            </p>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="label-eyebrow">Horas</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={janelaHoras}
+                  onChange={(e) => setJanelaHoras(e.target.value)}
+                  placeholder="0"
+                  className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-eyebrow">Minutos</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={janelaMinutos}
+                  onChange={(e) => setJanelaMinutos(e.target.value)}
+                  placeholder="0"
+                  className="bg-surface text-foreground border-border focus-ring h-9 w-24 rounded-md border px-3 text-sm"
+                />
+              </label>
+              <p className="text-subtle mb-2 text-xs">
+                {janelaAtiva
+                  ? `Mensagens espalhadas ao longo de ${horas > 0 ? `${horas}h` : ""}${minutos > 0 ? `${minutos}min` : ""}.`
+                  : "Sem janela definida: usa o intervalo padrão entre mensagens."}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5">
+            <p className="label-eyebrow mb-3">Agendamento</p>
+            <label className="flex flex-col gap-1.5 sm:w-64">
+              <span className="label-eyebrow flex items-center gap-1.5">
+                <Calendar className="size-3.5" /> Data e hora
+              </span>
+              <input
+                type="datetime-local"
+                value={agendarPara}
+                onChange={(e) => setAgendarPara(e.target.value)}
+                className="bg-surface text-foreground border-border focus-ring h-9 rounded-md border px-3 text-sm"
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <p className="text-subtle text-xs sm:hidden">{resumo}</p>
+      )}
     </SectionCard>
   );
 }
@@ -1057,15 +1080,17 @@ function Disparo() {
           <>
             <EtapaDestinatarios />
             <EtapaMensagem templates={templates} setTemplates={setTemplates} />
-            <EtapaAnexo comPdf={comPdf} setComPdf={setComPdf} />
             <EtapaConexao />
-            <EtapaIntervalo
+            <ConfiguracoesAvancadas
+              comPdf={comPdf}
+              setComPdf={setComPdf}
               janelaHoras={janelaHoras}
               setJanelaHoras={setJanelaHoras}
               janelaMinutos={janelaMinutos}
               setJanelaMinutos={setJanelaMinutos}
+              agendarPara={agendarPara}
+              setAgendarPara={setAgendarPara}
             />
-            <EtapaAgendamento agendarPara={agendarPara} setAgendarPara={setAgendarPara} />
 
             <SectionCard eyebrow="Etapa 8" titulo="Confirmação">
               <Botao

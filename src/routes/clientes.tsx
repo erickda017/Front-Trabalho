@@ -45,6 +45,32 @@ import {
 import { useAppState, type Tag } from "@/lib/app-state";
 import type { Cliente } from "@/lib/types";
 
+const MESES_PT = [
+  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+];
+// "2026-09" -> "Set/2026" -- mesmo dado da coluna gerada `clientes.safra` no
+// backend (ver backend/src/lib/safras.js, rotuloSafra), só que abreviado pra
+// caber num chip de filtro/pill.
+function rotuloSafra(safra: string | null | undefined): string {
+  if (!safra || !/^\d{4}-\d{2}$/.test(safra)) return "—";
+  const [ano, mes] = safra.split("-").map(Number);
+  return `${MESES_PT[(mes ?? 1) - 1] ?? mes}/${ano}`;
+}
+
+// [regra de negócio] Classificação FPD/SPD + safra do cliente -- tornar
+// visível isso era um pedido explícito (hoje só aparecia agregado na tela
+// /safras, nunca por cliente individual). Ausente pra quem foi cadastrado
+// manualmente/sem passar pela lista crua (tipo_fatura fica null nesse caso) --
+// não mostra nada em vez de um pill vazio.
+function SafraTipoPill({ cliente }: { cliente: Pick<Cliente, "tipo_fatura" | "safra"> }) {
+  if (!cliente.tipo_fatura && !cliente.safra) return null;
+  return (
+    <StatusPill tone={cliente.tipo_fatura === "SPD" ? "brand" : cliente.tipo_fatura === "FPD" ? "warning" : "muted"}>
+      {cliente.tipo_fatura ?? "—"} · {rotuloSafra(cliente.safra)}
+    </StatusPill>
+  );
+}
+
 // [regra de negócio] Sugestão de promoção FPD -> SPD (ver
 // backend/src/lib/promocaoSpd.js) devolvida por POST /clientes/importar-pagos
 // e POST /tags/:id/clientes/:clienteId -- nunca aplicada sozinha.
@@ -695,6 +721,13 @@ function Clientes() {
   const [filtroTag, setFiltroTag] = useState<string>("todas");
   const [filtroPix, setFiltroPix] = useState<FiltroPix>("todos");
   const [filtroDisparo, setFiltroDisparo] = useState<FiltroDisparo>("todos");
+  // Chegada via link de /safras ("ver clientes desta safra", ?safra=YYYY-MM)
+  // já pré-seleciona o filtro -- lido direto da URL (sem validateSearch
+  // tipado na rota, único jeito hoje de receber esse parâmetro).
+  const [filtroSafra, setFiltroSafra] = useState<string>(() => {
+    if (typeof window === "undefined") return "todas";
+    return new URLSearchParams(window.location.search).get("safra") ?? "todas";
+  });
   const [modalAberto, setModalAberto] = useState(false);
   const [importarPagosAberto, setImportarPagosAberto] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
@@ -713,6 +746,16 @@ function Clientes() {
   // em vez de aparecer 2x na lista/dashboard.
   const clientesAgrupados = useMemo(() => agruparClientesPorNumero(clientes), [clientes]);
 
+  // [regra de negócio] Safras ativas presentes nesta carteira -- mesma
+  // origem de dado que a tela /safras (coluna gerada `clientes.safra`, ver
+  // backend/src/lib/safras.js), só que aqui filtrada client-side (a lista de
+  // clientes já vem inteira do backend pra esta tela, mesmo padrão dos
+  // outros filtros abaixo). Mais recente primeiro.
+  const safrasDisponiveis = useMemo(() => {
+    const distintas = new Set(clientesAgrupados.map((c) => c.safra).filter((s): s is string => Boolean(s)));
+    return [...distintas].sort().reverse();
+  }, [clientesAgrupados]);
+
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return clientesAgrupados.filter((c) => {
@@ -724,9 +767,10 @@ function Clientes() {
       if (filtroPix === "sem_fatura" && c.pdf_url) return false;
       if (filtroDisparo === "recebeu" && !(c.disparos_recebidos && c.disparos_recebidos > 0)) return false;
       if (filtroDisparo === "nao_recebeu" && (c.disparos_recebidos ?? 0) > 0) return false;
+      if (filtroSafra !== "todas" && c.safra !== filtroSafra) return false;
       return true;
     });
-  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo]);
+  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra]);
 
   async function remover(id: string) {
     if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
@@ -804,6 +848,20 @@ function Clientes() {
               </option>
             ))}
           </Seletor>
+          {safrasDisponiveis.length > 0 && (
+            <Seletor
+              value={filtroSafra}
+              onChange={(e) => setFiltroSafra(e.target.value)}
+              className="w-auto min-w-[9rem]"
+            >
+              <option value="todas">Todas as safras</option>
+              {safrasDisponiveis.map((s) => (
+                <option key={s} value={s}>
+                  {rotuloSafra(s)}
+                </option>
+              ))}
+            </Seletor>
+          )}
           <FiltroChips
             valor={filtroPix}
             onChange={setFiltroPix}
@@ -913,7 +971,12 @@ function Clientes() {
                               onCheckedChange={() => toggleSelecionado(c.id)}
                             />
                           </td>
-                          <td className="td-cell font-medium">{c.nome}</td>
+                          <td className="td-cell font-medium">
+                            <div className="flex flex-col items-start gap-1">
+                              <span>{c.nome}</span>
+                              <SafraTipoPill cliente={c} />
+                            </div>
+                          </td>
                           <td className="td-cell text-muted-foreground tabular font-mono text-xs">
                             {c.telefones.length > 1 ? (
                               <div className="flex flex-col gap-0.5">
@@ -1030,6 +1093,9 @@ function Clientes() {
                             <p className="text-muted-foreground font-mono text-xs">
                               {c.telefones.join(" · ")}
                             </p>
+                            <div className="mt-1">
+                              <SafraTipoPill cliente={c} />
+                            </div>
                           </div>
                         </div>
                         {c.pix_code ? (
