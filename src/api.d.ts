@@ -77,9 +77,10 @@ declare module "@/api" {
     // [2026-08] MULTI-TENANT: 1 conexão por usuário logado -- sem parâmetro
     // de slot, o backend já sabe de quem é a sessão pelo token de autenticação.
     whatsapp: {
-      status: () => Promise<WhatsappConexao>;
-      conectar: () => Promise<WhatsappConexao>;
-      desconectar: () => Promise<WhatsappConexao>;
+      status: (slot?: 1 | 2 | undefined) => Promise<WhatsappConexao>;
+      statusAmbosSlots: () => Promise<{ 1: WhatsappConexao; 2: WhatsappConexao }>;
+      conectar: (slot?: 1 | 2 | undefined) => Promise<WhatsappConexao>;
+      desconectar: (slot?: 1 | 2 | undefined) => Promise<WhatsappConexao>;
     };
     configuracoes: {
       disparo: () => Promise<ConfigDisparo>;

@@ -59,13 +59,21 @@ type AppStateValue = {
   supabaseConfigurado: boolean;
   logout: () => void;
 
-  // [2026-08] MULTI-TENANT: 1 conexão de WhatsApp por usuário logado -- não é
-  // mais uma lista de 2 slots. whatsappStatus/whatsappQr abaixo espelham
-  // direto essa conexão única (mantidos como campos próprios só pra não
-  // precisar mudar todo mundo que já lia `whatsappStatus`/`whatsappQr`).
+  // [2026-08] `conexao` é sempre o slot 1 -- é a conexão "principal", e é o
+  // que toda tela que já existia antes de dois Zaps continua enxergando
+  // (whatsappStatus/whatsappQr espelham ela, mantidos como campos próprios só
+  // pra não precisar mudar todo mundo que já lia `whatsappStatus`/`whatsappQr`).
+  // `conexaoSlot2` é o segundo Zap opcional (ver services/whatsapp.js no
+  // backend) -- só relevante pra quem configurou os dois.
   whatsappStatus: WhatsappStatus;
   whatsappQr: string | null;
   conexao: WhatsappConexao;
+  conexaoSlot2: WhatsappConexao;
+  // Verdadeiro se PELO MENOS UM dos 2 Zaps está conectado -- usar isto (não
+  // `conexao.status === "connected"`) em qualquer lugar que precise saber se
+  // dá pra disparar agora, senão um usuário com 2 Zaps e o principal (slot 1)
+  // caído veria um aviso de "desconectado" falso mesmo disparando pelo slot 2.
+  algumaConexaoConectada: boolean;
   conexaoCarregando: boolean;
   conexaoErro: string | null;
   refreshConexao: () => Promise<void>;
@@ -96,6 +104,7 @@ const ENVIO_ATIVO_KEY = "disparo:envioAtivoId";
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [conexao, setConexao] = useState<WhatsappConexao>(conexaoVazia);
+  const [conexaoSlot2, setConexaoSlot2] = useState<WhatsappConexao>(conexaoVazia);
   const [conexaoCarregando, setConexaoCarregando] = useState(true);
   const [conexaoErro, setConexaoErro] = useState<string | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -145,9 +154,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const refreshConexao = useCallback(async () => {
     try {
-      const data = await api.whatsapp.status();
+      const dados = await api.whatsapp.statusAmbosSlots();
       falhasSeguidasRef.current = 0;
-      setConexao(data ?? conexaoVazia);
+      setConexao(dados?.[1] ?? conexaoVazia);
+      setConexaoSlot2(dados?.[2] ?? conexaoVazia);
       setConexaoErro(null);
     } catch (e) {
       falhasSeguidasRef.current += 1;
@@ -159,6 +169,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // assume "desconectado" depois de falhas seguidas (backend realmente fora do ar).
       if (falhasSeguidasRef.current >= 3) {
         setConexao(conexaoVazia);
+        setConexaoSlot2(conexaoVazia);
       }
       setConexaoErro((e as Error).message);
     } finally {
@@ -251,6 +262,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         whatsappStatus: conexao.status,
         whatsappQr: conexao.status === "qr" ? conexao.qr : null,
         conexao,
+        conexaoSlot2,
+        algumaConexaoConectada: conexao.status === "connected" || conexaoSlot2.status === "connected",
         conexaoCarregando,
         conexaoErro,
         refreshConexao,

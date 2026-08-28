@@ -142,11 +142,14 @@ export const api = {
     resumo: () => request('/dashboard/resumo'),
   },
   whatsapp: {
-    // [2026-08] MULTI-TENANT: 1 conexão por usuário logado -- não recebe mais
-    // "slot", o backend já sabe de quem é a sessão pelo token de autenticação.
-    status: () => request('/whatsapp/status'),
-    conectar: () => request('/whatsapp/conectar', { method: 'POST' }),
-    desconectar: () => request('/whatsapp/logout', { method: 'POST' }),
+    // [2026-08] DOIS ZAPS: `slot` (1|2) volta a existir -- o backend já sabe
+    // de quem é a sessão pelo token de autenticação, só falta dizer QUAL das
+    // até 2 conexões desse usuário. Omitido, sempre vale slot 1 (comportamento
+    // de antes, quando só existia 1 conexão por usuário).
+    status: (slot) => request(`/whatsapp/status${slot ? `?slot=${slot}` : ''}`),
+    statusAmbosSlots: () => request('/whatsapp/status-slots'),
+    conectar: (slot) => request('/whatsapp/conectar', { method: 'POST', body: JSON.stringify({ slot }) }),
+    desconectar: (slot) => request('/whatsapp/logout', { method: 'POST', body: JSON.stringify({ slot }) }),
   },
   // [2026-08] MULTI-TENANT: api.estrategia removida -- não existe mais
   // round-robin entre slots (cada usuário tem 1 WhatsApp só).

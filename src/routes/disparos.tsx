@@ -311,31 +311,54 @@ function EtapaAnexo({ comPdf, setComPdf }: { comPdf: boolean; setComPdf: (v: boo
 // mostra o status da conexão do próprio usuário, e avisa se ela não estiver
 // pronta pra disparar.
 function EtapaConexao() {
-  const { conexao, conexaoCarregando } = useAppState();
+  const { conexao, conexaoSlot2, conexaoCarregando, algumaConexaoConectada } = useAppState();
+  // Segundo Zap só aparece aqui se o operador já configurou ele alguma vez --
+  // não polui esta tela pra quem usa só 1 número (a grande maioria).
+  const temSlot2 = conexaoSlot2.configurada;
 
   return (
-    <SectionCard eyebrow="Etapa 4" titulo="WhatsApp" descricao="Sua sessão de WhatsApp usada para este disparo.">
+    <SectionCard eyebrow="Etapa 4" titulo="WhatsApp" descricao="Sessão(ões) de WhatsApp usada(s) para este disparo.">
       {conexaoCarregando ? (
         <p className="text-subtle text-xs">Carregando conexão…</p>
       ) : (
-        <div className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs sm:max-w-sm">
-          <Wifi
-            className={cn(
-              "size-3.5 shrink-0",
-              conexao.status === "connected" ? "text-success" : "text-subtle",
-            )}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Seu WhatsApp</p>
-            <p className="text-subtle truncate">{conexao.telefone ?? (conexao.configurada ? "sem número" : "não configurado")}</p>
+        <div className="flex flex-col gap-2 sm:max-w-sm">
+          <div className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs">
+            <Wifi
+              className={cn(
+                "size-3.5 shrink-0",
+                conexao.status === "connected" ? "text-success" : "text-subtle",
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">{temSlot2 ? "Zap 1" : "Seu WhatsApp"}</p>
+              <p className="text-subtle truncate">{conexao.telefone ?? (conexao.configurada ? "sem número" : "não configurado")}</p>
+            </div>
+            <StatusBadgeSimples status={conexao.status} />
           </div>
-          <StatusBadgeSimples status={conexao.status} />
+          {temSlot2 && (
+            <div className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs">
+              <Wifi
+                className={cn(
+                  "size-3.5 shrink-0",
+                  conexaoSlot2.status === "connected" ? "text-success" : "text-subtle",
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Zap 2</p>
+                <p className="text-subtle truncate">{conexaoSlot2.telefone ?? "sem número"}</p>
+              </div>
+              <StatusBadgeSimples status={conexaoSlot2.status} />
+            </div>
+          )}
         </div>
       )}
-      {conexao.status !== "connected" && (
+      {!algumaConexaoConectada && (
         <p className="text-warning mt-3 text-xs">
           Conecte seu WhatsApp em <Link to="/conexoes" className="underline">Conexão</Link> antes de disparar.
         </p>
+      )}
+      {temSlot2 && algumaConexaoConectada && conexao.status !== "connected" && (
+        <p className="text-subtle mt-3 text-xs">Zap 1 desconectado -- disparando só pelo Zap 2 até reconectar.</p>
       )}
     </SectionCard>
   );

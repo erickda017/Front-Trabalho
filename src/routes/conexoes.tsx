@@ -48,7 +48,7 @@ function formatarData(iso: string | null) {
   }
 }
 
-function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
+function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; slot: 1 | 2; titulo: string }) {
   const { refreshConexao } = useAppState();
   const [acaoCarregando, setAcaoCarregando] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
@@ -59,7 +59,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
     setAcaoCarregando(true);
     setErroAcao(null);
     try {
-      await api.whatsapp.conectar();
+      await api.whatsapp.conectar(slot);
       await refreshConexao();
     } catch (e) {
       setErroAcao((e as Error).message);
@@ -72,7 +72,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
     setAcaoCarregando(true);
     setErroAcao(null);
     try {
-      await api.whatsapp.desconectar();
+      await api.whatsapp.desconectar(slot);
       await refreshConexao();
     } catch (e) {
       setErroAcao((e as Error).message);
@@ -83,7 +83,7 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
 
   return (
     <SectionCard
-      titulo="WhatsApp"
+      titulo={titulo}
       eyebrow="Sessão"
       acoes={
         <StatusPill tone={info.tone} dot pulse={conexao.status === "connected"}>
@@ -96,7 +96,11 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
           <EmptyState
             icon={Smartphone}
             titulo="WhatsApp não configurado"
-            descricao="Clique em conectar para iniciar a sessão e gerar o QR Code."
+            descricao={
+              slot === 2
+                ? "Segundo número opcional -- conecte pra distribuir os disparos entre os dois Zaps (reduz concentração de mensagens num número só)."
+                : "Clique em conectar para iniciar a sessão e gerar o QR Code."
+            }
             compacto
           />
         ) : (
@@ -166,10 +170,11 @@ function PainelConexao({ conexao }: { conexao: WhatsappConexao }) {
 }
 
 function Conexoes() {
-  const { conexao, conexaoErro, conexaoCarregando } = useAppState();
+  const { conexao, conexaoSlot2, conexaoErro, conexaoCarregando } = useAppState();
+  const temSlot2 = conexaoSlot2.configurada;
 
   return (
-    <AppShell title="Conexão" subtitle="Gerenciamento da sua sessão de WhatsApp">
+    <AppShell title="Conexão" subtitle="Gerenciamento da(s) sua(s) sessão(ões) de WhatsApp">
       <div className="flex flex-col gap-6">
         {conexaoErro && (
           <Aviso tone="danger">Não foi possível carregar a conexão: {conexaoErro}</Aviso>
@@ -181,8 +186,16 @@ function Conexoes() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <PainelConexao conexao={conexao} />
+            <PainelConexao conexao={conexao} slot={1} titulo={temSlot2 ? "Zap 1" : "WhatsApp"} />
+            <PainelConexao conexao={conexaoSlot2} slot={2} titulo="Zap 2 (opcional)" />
           </div>
+        )}
+
+        {temSlot2 && (
+          <Aviso tone="info">
+            Dois números conectados: os disparos são distribuídos entre os dois automaticamente (50/50, alternado),
+            pra reduzir a concentração de mensagens num número só. Se um cair, os disparos continuam pelo outro.
+          </Aviso>
         )}
 
         <SectionCard titulo="Proteções de envio" eyebrow="Segurança" descricao="Mecanismos aplicados automaticamente pelo backend durante o disparo.">
@@ -191,6 +204,7 @@ function Conexoes() {
             <li>Pausa automática a cada bloco de envios.</li>
             <li>Limite diário de disparos (por operador), com retomada à meia-noite no horário de Brasília.</li>
             <li>Número validado no WhatsApp antes do envio, evitando disparos para contatos inválidos.</li>
+            <li>Distribuição entre 2 números (se ambos conectados), reduzindo concentração de mensagens num só.</li>
           </ul>
         </SectionCard>
       </div>
