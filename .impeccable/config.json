@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "src/routes/chat.tsx"
+        ],
+        "createdAt": "2026-08-28T00:21:04.784Z",
+        "reason": "MidiaProtegida guarda blobUrl antes do <img> (linha 368-374); falso positivo do scanner estatico, nao ha src vazio em runtime"
+      }
+    ]
+  }
+}

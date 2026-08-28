@@ -162,7 +162,8 @@ declare module "@/api" {
       marcarLida: (conversaId: string) => Promise<any>;
       apagar: (conversaId: string) => Promise<{ ok: boolean }>;
       enviar: (conversaId: string, args: { mensagem?: string | undefined; anexo?: File | undefined }) => Promise<any>;
-      enviarFatura: (conversaId: string, modo: "pdf" | "pix" | "ambos") => Promise<{ fatura: any; pix: any | null }>;
+      enviarFatura: (conversaId: string, modo: "pdf" | "pix" | "pdf_pix") => Promise<{ fatura: any; pix: any | null }>;
+      vincularCliente: (conversaId: string, clienteId: string | null) => Promise<any>;
     };
     tags: {
       listar: () => Promise<{ id: string; nome: string; cor: string }[]>;

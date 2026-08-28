@@ -343,6 +343,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ modo }),
       }),
+    // clienteId null desvincula -- ver backend/src/routes/chat.routes.js.
+    vincularCliente: (conversaId, clienteId) =>
+      request(`/chat/conversas/${conversaId}/vincular-cliente`, {
+        method: 'POST',
+        body: JSON.stringify({ cliente_id: clienteId }),
+      }),
   },
   tags: {
     listar: () => request('/tags'),

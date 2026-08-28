@@ -15,6 +15,7 @@ import {
   Send,
   Settings,
   Trash2,
+  UserPlus,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +24,7 @@ import { AppShell } from "@/components/AppShell";
 import { api, abrirArquivoProtegido, buscarBlobUrlProtegida } from "@/api";
 import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
+import { useAppState } from "@/lib/app-state";
 import { Aviso } from "@/components/shared/Controls";
 import { EmptyState } from "@/components/shared/EmptyState";
 
@@ -49,6 +51,7 @@ type Conversa = {
   id: string;
   telefone: string;
   nome_contato: string | null;
+  cliente_id: string | null;
   nao_lidas: number;
   ultima_mensagem: string | null;
   ultima_mensagem_em: string | null;
@@ -80,10 +83,11 @@ function EnviarFaturaModal({
   conversa: Conversa | null;
   enviando: boolean;
   erro: string | null;
-  onEscolher: (modo: "pdf" | "pix" | "ambos") => void;
+  onEscolher: (modo: "pdf" | "pix" | "pdf_pix") => void;
 }) {
   if (!aberto || !conversa) return null;
 
+  const temCliente = !!conversa.cliente_id;
   const temPdf = !!conversa.clientes?.pdf_url;
   const temPix = !!conversa.clientes?.pix_code;
 
@@ -97,7 +101,12 @@ function EnviarFaturaModal({
           </button>
         </div>
 
-        {!temPdf && !temPix ? (
+        {!temCliente ? (
+          <p className="text-subtle text-xs">
+            Este contato não está vinculado a um cliente cadastrado -- use "Vincular cliente" no topo da
+            conversa antes de mandar a fatura.
+          </p>
+        ) : !temPdf && !temPix ? (
           <p className="text-subtle text-xs">
             Este cliente não tem fatura (PDF) nem código Pix cadastrados. Faça o upload do PDF na aba
             Clientes primeiro.
@@ -133,7 +142,7 @@ function EnviarFaturaModal({
             <button
               type="button"
               disabled={!temPdf || !temPix || enviando}
-              onClick={() => onEscolher("ambos")}
+              onClick={() => onEscolher("pdf_pix")}
               className="hover:bg-surface-raised/60 flex w-full items-center gap-3 rounded-md border border-border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Receipt className="text-primary-strong size-5 shrink-0" />
@@ -162,6 +171,100 @@ function EnviarFaturaModal({
 
 function nomeExibicao(c: Conversa) {
   return c.clientes?.nome || c.nome_contato || c.telefone;
+}
+
+// [bug] Identificação automática de cliente (telefone/variantes, resolução de
+// @lid -- ver backend/src/services/chatIngest.js) pode legitimamente falhar;
+// antes disso não existia NENHUM jeito de corrigir pela tela -- o contato
+// ficava travado mostrando só nome/telefone do WhatsApp, sem poder receber
+// fatura. Este modal busca na lista de clientes já carregada globalmente
+// (useAppState) em vez de fazer uma requisição própria.
+function VincularClienteModal({
+  aberto,
+  onClose,
+  conversa,
+  vinculando,
+  erro,
+  onVincular,
+}: {
+  aberto: boolean;
+  onClose: () => void;
+  conversa: Conversa | null;
+  vinculando: boolean;
+  erro: string | null;
+  onVincular: (clienteId: string | null) => void;
+}) {
+  const { clientes } = useAppState();
+  const [busca, setBusca] = useState("");
+
+  if (!aberto || !conversa) return null;
+
+  const q = busca.trim().toLowerCase();
+  const filtrados = q
+    ? clientes.filter((c) => c.nome.toLowerCase().includes(q) || c.telefone.includes(q)).slice(0, 30)
+    : clientes.slice(0, 30);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4" onClick={onClose}>
+      <div className="panel flex max-h-[80vh] w-full max-w-sm flex-col p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-display text-sm font-medium">Vincular cliente</h3>
+          <button onClick={onClose} aria-label="Fechar" className="text-subtle hover:text-foreground">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {conversa.cliente_id && (
+          <button
+            type="button"
+            disabled={vinculando}
+            onClick={() => onVincular(null)}
+            className="text-destructive hover:bg-surface-raised/60 mb-3 w-full rounded-md border border-border px-3 py-2 text-left text-xs disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Desvincular de "{conversa.clientes?.nome}"
+          </button>
+        )}
+
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome ou telefone"
+          autoFocus
+          className="bg-surface-sunken border-border focus-ring mb-3 h-9 shrink-0 rounded-md border px-3 text-sm"
+        />
+
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          {filtrados.length === 0 && (
+            <p className="text-subtle p-2 text-xs">Nenhum cliente encontrado.</p>
+          )}
+          {filtrados.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              disabled={vinculando || c.id === conversa.cliente_id}
+              onClick={() => onVincular(c.id)}
+              className="hover:bg-surface-raised/60 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="truncate">{c.nome}</span>
+              <span className="text-subtle shrink-0 font-mono text-xs">{c.telefone}</span>
+            </button>
+          ))}
+        </div>
+
+        {vinculando && (
+          <div className="text-subtle mt-3 flex items-center justify-center gap-2 text-xs">
+            <Loader2 className="size-3.5 animate-spin" /> Vinculando...
+          </div>
+        )}
+        {erro && !vinculando && (
+          <Aviso tone="danger" className="mt-3">
+            {erro}
+          </Aviso>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function GerenciarRespostasRapidas({
@@ -400,6 +503,9 @@ function Chat() {
   const [enviandoFatura, setEnviandoFatura] = useState(false);
   const [modalFaturaAberto, setModalFaturaAberto] = useState(false);
   const [erroFatura, setErroFatura] = useState<string | null>(null);
+  const [vinculando, setVinculando] = useState(false);
+  const [modalVincularAberto, setModalVincularAberto] = useState(false);
+  const [erroVincular, setErroVincular] = useState<string | null>(null);
   const [gerenciarRespostasAberto, setGerenciarRespostasAberto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fimDaThreadRef = useRef<HTMLDivElement>(null);
@@ -529,7 +635,7 @@ function Chat() {
     }
   }
 
-  async function enviarFaturaAgora(modo: "pdf" | "pix" | "ambos") {
+  async function enviarFaturaAgora(modo: "pdf" | "pix" | "pdf_pix") {
     if (!ativo || enviandoFatura) return;
     setEnviandoFatura(true);
     setErroFatura(null);
@@ -545,6 +651,21 @@ function Chat() {
       setErroFatura((e as Error).message);
     } finally {
       setEnviandoFatura(false);
+    }
+  }
+
+  async function vincularClienteAgora(clienteId: string | null) {
+    if (!ativo || vinculando) return;
+    setVinculando(true);
+    setErroVincular(null);
+    try {
+      const atualizada = await api.chat.vincularCliente(ativo.id, clienteId);
+      setConversas((prev) => prev.map((c) => (c.id === ativo.id ? { ...c, ...atualizada } : c)));
+      setModalVincularAberto(false);
+    } catch (e) {
+      setErroVincular((e as Error).message);
+    } finally {
+      setVinculando(false);
     }
   }
 
@@ -742,10 +863,27 @@ function Chat() {
               <button
                 type="button"
                 onClick={() => {
+                  setErroVincular(null);
+                  setModalVincularAberto(true);
+                }}
+                title={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
+                className={cn(
+                  "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                  ativo.cliente_id
+                    ? "text-muted-foreground hover:bg-surface-raised/60"
+                    : "bg-warning/15 text-warning hover:bg-warning/25",
+                )}
+              >
+                <UserPlus className="size-3.5" />
+                {ativo.cliente_id ? "Vinculado" : "Vincular cliente"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setErroFatura(null);
                   setModalFaturaAberto(true);
                 }}
-                className="bg-primary-soft text-primary-strong hover:bg-primary-soft/70 ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                className="bg-primary-soft text-primary-strong hover:bg-primary-soft/70 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
               >
                 <Receipt className="size-3.5" />
                 Enviar fatura
@@ -978,6 +1116,14 @@ function Chat() {
         enviando={enviandoFatura}
         erro={erroFatura}
         onEscolher={enviarFaturaAgora}
+      />
+      <VincularClienteModal
+        aberto={modalVincularAberto}
+        onClose={() => setModalVincularAberto(false)}
+        conversa={ativo}
+        vinculando={vinculando}
+        erro={erroVincular}
+        onVincular={vincularClienteAgora}
       />
     </AppShell>
   );
