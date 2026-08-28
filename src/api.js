@@ -3,6 +3,12 @@ import { extrairDadosPixViaWorker } from './lib/pixWorkerClient';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api';
 
+// Origem "crua" do backend, sem o sufixo `/api` -- necessária pra montar a
+// URL do proxy de arquivos (ver comentário grande logo abaixo). `BASE_URL`
+// SEMPRE termina em `/api` por convenção do projeto (ver .env.example e
+// CLAUDE.md), então isso é seguro.
+const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, '');
+
 async function request(path, options = {}) {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
@@ -94,7 +100,14 @@ export async function buscarBlobArquivoProtegido(pdfUrlOuPath) {
   if (!pdfUrlOuPath) return null;
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
-  const res = await fetch(`${BASE_URL}${pdfUrlOuPath}`, {
+  // [bug corrigido] `pdfUrlOuPath` já vem com o prefixo `/api` embutido
+  // (urlProxyArquivo, backend/src/lib/supabase.js: "/api/arquivos/...").
+  // Concatenar com `BASE_URL` (que TAMBÉM termina em `/api`) gerava
+  // "/api/api/arquivos/..." -- 404 em toda chamada, sempre, silenciosamente
+  // engolido pelo try/catch de quem chamava (ex: "Rodar verificação" em
+  // routes/pix.tsx, que por isso nunca baixava/renderizava PDF nenhum e só
+  // parecia "rodar" sem achar nada). Usa a origem sem `/api` aqui.
+  const res = await fetch(`${API_ORIGIN}${pdfUrlOuPath}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error(`falha ao baixar PDF (${res.status})`);

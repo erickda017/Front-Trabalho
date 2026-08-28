@@ -19,7 +19,7 @@ export function MetricCard({
   valor: number | string | null | undefined;
   carregando?: boolean;
   icon?: ComponentType<{ className?: string }>;
-  hint?: string;
+  hint?: string | undefined;
   destaque?: boolean;
   className?: string;
 }) {

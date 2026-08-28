@@ -15,7 +15,7 @@ import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { Aviso, Botao, LinhasEsqueleto, TabelaWrap } from "@/components/shared/Controls";
+import { Aviso, Botao, LinhasEsqueleto, Paginacao, TabelaWrap } from "@/components/shared/Controls";
 import {
   Dialog,
   DialogContent,
@@ -199,6 +199,16 @@ function Pix() {
   const [verificando, setVerificando] = useState(false);
   const [resumoVerificacao, setResumoVerificacao] = useState<ResumoVerificacao | null>(null);
   const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
+
+  // [paginação] 50 extrações por página -- mesma ideia da tela Clientes.
+  const TAMANHO_PAGINA = 50;
+  const [pagina, setPagina] = useState(1);
+  const totalPaginas = Math.max(1, Math.ceil(extracoes.length / TAMANHO_PAGINA));
+  const paginaSegura = Math.min(pagina, totalPaginas);
+  const extracoesPaginadas = useMemo(
+    () => extracoes.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
+    [extracoes, paginaSegura],
+  );
 
   // [2026-08] "Opção 2": extração rodando no BACKEND em vez do navegador --
   // útil quando o aparelho é fraco ou o navegador trava com muitos PDFs.
@@ -708,7 +718,7 @@ function Pix() {
                   </tr>
                 </thead>
                 <tbody>
-                  {extracoes.map((e) => {
+                  {extracoesPaginadas.map((e) => {
                     const info = statusInfo[e.status] ?? statusInfo.aguardando;
                     return (
                       <tr key={e.id} className="border-border border-t align-top">
@@ -760,6 +770,13 @@ function Pix() {
                 </tbody>
               </TabelaWrap>
             )}
+            <Paginacao
+              paginaAtual={paginaSegura}
+              totalPaginas={totalPaginas}
+              totalItens={extracoes.length}
+              tamanhoPagina={TAMANHO_PAGINA}
+              onMudarPagina={setPagina}
+            />
           </SectionCard>
         </div>
 

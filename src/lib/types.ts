@@ -111,6 +111,10 @@ export type SafraResumo = {
   nao_receberam_disparo: number;
   valor_total: number;
   valor_medio: number;
+  /** Só presente pra safra AO VIVO (arquivada=false) -- snapshot do histórico não guarda esta quebra. */
+  valor_recebido?: number;
+  /** Só presente pra safra AO VIVO (arquivada=false) -- ver valor_recebido. */
+  valor_em_aberto?: number;
   duplicidades_detectadas: number;
   consolidado_em: string | null;
   /** true = sem cliente ativo nessa safra hoje, métricas vêm só do snapshot histórico. */

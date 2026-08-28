@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { Botao, Busca, Campo, FiltroChips, Aviso, LinhasEsqueleto, Rotulo, Seletor } from "@/components/shared/Controls";
+import { Botao, Busca, Campo, FiltroChips, Aviso, LinhasEsqueleto, Paginacao, Rotulo, Seletor } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -1055,6 +1055,23 @@ function Clientes() {
     return [...resultado].sort(comparadores[ordenacao]);
   }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
 
+  // [paginação] Lista em memória inteira já vem filtrada/ordenada acima --
+  // aqui só fatia pra exibição, 50 por página, pra não renderizar a carteira
+  // inteira de uma vez. Qualquer mudança de filtro/busca/ordenação volta pra
+  // página 1 (senão o usuário podia ficar "preso" numa página 5 vazia depois
+  // de filtrar pra um resultado menor).
+  const TAMANHO_PAGINA = 50;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => {
+    setPagina(1);
+  }, [busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / TAMANHO_PAGINA));
+  const paginaSegura = Math.min(pagina, totalPaginas);
+  const paginados = useMemo(
+    () => filtrados.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
+    [filtrados, paginaSegura],
+  );
+
   async function remover(id: string) {
     if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
     setRemovendo(id);
@@ -1314,7 +1331,7 @@ function Clientes() {
                     {clientesCarregando ? (
                       <LinhasEsqueleto colunas={9} />
                     ) : (
-                      filtrados.map((c) => (
+                      paginados.map((c) => (
                         <tr
                           key={c.id}
                           onClick={() => setClienteFicha(c)}
@@ -1441,7 +1458,7 @@ function Clientes() {
                     ))}
                   </div>
                 ) : (
-                  filtrados.map((c) => (
+                  paginados.map((c) => (
                     <div key={c.id} className="p-4" onClick={() => setClienteFicha(c)}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
@@ -1502,6 +1519,16 @@ function Clientes() {
                   </p>
                 )}
               </div>
+
+              {!clientesCarregando && (
+                <Paginacao
+                  paginaAtual={paginaSegura}
+                  totalPaginas={totalPaginas}
+                  totalItens={filtrados.length}
+                  tamanhoPagina={TAMANHO_PAGINA}
+                  onMudarPagina={setPagina}
+                />
+              )}
             </>
           )}
         </SectionCard>

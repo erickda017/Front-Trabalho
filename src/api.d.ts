@@ -9,6 +9,8 @@ declare module "@/api" {
     PixExtracao,
     PixExtracaoStatus,
     SafraResumo,
+    Tag,
+    TipoFatura,
     WhatsappConexao,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
@@ -20,6 +22,7 @@ declare module "@/api" {
     retomar_em: string | null;
     template_mensagem: string;
     janela_ms?: number | null | undefined;
+    enviar_pix?: boolean | undefined;
     itens: EnvioItem[];
   };
 
@@ -57,6 +60,23 @@ declare module "@/api" {
     ultimo_envio_status: string | null;
   };
 
+  // Resumo de operador anexado às respostas de api.supervisor.* (ver
+  // backend/src/routes/supervisor.routes.js, mapaOperadores()).
+  type OperadorResumo = { id: string; email: string; nome: string };
+
+  // GET /supervisor/operadores -- perfil + resumo de carteira de cada operador.
+  type OperadorComCarteira = {
+    id: string;
+    email: string;
+    nome: string | null;
+    role: string;
+    created_at: string;
+    total_clientes: number;
+    total_com_pix: number;
+    disparos_em_andamento: number;
+    disparos_concluidos: number;
+  };
+
   // Item devolvido por /clientes/converter-lista e aceito por /clientes/importar-lista
   // -- ver backend/src/lib/parseListaClientes.js e CONTEXTO.md ("Safras").
   type ItemConvertido = {
@@ -85,6 +105,11 @@ declare module "@/api" {
     configuracoes: {
       disparo: () => Promise<ConfigDisparo>;
     };
+    perfil: {
+      // Papel (operador|supervisor) do usuário logado -- decide se o menu
+      // "Supervisor" aparece (ver AppShell/app-state.tsx).
+      me: () => Promise<{ id: string; email: string; role: string }>;
+    };
     // [2026-08] tipos faltando pra api.boletos (existe em runtime desde antes,
     // só não estava declarado aqui -- tsc acusava "Property 'boletos' does not exist").
     boletos: {
@@ -110,6 +135,17 @@ declare module "@/api" {
         formato: "csv" | "xlsx",
         params?: { busca?: string | undefined; status?: PixExtracaoStatus | "todos" | undefined } | undefined,
       ) => Promise<void>;
+      // [2026-08] "Opção 2" de extração -- roda no backend, 1 PDF por
+      // requisição (ver backend/src/routes/pix.routes.js, POST
+      // /extrair-servidor). `arquivo`/`clienteId` são opcionais (nome
+      // exibido/cliente pra tentar casar automaticamente).
+      extrairNoServidor: (
+        file: File,
+        opcoes?: { arquivo?: string | undefined; clienteId?: string | undefined } | undefined,
+      ) => Promise<
+        | { encontrado: false; arquivo: string }
+        | (PixExtracao & { origem: string | null; encontrado: true; pagina: number })
+      >;
     };
     faturas: {
       listar: (params?: { busca?: string | undefined; filtro?: string | undefined } | undefined) => Promise<Fatura[]>;
@@ -124,11 +160,29 @@ declare module "@/api" {
       };
     };
     clientes: {
-      listar: (params?: { busca?: string | undefined; filtro?: string | undefined } | undefined) => Promise<Cliente[]>;
+      listar: (params?: {
+        busca?: string | undefined;
+        filtro?: string | undefined;
+        tag?: string | undefined;
+        com_pix?: boolean | undefined;
+        sem_pix?: boolean | undefined;
+        com_pdf?: boolean | undefined;
+        sem_pdf?: boolean | undefined;
+        recebeu_disparo?: boolean | undefined;
+        safra?: string | undefined;
+        tipo_fatura?: TipoFatura | undefined;
+      } | undefined) => Promise<Cliente[]>;
       buscar: (id: string) => Promise<Cliente>;
       criar: (payload: { nome: string; telefone: string; valor?: string | undefined; vencimento?: string | undefined } | undefined) => Promise<Cliente>;
       atualizar: (id: string, payload: Record<string, unknown>) => Promise<Cliente>;
       remover: (id: string) => Promise<{ ok: boolean }>;
+      // Vincula outro cliente (outro número) como o MESMO cliente -- PDF/pix/
+      // valor/vencimento passam a valer pros dois (ver backend/migration-15).
+      vincular: (id: string, outroId: string) => Promise<Cliente>;
+      // Desvincula este cliente do grupo (volta a ser um número independente).
+      desvincular: (id: string) => Promise<{ ok: boolean }>;
+      // Grava só o Pix (sem PDF novo) -- usado pela "rodar verificação".
+      atualizarPix: (id: string, pixCode: string) => Promise<Cliente>;
       historico: (id: string) => Promise<
         {
           id: string;
@@ -158,6 +212,94 @@ declare module "@/api" {
       detalhe: (safra: string) => Promise<SafraResumo>;
       consolidar: (safra: string) => Promise<unknown>;
     };
+    // [2026-08] SUPERVISOR: todas as rotas abaixo exigem role=supervisor no
+    // backend (ver middleware/supervisor.js) -- 403 se chamadas por um
+    // operador comum (ver routes/supervisor.tsx).
+    supervisor: {
+      operadores: () => Promise<OperadorComCarteira[]>;
+      clientes: (params?: {
+        busca?: string | undefined;
+        operador_id?: string | undefined;
+        com_pix?: string | undefined;
+        sem_pix?: string | undefined;
+        com_pdf?: string | undefined;
+        sem_pdf?: string | undefined;
+      } | undefined) => Promise<(Omit<Cliente, "tags"> & { tags: { id: string; nome: string; cor: string }[]; operador: OperadorResumo | null })[]>;
+      faturas: (params?: {
+        busca?: string | undefined;
+        operador_id?: string | undefined;
+        com_pdf?: string | undefined;
+        sem_pdf?: string | undefined;
+      } | undefined) => Promise<{
+        cliente_id: string;
+        cliente_nome: string;
+        telefone: string;
+        valor: string | null;
+        vencimento: string | null;
+        pdf_path: string | null;
+        pdf_url: string | null;
+        pix_code: string | null;
+        usuario_id: string;
+        operador: OperadorResumo | null;
+      }[]>;
+      disparos: (params?: {
+        status?: string | undefined;
+        operador_id?: string | undefined;
+      } | undefined) => Promise<{
+        id: string;
+        criado_em: string;
+        lote: string | null;
+        status: EnvioStatus;
+        template_mensagem: string;
+        operador: OperadorResumo | null;
+        total: number;
+        enviados: number;
+        entregues: number;
+        lidos: number;
+        falhas: number;
+        pendentes: number;
+        cancelados: number;
+      }[]>;
+      dashboard: () => Promise<{
+        totais: {
+          operadores: number;
+          clientes: number;
+          com_pix: number;
+          disparos_em_andamento: number;
+          disparos_concluidos: number;
+          enviados: number;
+          falhas: number;
+          pendentes: number;
+          valor_medio: number;
+          valor_total: number;
+          faturas_com_valor: number;
+        };
+        serie_disparos_7dias: { data: string; total: number }[];
+        por_operador: {
+          operador: OperadorResumo;
+          total_clientes: number;
+          com_pdf: number;
+          com_pix: number;
+          disparos_em_andamento: number;
+          disparos_concluidos: number;
+          enviados: number;
+          entregues: number;
+          lidos: number;
+          falhas: number;
+        }[];
+      }>;
+      // Lista enxuta (nome/telefone/pix/operador) de todo mundo com Pix já
+      // cadastrado -- matéria-prima pro casamento por nome feito no navegador
+      // (planilha de PIX e extrator pessoal, ver routes/supervisor.tsx).
+      indicePix: () => Promise<{
+        id: string;
+        nome: string;
+        telefone: string;
+        pix_code: string;
+        usuario_id: string;
+        operador: OperadorResumo | null;
+      }[]>;
+    };
     importacao: {
       enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;
       enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;
@@ -174,9 +316,14 @@ declare module "@/api" {
       vincularCliente: (conversaId: string, clienteId: string | null) => Promise<any>;
     };
     tags: {
-      listar: () => Promise<{ id: string; nome: string; cor: string }[]>;
-      criar: (payload: { nome: string; cor?: string | undefined } | undefined) => Promise<{ id: string; nome: string; cor: string }>;
-      atualizar: (id: string, payload: { nome?: string | undefined; cor?: string | undefined } | undefined) => Promise<{ id: string; nome: string; cor: string }>;
+      listar: () => Promise<Tag[]>;
+      // `permite_disparo: false` marca a tag como "tira do disparo" (ex.:
+      // Pago, Cancelado) -- ver migration-14. Omitido, o backend grava true.
+      criar: (payload: { nome: string; cor?: string | undefined; permite_disparo?: boolean | undefined } | undefined) => Promise<Tag>;
+      atualizar: (
+        id: string,
+        payload: { nome?: string | undefined; cor?: string | undefined; permite_disparo?: boolean | undefined } | undefined,
+      ) => Promise<Tag>;
       remover: (id: string) => Promise<{ ok: boolean }>;
       atribuir: (tagId: string, clienteId: string) => Promise<{ ok: boolean }>;
       remover_do_cliente: (tagId: string, clienteId: string) => Promise<{ ok: boolean }>;
@@ -198,7 +345,11 @@ declare module "@/api" {
         mensagens?: string[] | undefined;
         janela_ms?: number | undefined;
         agendado_para?: string | undefined;
-      }) => Promise<Envio>;
+        /** true = lote "só PIX" -- nunca anexa PDF, manda o código PIX como
+         *  texto; a elegibilidade passa a exigir pix_code em vez de pdf_path
+         *  (ver backend/src/routes/envios.routes.js, resolverClienteIds). */
+        enviar_pix?: boolean | undefined;
+      }) => Promise<Envio & { ignorados_sem_pdf: number; ignorados_por_tag: number }>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       pausar: (id: string) => Promise<{ ok: boolean; status: string }>;
       cancelar: (id: string) => Promise<{ ok: boolean; status: string }>;
@@ -233,6 +384,26 @@ declare module "@/api" {
       }>;
     };
   };
+
+  // [2026-08] PROXY DE ARQUIVOS: `pdf_url`/`anexo_url` são paths relativos
+  // deste backend (não mais links diretos pro Supabase Storage) -- exigem
+  // `Authorization: Bearer <token>`, então precisam passar por `fetch` (não
+  // dá pra usar num `<a href>`/`<img src>` cru). Ver comentário grande no
+  // topo de src/api.js pro porquê e o resto do contexto.
+
+  /** Abre o arquivo (PDF) numa nova aba, autenticado. `pdfUrlOuPath` nulo/
+   *  undefined é ignorado silenciosamente (mesmo padrão de "sem PDF ainda"). */
+  export function abrirArquivoProtegido(pdfUrlOuPath: string | null | undefined): Promise<void>;
+
+  /** Busca o arquivo autenticado e devolve uma blob URL local pronta pra usar
+   *  em `src`/`href`. Devolve `null` se `pdfUrlOuPath` for nulo/undefined. */
+  export function buscarBlobUrlProtegida(pdfUrlOuPath: string | null | undefined): Promise<string | null>;
+
+  /** Busca o arquivo autenticado e devolve o `Blob` cru -- pra quem vai
+   *  PROCESSAR o conteúdo (ex.: reler o QR do Pix) em vez de exibir/baixar.
+   *  Devolve `null` se `pdfUrlOuPath` for nulo/undefined. */
+  export function buscarBlobArquivoProtegido(pdfUrlOuPath: string): Promise<Blob>;
+  export function buscarBlobArquivoProtegido(pdfUrlOuPath: string | null | undefined): Promise<Blob | null>;
 }
 
 declare module "@/supabaseClient" {

@@ -7,17 +7,20 @@ import {
   Gauge,
   History,
   KeyRound,
+  Layers,
+  PiggyBank,
   Send,
   Smartphone,
+  TrendingUp,
   Upload,
   Users,
   Wallet,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ptBR } from "date-fns/locale";
 import { formatDistanceToNow } from "date-fns";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell, statusConexao } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -26,7 +29,7 @@ import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
-import type { DashboardResumo } from "@/lib/types";
+import type { DashboardResumo, SafraResumo } from "@/lib/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -53,6 +56,7 @@ function formatarData(iso: string | null) {
 }
 
 const formatoMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const formatoPercentual = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 
 function formatarDiaCurto(data: string) {
   // "data" vem como YYYY-MM-DD (ver backend/src/routes/dashboard.routes.js)
@@ -60,11 +64,25 @@ function formatarDiaCurto(data: string) {
   return `${dia}/${mes}`;
 }
 
+/** "2026-09" -> "Set/2026" (rótulo curto, cabe no eixo do gráfico). */
+function rotuloSafraCurto(safra: string) {
+  const [ano, mes] = safra.split("-").map(Number);
+  const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  return `${MESES[(mes ?? 1) - 1] ?? mes}/${ano}`;
+}
+
 function Dashboard() {
   const { conexao } = useAppState();
   const [resumo, setResumo] = useState<DashboardResumo | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+
+  // [2026-08] Painel de safras no dashboard -- reusa o mesmo endpoint da
+  // tela /safras (GET /api/safras), sem duplicar lógica de cálculo no
+  // backend. Erro aqui não bloqueia o resto do painel (fetch independente).
+  const [safras, setSafras] = useState<SafraResumo[] | null>(null);
+  const [safrasCarregando, setSafrasCarregando] = useState(true);
+  const [safrasErro, setSafrasErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -80,9 +98,69 @@ function Dashboard() {
     }
   }, []);
 
+  const carregarSafras = useCallback(async () => {
+    setSafrasCarregando(true);
+    setSafrasErro(null);
+    try {
+      const data = await api.safras.listar();
+      setSafras(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setSafras(null);
+      setSafrasErro((e as Error).message);
+    } finally {
+      setSafrasCarregando(false);
+    }
+  }, []);
+
   useEffect(() => {
     carregar();
-  }, [carregar]);
+    carregarSafras();
+  }, [carregar, carregarSafras]);
+
+  // Só as safras ainda AO VIVO (arquivada=false) entram no painel do
+  // dashboard -- é o acompanhamento "do momento"; o histórico consolidado já
+  // tem tela própria (/safras). Ordenada do mais antigo pro mais recente
+  // (esquerda->direita no gráfico lê como linha do tempo), até 6 pra não
+  // espremer o eixo.
+  const safrasAtivas = useMemo(() => {
+    if (!safras) return [];
+    return safras
+      .filter((s) => !s.arquivada)
+      .sort((a, b) => (a.safra < b.safra ? -1 : 1))
+      .slice(-6);
+  }, [safras]);
+
+  const safrasResumo = useMemo(() => {
+    const totalClientes = safrasAtivas.reduce((soma, s) => soma + s.total_clientes, 0);
+    const totalPagos = safrasAtivas.reduce((soma, s) => soma + s.pagos, 0);
+    const valorEmAberto = safrasAtivas.reduce((soma, s) => soma + (s.valor_em_aberto ?? 0), 0);
+    const valorTotal = safrasAtivas.reduce((soma, s) => soma + s.valor_total, 0);
+    return {
+      totalSafras: safrasAtivas.length,
+      totalClientes,
+      totalPagos,
+      taxaPagamento: totalClientes > 0 ? (totalPagos / totalClientes) * 100 : null,
+      valorEmAberto,
+      valorTotal,
+    };
+  }, [safrasAtivas]);
+
+  // "Médias úteis" de desempenho de entrega -- calculadas em cima dos mesmos
+  // contadores que já vêm em `resumo` (nenhuma chamada nova), só como
+  // proporção em vez de total bruto. `enviados` é a base (quem foi
+  // efetivamente enviado), não `disparos_hoje` nem o total de itens --
+  // entregues/lidos já são subconjuntos de enviados no backend (ver
+  // dashboard.routes.js).
+  const taxas = useMemo(() => {
+    const enviados = resumo?.enviados ?? 0;
+    if (!enviados) return { entrega: null, leitura: null, falha: null };
+    const falhas = resumo?.falhas ?? 0;
+    return {
+      entrega: ((resumo?.entregues ?? 0) / enviados) * 100,
+      leitura: ((resumo?.lidos ?? 0) / enviados) * 100,
+      falha: (falhas / (enviados + falhas)) * 100,
+    };
+  }, [resumo]);
 
   const metrics: { label: string; valor: number | null | undefined; icon: any }[] = [
     { label: "Clientes", valor: resumo?.clientes, icon: Users },
@@ -149,6 +227,36 @@ function Dashboard() {
           </div>
         </SectionCard>
 
+        {/* [2026-08] "Médias úteis" pedidas pro dashboard -- taxas de
+            entrega/leitura/falha, derivadas dos mesmos contadores de
+            `resumo` (sem chamada nova ao backend). */}
+        <SectionCard titulo="Desempenho de entrega" eyebrow="Taxas">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <MetricCard
+              label="Taxa de entrega"
+              valor={erro ? null : carregando ? null : taxas.entrega !== null ? `${formatoPercentual.format(taxas.entrega)}%` : "—"}
+              carregando={carregando}
+              icon={CheckCheck}
+              hint={!carregando && resumo?.enviados ? `${resumo.entregues} de ${resumo.enviados} enviados` : undefined}
+              destaque
+            />
+            <MetricCard
+              label="Taxa de leitura"
+              valor={erro ? null : carregando ? null : taxas.leitura !== null ? `${formatoPercentual.format(taxas.leitura)}%` : "—"}
+              carregando={carregando}
+              icon={Eye}
+              hint={!carregando && resumo?.enviados ? `${resumo.lidos} de ${resumo.enviados} enviados` : undefined}
+            />
+            <MetricCard
+              label="Taxa de falha"
+              valor={erro ? null : carregando ? null : taxas.falha !== null ? `${formatoPercentual.format(taxas.falha)}%` : "—"}
+              carregando={carregando}
+              icon={AlertTriangle}
+              hint={!carregando && resumo?.falhas ? `${resumo.falhas} falha(s)` : undefined}
+            />
+          </div>
+        </SectionCard>
+
         <SectionCard titulo="Disparos por dia" eyebrow="Últimos 7 dias">
           {carregando ? (
             <div className="bg-surface-sunken h-48 w-full animate-pulse rounded-md" />
@@ -186,6 +294,118 @@ function Dashboard() {
             </div>
           ) : (
             <p className="text-subtle py-8 text-center text-xs">Nenhum disparo enviado nos últimos 7 dias.</p>
+          )}
+        </SectionCard>
+
+        {/* [2026-08] Painel de safras no dashboard -- distribuição FPD/SPD,
+            taxa de recuperação (pagos/total) e valor em aberto por safra
+            ativa. Mesmo dado de /safras (GET /api/safras), resumido aqui. */}
+        <SectionCard
+          titulo="Safras"
+          eyebrow="Acompanhamento"
+          acoes={
+            <Link to="/safras" className="text-xs font-medium text-primary hover:underline">
+              Ver todas as safras
+            </Link>
+          }
+        >
+          {safrasErro ? (
+            <Aviso tone="danger" className="flex flex-wrap items-center justify-between gap-2">
+              <span>Não foi possível carregar as safras: {safrasErro}</span>
+              <Botao tamanho="sm" variante="outline" onClick={carregarSafras}>
+                Tentar novamente
+              </Botao>
+            </Aviso>
+          ) : !safrasCarregando && safrasAtivas.length === 0 ? (
+            <p className="text-subtle py-8 text-center text-xs">
+              Nenhuma safra ativa no momento — importe clientes pela lista crua (Fatura 1/2 + prazo) em Importar.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <MetricCard label="Safras ativas" valor={safrasCarregando ? null : safrasResumo.totalSafras} carregando={safrasCarregando} icon={Layers} />
+                <MetricCard label="Clientes em acompanhamento" valor={safrasCarregando ? null : safrasResumo.totalClientes} carregando={safrasCarregando} icon={Users} />
+                <MetricCard
+                  label="Taxa de pagamento"
+                  valor={safrasCarregando ? null : safrasResumo.taxaPagamento !== null ? `${formatoPercentual.format(safrasResumo.taxaPagamento)}%` : "—"}
+                  carregando={safrasCarregando}
+                  icon={TrendingUp}
+                  hint={!safrasCarregando ? `${safrasResumo.totalPagos} de ${safrasResumo.totalClientes} pagos` : undefined}
+                  destaque
+                />
+                <MetricCard
+                  label="Valor em aberto"
+                  valor={safrasCarregando ? null : formatoMoeda.format(safrasResumo.valorEmAberto)}
+                  carregando={safrasCarregando}
+                  icon={PiggyBank}
+                  hint={!safrasCarregando ? `de ${formatoMoeda.format(safrasResumo.valorTotal)} no total` : undefined}
+                />
+              </div>
+
+              {safrasCarregando ? (
+                <div className="bg-surface-sunken h-48 w-full animate-pulse rounded-md" />
+              ) : (
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={safrasAtivas.map((s) => ({ ...s, rotuloCurto: rotuloSafraCurto(s.safra) }))}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                      <XAxis dataKey="rotuloCurto" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                      <Tooltip
+                        cursor={{ fill: "var(--color-muted)" }}
+                        contentStyle={{
+                          backgroundColor: "var(--color-popover)",
+                          color: "var(--color-popover-foreground)",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: "var(--radius-md)",
+                          boxShadow: "var(--shadow-raised)",
+                          fontSize: "0.75rem",
+                        }}
+                        labelStyle={{ color: "var(--color-muted-foreground)" }}
+                        itemStyle={{ color: "var(--color-popover-foreground)" }}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: "0.75rem" }}
+                        formatter={(value) => (value === "pagos" ? "Pagos" : "Não pagos")}
+                      />
+                      <Bar dataKey="pagos" stackId="safra" fill="var(--color-success)" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="nao_pagos" stackId="safra" fill="var(--color-warning)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              <div className="divide-border divide-y">
+                {safrasAtivas
+                  .slice()
+                  .reverse()
+                  .map((s) => {
+                    const taxa = s.total_clientes > 0 ? (s.pagos / s.total_clientes) * 100 : 0;
+                    return (
+                      <Link
+                        key={s.safra}
+                        to="/clientes"
+                        search={{ safra: s.safra }}
+                        className="hover:bg-surface-raised/60 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-md px-1 py-2.5 text-sm transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium">{s.rotulo}</p>
+                          <p className="text-subtle text-xs">
+                            {s.total_fpd} FPD · {s.total_spd} SPD
+                            {s.sem_tipo_fatura > 0 && ` · ${s.sem_tipo_fatura} sem tipo`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-subtle text-xs tabular-nums">{formatoMoeda.format(s.valor_total)}</span>
+                          <StatusPill tone={taxa >= 50 ? "success" : taxa > 0 ? "warning" : "muted"} dot>
+                            {formatoPercentual.format(taxa)}% pago
+                          </StatusPill>
+                        </div>
+                      </Link>
+                    );
+                  })}
+              </div>
+            </div>
           )}
         </SectionCard>
 
@@ -237,6 +457,7 @@ function Dashboard() {
               { to: "/disparos", label: "Disparos", icon: Send },
               { to: "/importar", label: "Importar", icon: Upload },
               { to: "/pix", label: "Extrator de PIX", icon: KeyRound },
+              { to: "/safras", label: "Safras", icon: Layers },
               { to: "/historico", label: "Histórico", icon: History },
             ].map((a) => (
               <Link

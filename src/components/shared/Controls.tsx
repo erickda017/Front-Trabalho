@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
@@ -208,6 +208,75 @@ export function TabelaWrap({
       >
         {children}
       </table>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Paginação                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Paginação client-side (a lista completa já está em memória -- fatia só na
+ * exibição). Usada em listas grandes (Clientes, Extrações de PIX) pra não
+ * renderizar centenas/milhares de linhas de uma vez.
+ */
+export function Paginacao({
+  paginaAtual,
+  totalPaginas,
+  totalItens,
+  tamanhoPagina,
+  onMudarPagina,
+  className,
+}: {
+  paginaAtual: number;
+  totalPaginas: number;
+  totalItens: number;
+  tamanhoPagina: number;
+  onMudarPagina: (pagina: number) => void;
+  className?: string;
+}) {
+  if (totalPaginas <= 1) return null;
+
+  const inicio = (paginaAtual - 1) * tamanhoPagina + 1;
+  const fim = Math.min(paginaAtual * tamanhoPagina, totalItens);
+
+  return (
+    <div
+      className={cn(
+        "border-border bg-surface-raised/40 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3",
+        className,
+      )}
+    >
+      <p className="text-subtle text-xs">
+        Mostrando <span className="text-foreground font-medium tabular-nums">{inicio}–{fim}</span> de{" "}
+        <span className="text-foreground font-medium tabular-nums">{totalItens}</span>
+      </p>
+      <div className="flex items-center gap-2">
+        <Botao
+          variante="outline"
+          tamanho="sm"
+          onClick={() => onMudarPagina(paginaAtual - 1)}
+          disabled={paginaAtual <= 1}
+          aria-label="Página anterior"
+        >
+          <ChevronLeft className="size-3.5" />
+          Anterior
+        </Botao>
+        <span className="text-subtle px-1 text-xs tabular-nums">
+          Página {paginaAtual} de {totalPaginas}
+        </span>
+        <Botao
+          variante="outline"
+          tamanho="sm"
+          onClick={() => onMudarPagina(paginaAtual + 1)}
+          disabled={paginaAtual >= totalPaginas}
+          aria-label="Próxima página"
+        >
+          Próxima
+          <ChevronRight className="size-3.5" />
+        </Botao>
+      </div>
     </div>
   );
 }

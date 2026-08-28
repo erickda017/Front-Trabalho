@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Download, History, RefreshCcw, Send, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Download, History, RefreshCcw, Send, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -16,7 +16,6 @@ import {
   FiltroChips,
   LinhasEsqueleto,
   Rotulo,
-  Seletor,
   TabelaWrap,
 } from "@/components/shared/Controls";
 import {
@@ -208,7 +207,7 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
 
         <BarraProgressoLote status={statusAtual} envio={envio} progresso={progresso} carregando={carregando} />
 
-        <div className="grid grid-cols-3 gap-3 text-center sm:grid-cols-4">
+        <div className="grid grid-cols-4 gap-2.5 text-center sm:gap-3">
           <MiniMetrica label="Total" valor={progresso?.total ?? envio.total} />
           <MiniMetrica label="Enviados" valor={progresso?.enviados ?? envio.enviados} />
           <MiniMetrica label="Entregues" valor={progresso?.entregues ?? envio.entregues} />
@@ -384,6 +383,12 @@ function Historico() {
   const [ate, setAte] = useState("");
   const [status, setStatus] = useState<EnvioStatus | "todos">("todos");
   const [busca, setBusca] = useState("");
+  // [layout] Período (De/Até) fica atrás de "Período" em vez de solto na
+  // toolbar principal -- mesmo padrão de "Mais filtros" já usado em
+  // routes/clientes.tsx, pra manter a barra de filtros compacta e consistente
+  // entre as abas.
+  const filtrosAvancadosAtivos = Boolean(de || ate);
+  const [filtrosAvancadosAbertos, setFiltrosAvancadosAbertos] = useState(false);
 
   const [loteSelecionado, setLoteSelecionado] = useState<EnvioResumo | null>(null);
 
@@ -440,34 +445,46 @@ function Historico() {
         </>
       }
     >
-      <SectionCard titulo="Filtros" flush bodyClassName="p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="flex flex-col gap-1.5">
-            <Rotulo>De</Rotulo>
-            <Campo type="date" value={de} onChange={(e) => setDe(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <Rotulo>Até</Rotulo>
-            <Campo type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <Rotulo>Status</Rotulo>
-            <Seletor value={status} onChange={(e) => setStatus(e.target.value as EnvioStatus | "todos")}>
-              {STATUS_OPCOES.map((o) => (
-                <option key={o.valor} value={o.valor}>
-                  {o.label}
-                </option>
-              ))}
-            </Seletor>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <Rotulo>Buscar</Rotulo>
-            <Busca placeholder="Cliente, telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          </label>
+      <div className="space-y-3">
+        <div className="toolbar flex flex-wrap items-center gap-3">
+          <Busca placeholder="Cliente, telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <FiltroChips valor={status} onChange={setStatus} opcoes={STATUS_OPCOES} />
+          <button
+            type="button"
+            onClick={() => setFiltrosAvancadosAbertos((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              filtrosAvancadosAbertos || filtrosAvancadosAtivos
+                ? "bg-primary-soft text-primary-strong"
+                : "text-muted-foreground hover:bg-surface-raised",
+            )}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Período
+            {filtrosAvancadosAtivos && <span className="bg-primary-strong size-1.5 rounded-full" />}
+          </button>
         </div>
-      </SectionCard>
 
-      <SectionCard titulo="Lotes" className="mt-6" flush>
+        {filtrosAvancadosAbertos && (
+          <div className="toolbar flex flex-wrap items-end gap-3">
+            <div>
+              <Rotulo>De</Rotulo>
+              <Campo type="date" value={de} onChange={(e) => setDe(e.target.value)} className="w-auto" />
+            </div>
+            <div>
+              <Rotulo>Até</Rotulo>
+              <Campo type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="w-auto" />
+            </div>
+            {filtrosAvancadosAtivos && (
+              <Botao variante="ghost" tamanho="sm" onClick={() => { setDe(""); setAte(""); }}>
+                Limpar
+              </Botao>
+            )}
+          </div>
+        )}
+      </div>
+
+      <SectionCard titulo="Lotes" className="mt-4" flush>
         {erro ? (
           <div className="p-5">
             <Aviso tone="danger">
