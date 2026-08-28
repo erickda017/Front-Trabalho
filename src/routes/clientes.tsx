@@ -11,6 +11,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  SlidersHorizontal,
   Tag as TagIcon,
   Trash2,
   Unlink,
@@ -18,7 +19,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -126,6 +127,27 @@ function formatarData(data: string | null): string {
 
 type FiltroPix = "todos" | "com_pix" | "sem_pix" | "com_fatura" | "sem_fatura";
 type FiltroDisparo = "todos" | "recebeu" | "nao_recebeu";
+
+// [layout] Vieram da ex-tela /faturas -- "nenhuma" mantém a ordem padrão
+// (nome). Faturas sem valor/vencimento sempre vão pro fim da lista, não
+// importa a direção -- senão "sem valor" (null) apareceria misturado no meio
+// como se fosse zero, o que confunde mais do que ajuda.
+type Ordenacao = "nenhuma" | "valor_asc" | "valor_desc" | "vencimento_asc" | "vencimento_desc";
+
+function valorNumero(valor: string | null | undefined): number | null {
+  if (!valor) return null;
+  const numero = Number(String(valor).replace(",", "."));
+  return Number.isFinite(numero) ? numero : null;
+}
+
+function compararComNuloNoFim<T extends number | string>(a: T | null, b: T | null, direcao: 1 | -1): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  if (a < b) return -1 * direcao;
+  if (a > b) return 1 * direcao;
+  return 0;
+}
 
 function BotaoCopiar({ texto }: { texto: string }) {
   const [copiado, setCopiado] = useState(false);
@@ -537,7 +559,11 @@ function FichaCliente({
               </div>
               <Campo1
                 label="Último envio"
-                valor={cliente.ultimo_envio_em ? formatarData(cliente.ultimo_envio_em) : "—"}
+                valor={
+                  cliente.ultimo_envio_em
+                    ? `${formatarData(cliente.ultimo_envio_em)}${cliente.ultimo_envio_status ? ` · ${cliente.ultimo_envio_status}` : ""}`
+                    : "—"
+                }
               />
               <VincularNumero cliente={cliente} onMudou={onMudou} />
             </div>
@@ -706,6 +732,229 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
   );
 }
 
+// [layout] Movido da ex-tela /faturas (agora unificada aqui, ver prompt
+// original: "unificar clientes e faturas preservando relacionamentos,
+// filtros, permissões e detalhes") -- "1 PDF (ou vários) subido direto, sem
+// passar pela importação em massa (zip + planilha)". O backend tenta casar
+// pelo nome do arquivo com um cliente já cadastrado; não achando, o PDF fica
+// "pendente" e a associação acontece sozinha quando o cliente certo for
+// criado depois (ver backend/src/lib/faturasPendentes.js).
+type ResultadoAvulso = { arquivo: string; associado: boolean; cliente_nome: string | undefined };
+type PendenciaAvulsa = {
+  id: string;
+  arquivo: string;
+  pdf_url: string;
+  pix_code: string | null;
+  valor: string | null;
+  vencimento: string | null;
+  criado_em: string;
+};
+
+function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
+  const { clientes } = useAppState();
+  const [enviando, setEnviando] = useState(false);
+  const [resultados, setResultados] = useState<ResultadoAvulso[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const [pendencias, setPendencias] = useState<PendenciaAvulsa[]>([]);
+  const [carregandoPendencias, setCarregandoPendencias] = useState(false);
+  const [vinculandoId, setVinculandoId] = useState<string | null>(null);
+  const [clienteEscolhido, setClienteEscolhido] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [arrastando, setArrastando] = useState(false);
+  const [aberto, setAberto] = useState(false);
+
+  const carregarPendencias = useCallback(async () => {
+    setCarregandoPendencias(true);
+    try {
+      const data = await api.faturas.pendentes.listar();
+      setPendencias(Array.isArray(data) ? data : []);
+    } catch {
+      // silencioso -- lista de pendências é só um extra de conveniência
+    } finally {
+      setCarregandoPendencias(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarPendencias();
+  }, [carregarPendencias]);
+
+  async function enviarArquivos(files: File[]) {
+    const pdfs = files.filter((f) => f.type === "application/pdf");
+    if (!pdfs.length) return;
+    setEnviando(true);
+    setErro(null);
+    setResultados([]);
+    for (const file of pdfs) {
+      try {
+        const resp = await api.faturas.uploadAvulso(file);
+        setResultados((prev) => [...prev, { arquivo: file.name, associado: !!resp.associado, cliente_nome: resp.cliente_nome }]);
+      } catch (e) {
+        setErro((e as Error).message);
+        setResultados((prev) => [...prev, { arquivo: file.name, associado: false, cliente_nome: undefined }]);
+      }
+    }
+    setEnviando(false);
+    onAssociado();
+    await carregarPendencias();
+  }
+
+  async function associarManualmente(id: string) {
+    if (!clienteEscolhido) return;
+    try {
+      await api.faturas.pendentes.associar(id, clienteEscolhido);
+      setVinculandoId(null);
+      setClienteEscolhido("");
+      onAssociado();
+      await carregarPendencias();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function descartar(id: string) {
+    if (!confirm("Descartar este PDF pendente?")) return;
+    try {
+      await api.faturas.pendentes.remover(id);
+      await carregarPendencias();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  const resumo = pendencias.length > 0 ? `${pendencias.length} pendente(s) de associação` : "nenhuma pendência";
+
+  return (
+    <SectionCard
+      titulo="Upload de faturas avulsas"
+      descricao="Suba PDFs soltos, sem precisar de planilha. O sistema casa cada um com um cliente já cadastrado pelo nome do arquivo; não achando, fica pendente e associa sozinho assim que esse cliente for cadastrado."
+      acoes={
+        <div className="flex items-center gap-2">
+          {!aberto && <span className="text-subtle hidden text-xs sm:inline">{resumo}</span>}
+          <button
+            onClick={() => setAberto((v) => !v)}
+            className="text-subtle hover:text-foreground focus-ring rounded p-1"
+            aria-label={aberto ? "Recolher" : "Expandir"}
+          >
+            <Plus className={cn("size-4 transition-transform", aberto && "rotate-45")} />
+          </button>
+        </div>
+      }
+    >
+      {!aberto ? (
+        <p className="text-subtle text-xs sm:hidden">{resumo}</p>
+      ) : (
+        <div className="space-y-4">
+          <div
+            onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+            onDragLeave={() => setArrastando(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setArrastando(false);
+              enviarArquivos(Array.from(e.dataTransfer.files ?? []));
+            }}
+            onClick={() => inputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
+            className={cn(
+              "flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors",
+              arrastando ? "border-primary bg-primary-soft" : "border-border hover:border-border-strong bg-surface-sunken",
+            )}
+          >
+            <Upload className="text-primary-strong size-5" />
+            <p className="text-sm font-medium">Arraste PDFs soltos aqui ou clique para selecionar</p>
+            <p className="text-subtle text-xs">Cada arquivo é enviado e casado individualmente — sem planilha, sem zip.</p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length) enviarArquivos(files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {enviando && <Aviso tone="info">Enviando e casando arquivos…</Aviso>}
+          {erro && <Aviso tone="danger">{erro}</Aviso>}
+
+          {resultados.length > 0 && (
+            <div className="space-y-1.5 text-xs">
+              {resultados.map((r, i) => (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <span className="truncate">{r.arquivo}</span>
+                  {r.associado ? (
+                    <StatusPill tone="success">Associado a {r.cliente_nome}</StatusPill>
+                  ) : (
+                    <StatusPill tone="warning">Aguardando cliente correspondente</StatusPill>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(carregandoPendencias || pendencias.length > 0) && (
+            <div className="border-border border-t pt-3">
+              <p className="text-subtle mb-2 text-xs font-medium">
+                Pendentes de associação {pendencias.length > 0 && `(${pendencias.length})`}
+              </p>
+              {carregandoPendencias ? (
+                <div className="bg-surface-sunken h-16 w-full animate-pulse rounded-md" />
+              ) : (
+                <div className="divide-border divide-y">
+                  {pendencias.map((p) => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                      <button
+                        type="button"
+                        onClick={() => abrirArquivoProtegido(p.pdf_url).catch(() => toast.error("Não foi possível abrir o PDF"))}
+                        className="text-primary-strong flex min-w-0 items-center gap-1.5 text-xs hover:underline"
+                      >
+                        <FileText className="size-3.5 shrink-0" />
+                        <span className="truncate">{p.arquivo}</span>
+                      </button>
+                      {vinculandoId === p.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <Seletor value={clienteEscolhido} onChange={(e) => setClienteEscolhido(e.target.value)} className="w-auto min-w-[10rem]">
+                            <option value="">Selecione um cliente</option>
+                            {clientes.map((c) => (
+                              <option key={c.id} value={c.id}>{c.nome}</option>
+                            ))}
+                          </Seletor>
+                          <Botao tamanho="sm" variante="primary" onClick={() => associarManualmente(p.id)} disabled={!clienteEscolhido}>
+                            Vincular
+                          </Botao>
+                          <Botao tamanho="sm" variante="ghost" onClick={() => { setVinculandoId(null); setClienteEscolhido(""); }}>
+                            <X className="size-3.5" />
+                          </Botao>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Botao tamanho="sm" variante="ghost" onClick={() => setVinculandoId(p.id)}>
+                            <Link2 className="size-3.5" />
+                            Vincular
+                          </Botao>
+                          <Botao tamanho="sm" variante="ghost" onClick={() => descartar(p.id)}>
+                            <X className="size-3.5" />
+                            Descartar
+                          </Botao>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function Clientes() {
   const {
     clientes,
@@ -728,6 +977,19 @@ function Clientes() {
     if (typeof window === "undefined") return "todas";
     return new URLSearchParams(window.location.search).get("safra") ?? "todas";
   });
+  // [layout] Vieram da ex-tela /faturas (agora unificada aqui) -- faixa de
+  // vencimento, faixa de valor e ordenação. Mesma lógica de comparação de
+  // antes (null sempre no fim, funciona pra crescente e decrescente).
+  const [de, setDe] = useState("");
+  const [ate, setAte] = useState("");
+  const [valorMin, setValorMin] = useState("");
+  const [valorMax, setValorMax] = useState("");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("nenhuma");
+  // [layout] Faixa de data/valor + ordenação ficam atrás de "Mais filtros" em
+  // vez de soltas na toolbar principal -- são usadas bem menos que
+  // tag/safra/pix/disparo, e a barra já tinha 4 controles antes destes.
+  const filtrosAvancadosAtivos = Boolean(de || ate || valorMin || valorMax || ordenacao !== "nenhuma");
+  const [filtrosAvancadosAbertos, setFiltrosAvancadosAbertos] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [importarPagosAberto, setImportarPagosAberto] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
@@ -758,7 +1020,11 @@ function Clientes() {
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return clientesAgrupados.filter((c) => {
+    // Campos "Valor mín/máx" aceitam vírgula (padrão BR) além de ponto.
+    const min = valorMin.trim() ? Number(valorMin.trim().replace(",", ".")) : null;
+    const max = valorMax.trim() ? Number(valorMax.trim().replace(",", ".")) : null;
+
+    const resultado = clientesAgrupados.filter((c) => {
       if (q && !(c.nome.toLowerCase().includes(q) || c.telefones.some((t) => t.includes(q)))) return false;
       if (filtroTag !== "todas" && !c.tags.some((t) => t.id === filtroTag)) return false;
       if (filtroPix === "com_pix" && !c.pix_code) return false;
@@ -768,9 +1034,26 @@ function Clientes() {
       if (filtroDisparo === "recebeu" && !(c.disparos_recebidos && c.disparos_recebidos > 0)) return false;
       if (filtroDisparo === "nao_recebeu" && (c.disparos_recebidos ?? 0) > 0) return false;
       if (filtroSafra !== "todas" && c.safra !== filtroSafra) return false;
+      if (de && c.vencimento && c.vencimento < de) return false;
+      if (ate && c.vencimento && c.vencimento > ate) return false;
+      if (min !== null || max !== null) {
+        const v = valorNumero(c.valor);
+        if (v === null) return false; // sem valor não entra num filtro de faixa
+        if (min !== null && Number.isFinite(min) && v < min) return false;
+        if (max !== null && Number.isFinite(max) && v > max) return false;
+      }
       return true;
     });
-  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra]);
+
+    if (ordenacao === "nenhuma") return resultado;
+    const comparadores: Record<Exclude<Ordenacao, "nenhuma">, (a: typeof resultado[number], b: typeof resultado[number]) => number> = {
+      valor_asc: (a, b) => compararComNuloNoFim(valorNumero(a.valor), valorNumero(b.valor), 1),
+      valor_desc: (a, b) => compararComNuloNoFim(valorNumero(a.valor), valorNumero(b.valor), -1),
+      vencimento_asc: (a, b) => compararComNuloNoFim(a.vencimento ?? null, b.vencimento ?? null, 1),
+      vencimento_desc: (a, b) => compararComNuloNoFim(a.vencimento ?? null, b.vencimento ?? null, -1),
+    };
+    return [...resultado].sort(comparadores[ordenacao]);
+  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
 
   async function remover(id: string) {
     if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
@@ -830,6 +1113,8 @@ function Clientes() {
     >
       <ImportarPagosDialog aberto={importarPagosAberto} onOpenChange={setImportarPagosAberto} onImportado={refreshClientes} />
       <div className="space-y-4">
+        <UploadAvulsoFaturas onAssociado={refreshClientes} />
+
         <div className="toolbar flex flex-wrap items-center gap-3">
           <Busca
             value={busca}
@@ -885,7 +1170,77 @@ function Clientes() {
               { valor: "nao_recebeu", label: "Nunca recebeu", contagem: contagensDisparo.nao_recebeu },
             ]}
           />
+          <button
+            type="button"
+            onClick={() => setFiltrosAvancadosAbertos((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              filtrosAvancadosAbertos || filtrosAvancadosAtivos
+                ? "bg-primary-soft text-primary-strong"
+                : "text-muted-foreground hover:bg-surface-raised",
+            )}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Mais filtros
+            {filtrosAvancadosAtivos && <span className="bg-primary-strong size-1.5 rounded-full" />}
+          </button>
         </div>
+
+        {filtrosAvancadosAbertos && (
+          <div className="toolbar flex flex-wrap items-end gap-3">
+            <div>
+              <Rotulo>Vencimento de</Rotulo>
+              <Campo type="date" value={de} onChange={(e) => setDe(e.target.value)} className="w-auto" />
+            </div>
+            <div>
+              <Rotulo>até</Rotulo>
+              <Campo type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="w-auto" />
+            </div>
+            <div>
+              <Rotulo>Valor de</Rotulo>
+              <Campo
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                placeholder="0,00"
+                value={valorMin}
+                onChange={(e) => setValorMin(e.target.value)}
+                className="w-24"
+              />
+            </div>
+            <div>
+              <Rotulo>até</Rotulo>
+              <Campo
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                placeholder="0,00"
+                value={valorMax}
+                onChange={(e) => setValorMax(e.target.value)}
+                className="w-24"
+              />
+            </div>
+            <div>
+              <Rotulo>Ordenar por</Rotulo>
+              <Seletor value={ordenacao} onChange={(e) => setOrdenacao(e.target.value as Ordenacao)} className="w-auto">
+                <option value="nenhuma">Nome (padrão)</option>
+                <option value="valor_asc">Valor: menor → maior</option>
+                <option value="valor_desc">Valor: maior → menor</option>
+                <option value="vencimento_asc">Vencimento: mais próximo</option>
+                <option value="vencimento_desc">Vencimento: mais distante</option>
+              </Seletor>
+            </div>
+            {filtrosAvancadosAtivos && (
+              <Botao
+                variante="ghost"
+                tamanho="sm"
+                onClick={() => { setDe(""); setAte(""); setValorMin(""); setValorMax(""); setOrdenacao("nenhuma"); }}
+              >
+                Limpar
+              </Botao>
+            )}
+          </div>
+        )}
 
         {selecionados.length > 0 && (
           <div className="bg-surface-raised border-border sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-2.5">
@@ -1000,13 +1355,21 @@ function Clientes() {
                             )}
                           </td>
                           <td className="td-cell">
-                            {(c.disparos_recebidos ?? 0) > 0 ? (
-                              <StatusPill tone="brand" dot>
-                                {c.disparos_recebidos}x
-                              </StatusPill>
-                            ) : (
-                              <StatusPill tone="muted">Nunca</StatusPill>
-                            )}
+                            <div className="flex flex-col items-start gap-1">
+                              {(c.disparos_recebidos ?? 0) > 0 ? (
+                                <StatusPill tone="brand" dot>
+                                  {c.disparos_recebidos}x
+                                </StatusPill>
+                              ) : (
+                                <StatusPill tone="muted">Nunca</StatusPill>
+                              )}
+                              {c.ultimo_envio_em && (
+                                <span className="text-subtle text-[11px]">
+                                  último: {formatarData(c.ultimo_envio_em)}
+                                  {c.ultimo_envio_status ? ` · ${c.ultimo_envio_status}` : ""}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="td-cell">
                             <TagPicker cliente={c} todasTags={todasTags} onChange={refreshClientes} />

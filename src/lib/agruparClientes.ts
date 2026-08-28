@@ -35,6 +35,21 @@ export function agruparClientesPorNumero(lista: Cliente[]): ClienteAgrupado[] {
     // próprio, então "quantos disparos esse cliente já recebeu" é o total
     // somado entre os números, não só o da linha principal).
     const disparos_recebidos = membros.reduce((soma, m) => soma + (m.disparos_recebidos ?? 0), 0);
-    return { ...representante, telefones, disparos_recebidos };
+    // Mesmo raciocínio do total acima: "último envio" do cliente é o mais
+    // recente entre TODOS os números do grupo, não só o da linha principal
+    // -- um número vinculado pode ter recebido um disparo mais recente do
+    // que o principal.
+    const ultimoMembro = membros.reduce<typeof representante | null>((maisRecente, m) => {
+      if (!m.ultimo_envio_em) return maisRecente;
+      if (!maisRecente?.ultimo_envio_em || m.ultimo_envio_em > maisRecente.ultimo_envio_em) return m;
+      return maisRecente;
+    }, null);
+    return {
+      ...representante,
+      telefones,
+      disparos_recebidos,
+      ultimo_envio_em: ultimoMembro?.ultimo_envio_em ?? representante.ultimo_envio_em ?? null,
+      ultimo_envio_status: ultimoMembro?.ultimo_envio_status ?? representante.ultimo_envio_status ?? null,
+    };
   });
 }

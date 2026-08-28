@@ -2,7 +2,6 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
-  FileText,
   Gauge,
   History,
   KeyRound,
@@ -40,8 +39,12 @@ const nav = [
   { to: "/disparos", label: "Disparos", icon: Send, grupo: "Operação" },
   { to: "/historico", label: "Histórico", icon: History, grupo: "Operação" },
   { to: "/chat", label: "Chat", icon: MessageSquare, grupo: "Operação" },
+  // [layout] "Faturas" foi unificada em /clientes (mesma base de clientes,
+  // agora com filtro de data/valor+ordenação e upload de PDF avulso que só
+  // existiam na tela separada) -- ver prompt original: "unificar clientes e
+  // faturas". /faturas continua existindo como redirect (ver routes/faturas.tsx),
+  // só sai do menu.
   { to: "/clientes", label: "Clientes", icon: Users, grupo: "Gestão" },
-  { to: "/faturas", label: "Faturas", icon: FileText, grupo: "Gestão" },
   // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado").
   { to: "/safras", label: "Safras", icon: Layers, grupo: "Gestão" },
   { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Gestão" },

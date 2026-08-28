@@ -114,6 +114,14 @@ declare module "@/api" {
     faturas: {
       listar: (params?: { busca?: string | undefined; filtro?: string | undefined } | undefined) => Promise<Fatura[]>;
       exportar: (formato: "csv" | "xlsx", params?: { busca?: string | undefined; filtro?: string | undefined } | undefined) => Promise<void>;
+      uploadAvulso: (file: File, dadosPixPrecalculado?: DadosPix | null) => Promise<{ associado: boolean; cliente_nome?: string }>;
+      pendentes: {
+        listar: () => Promise<
+          { id: string; arquivo: string; pdf_url: string; pix_code: string | null; valor: string | null; vencimento: string | null; criado_em: string }[]
+        >;
+        associar: (id: string, clienteId: string) => Promise<unknown>;
+        remover: (id: string) => Promise<{ ok: boolean }>;
+      };
     };
     clientes: {
       listar: (params?: { busca?: string | undefined; filtro?: string | undefined } | undefined) => Promise<Cliente[]>;
