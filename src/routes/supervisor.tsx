@@ -27,7 +27,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { Aviso, Botao, Busca, LinhasEsqueleto, Paginacao, Seletor, TabelaWrap } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { api, abrirArquivoProtegido } from "@/api";
+import { api } from "@/api";
+import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
 import {
@@ -475,10 +476,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
   const [buscaDebounced, setBuscaDebounced] = useState("");
   const [operadorId, setOperadorId] = useState("");
   const [pagina, setPagina] = useState(1);
-  // Erro de abrir um PDF avulso (ação pontual, fora do useQuery abaixo) --
-  // mesmo painel de erro que o erro de carregar a lista, igual já era antes
-  // da migração pra useQuery.
-  const [erroAcao, setErroAcao] = useState<string | null>(null);
+  const [pdfAberto, setPdfAberto] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca), 300);
@@ -509,11 +507,12 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
   });
   const faturas: FaturaSup[] = Array.isArray(data?.itens) ? data.itens : [];
   const total = typeof data?.total === "number" ? data.total : 0;
-  const erro = erroObj ? (erroObj as Error).message : erroAcao;
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   const totalPaginas = Math.max(1, Math.ceil(total / TAMANHO_PAGINA_SUPERVISOR));
 
   return (
+    <>
     <SectionCard
       titulo="Faturas (todos os operadores)"
       descricao="PDF, valor, vencimento e a quem está atribuída cada fatura."
@@ -536,7 +535,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <ErroCarregamento erro={erro} onRetry={() => { setErroAcao(null); carregar(); }} />
+        <ErroCarregamento erro={erro} onRetry={() => carregar()} />
       ) : !carregando && faturas.length === 0 ? (
         <EmptyState icon={FileText} titulo="Nenhuma fatura encontrada" descricao="Ajuste a busca ou o filtro de operador acima." compacto />
       ) : (
@@ -565,7 +564,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
                         {f.pdf_url ? (
                           <button
                             type="button"
-                            onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErroAcao((e as Error).message))}
+                            onClick={() => setPdfAberto(f.pdf_url)}
                             className="text-primary-strong inline-flex items-center gap-1 hover:underline"
                           >
                             <FileText className="size-3.5" /> Ver
@@ -593,6 +592,8 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
         </>
       )}
     </SectionCard>
+    <VisualizadorPdf url={pdfAberto} onClose={() => setPdfAberto(null)} />
+    </>
   );
 }
 

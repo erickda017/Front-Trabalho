@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, Download, History, RefreshCcw, Send, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -429,7 +430,7 @@ function Historico() {
     try {
       await api.envios.exportar(formato, buildParams() as any);
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
 

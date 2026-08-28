@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -1063,7 +1064,7 @@ function Disparo() {
         <Botao
           variante="secondary"
           tamanho="sm"
-          onClick={() => api.importacao.baixarModelo().catch((e) => alert((e as Error).message))}
+          onClick={() => api.importacao.baixarModelo().catch((e) => toast.error((e as Error).message))}
         >
           <Download className="size-3.5" />
           Baixar planilha exemplo

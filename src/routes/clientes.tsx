@@ -25,6 +25,7 @@ import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TagPicker } from "@/components/shared/TagPicker";
+import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { Botao, Busca, Campo, FiltroChips, Aviso, LinhasEsqueleto, Paginacao, Rotulo, Seletor } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +45,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAppState, type Tag } from "@/lib/app-state";
 import { STATUS_OPERADOR_BLOQUEIA_DISPARO, type Cliente } from "@/lib/types";
 
@@ -84,7 +95,7 @@ type SugestaoSpd = {
   sugestao: { tipo_fatura: "SPD"; data_prazo: string };
 };
 import { agruparClientesPorNumero, type ClienteAgrupado } from "@/lib/agruparClientes";
-import { api, abrirArquivoProtegido } from "@/api";
+import { api } from "@/api";
 import { cn, formatoMoeda } from "@/lib/utils";
 
 export const Route = createFileRoute("/clientes")({
@@ -436,7 +447,10 @@ function FichaCliente({
   onEditar: () => void;
   onMudou: () => void;
 }) {
+  const [pdfAberto, setPdfAberto] = useState<string | null>(null);
+
   return (
+    <>
     <Sheet open={!!cliente} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="flex w-full flex-col sm:max-w-md">
         {cliente && (
@@ -486,7 +500,7 @@ function FichaCliente({
                 {cliente.pdf_url ? (
                   <button
                     type="button"
-                    onClick={() => abrirArquivoProtegido(cliente.pdf_url).catch(() => toast.error("Não foi possível abrir o PDF"))}
+                    onClick={() => setPdfAberto(cliente.pdf_url)}
                     className="text-primary-strong inline-flex items-center gap-1.5 text-xs hover:underline"
                   >
                     <FileText className="size-3.5" />
@@ -516,6 +530,8 @@ function FichaCliente({
         )}
       </SheetContent>
     </Sheet>
+    <VisualizadorPdf url={pdfAberto} onClose={() => setPdfAberto(null)} />
+    </>
   );
 }
 
@@ -813,6 +829,9 @@ function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
   const [aberto, setAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState<string | null>(null);
+  const [descartando, setDescartando] = useState<PendenciaAvulsa | null>(null);
+  const [descartandoAtivo, setDescartandoAtivo] = useState(false);
 
   const carregarPendencias = useCallback(async () => {
     setCarregandoPendencias(true);
@@ -863,19 +882,24 @@ function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
     }
   }
 
-  async function descartar(id: string) {
-    if (!confirm("Descartar este PDF pendente?")) return;
+  async function confirmarDescarte() {
+    if (!descartando) return;
+    setDescartandoAtivo(true);
     try {
-      await api.faturas.pendentes.remover(id);
+      await api.faturas.pendentes.remover(descartando.id);
       await carregarPendencias();
+      setDescartando(null);
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setDescartandoAtivo(false);
     }
   }
 
   const resumo = pendencias.length > 0 ? `${pendencias.length} pendente(s) de associação` : "nenhuma pendência";
 
   return (
+    <>
     <SectionCard
       titulo="Upload de faturas avulsas"
       descricao="Suba PDFs soltos, sem precisar de planilha. O sistema casa cada um com um cliente já cadastrado pelo nome do arquivo; não achando, fica pendente e associa sozinho assim que esse cliente for cadastrado."
@@ -961,7 +985,7 @@ function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
                     <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                       <button
                         type="button"
-                        onClick={() => abrirArquivoProtegido(p.pdf_url).catch(() => toast.error("Não foi possível abrir o PDF"))}
+                        onClick={() => setPdfAberto(p.pdf_url)}
                         className="text-primary-strong flex min-w-0 items-center gap-1.5 text-xs hover:underline"
                       >
                         <FileText className="size-3.5 shrink-0" />
@@ -988,7 +1012,7 @@ function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
                             <Link2 className="size-3.5" />
                             Vincular
                           </Botao>
-                          <Botao tamanho="sm" variante="ghost" onClick={() => descartar(p.id)}>
+                          <Botao tamanho="sm" variante="ghost" onClick={() => setDescartando(p)}>
                             <X className="size-3.5" />
                             Descartar
                           </Botao>
@@ -1003,6 +1027,31 @@ function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
         </div>
       )}
     </SectionCard>
+    <VisualizadorPdf url={pdfAberto} onClose={() => setPdfAberto(null)} />
+    <AlertDialog open={!!descartando} onOpenChange={(open) => !open && setDescartando(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Descartar "{descartando?.arquivo}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            O PDF pendente é removido e deixa de aparecer nesta lista. Não tem como desfazer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={descartandoAtivo}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              e.preventDefault();
+              confirmarDescarte();
+            }}
+            disabled={descartandoAtivo}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {descartandoAtivo ? "Descartando…" : "Descartar"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
@@ -1046,6 +1095,7 @@ function Clientes() {
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null);
   const [removendo, setRemovendo] = useState<string | null>(null);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState<ClienteAgrupado | null>(null);
   const [enviandoPdfId, setEnviandoPdfId] = useState<string | null>(null);
   const [todasTags, setTodasTags] = useState<Tag[]>([]);
   const navigate = useNavigate();
@@ -1163,11 +1213,11 @@ function Clientes() {
   }
 
   async function remover(id: string) {
-    if (!confirm("Remover este cliente? Isso também apaga o PDF anexado.")) return;
     setRemovendo(id);
     try {
       await api.clientes.remover(id);
       await refreshClientes();
+      setConfirmandoRemocao(null);
     } finally {
       setRemovendo(null);
     }
@@ -1513,7 +1563,7 @@ function Clientes() {
                                 <Pencil className="size-3.5" />
                               </button>
                               <button
-                                onClick={() => remover(c.id)}
+                                onClick={() => setConfirmandoRemocao(c)}
                                 disabled={removendo === c.id}
                                 aria-label="Remover cliente"
                                 className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded disabled:opacity-40"
@@ -1596,7 +1646,7 @@ function Clientes() {
                         <Botao variante="ghost" tamanho="sm" onClick={() => { setClienteEditando(c); setModalAberto(true); }}>
                           <Pencil className="size-3.5" /> Editar
                         </Botao>
-                        <Botao variante="ghost" tamanho="sm" onClick={() => remover(c.id)} disabled={removendo === c.id}>
+                        <Botao variante="ghost" tamanho="sm" onClick={() => setConfirmandoRemocao(c)} disabled={removendo === c.id}>
                           {removendo === c.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
                           Remover
                         </Botao>
@@ -1645,6 +1695,30 @@ function Clientes() {
         }}
         onMudou={refreshClientes}
       />
+
+      <AlertDialog open={!!confirmandoRemocao} onOpenChange={(open) => !open && setConfirmandoRemocao(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover "{confirmandoRemocao?.nome}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O PDF anexado a este cliente (se tiver) também é apagado. Não tem como desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!removendo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmandoRemocao) remover(confirmandoRemocao.id);
+              }}
+              disabled={!!removendo}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removendo ? "Removendo…" : "Remover"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

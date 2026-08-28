@@ -4,6 +4,7 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Eye,
   FileText,
   Loader2,
   MessageSquare,
@@ -19,21 +20,33 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
-import { api, abrirArquivoProtegido, buscarBlobUrlProtegida } from "@/api";
+import { api, buscarBlobUrlProtegida } from "@/api";
 import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
 import { useAppState, type Tag } from "@/lib/app-state";
 import { Aviso } from "@/components/shared/Controls";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TagPicker } from "@/components/shared/TagPicker";
+import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -497,6 +510,9 @@ function Chat() {
   const [modalVincularAberto, setModalVincularAberto] = useState(false);
   const [erroVincular, setErroVincular] = useState<string | null>(null);
   const [gerenciarRespostasAberto, setGerenciarRespostasAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState<string | null>(null);
+  const [apagandoConversaId, setApagandoConversaId] = useState<string | null>(null);
+  const [apagando, setApagando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fimDaThreadRef = useRef<HTMLDivElement>(null);
   const campoRef = useRef<HTMLTextAreaElement>(null);
@@ -627,14 +643,19 @@ function Chat() {
     campoRef.current?.focus();
   }
 
-  async function apagarConversa(conversaId: string) {
-    if (!confirm("Apagar esta conversa e todo o histórico de mensagens dela? Não tem como desfazer.")) return;
+  async function confirmarApagarConversa() {
+    if (!apagandoConversaId) return;
+    const conversaId = apagandoConversaId;
+    setApagando(true);
     try {
       await api.chat.apagar(conversaId);
       setConversas((prev) => prev.filter((c) => c.id !== conversaId));
       if (ativoId === conversaId) setAtivoId(null);
+      setApagandoConversaId(null);
     } catch (e) {
-      setErro((e as Error).message);
+      toast.error((e as Error).message);
+    } finally {
+      setApagando(false);
     }
   }
 
@@ -895,6 +916,16 @@ function Chat() {
                   viraram ícones agrupados com um separador, em vez de 3
                   pills coloridas competindo pela mesma atenção. */}
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {ativo.clientes?.pdf_url && (
+                  <button
+                    type="button"
+                    onClick={() => setPdfAberto(ativo.clientes!.pdf_url)}
+                    className="text-muted-foreground hover:text-foreground hover:bg-surface-raised inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                  >
+                    <Eye className="size-3.5" />
+                    Ver fatura
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -928,7 +959,7 @@ function Chat() {
                   type="button"
                   aria-label="Apagar conversa"
                   title="Apagar conversa"
-                  onClick={() => apagarConversa(ativo.id)}
+                  onClick={() => setApagandoConversaId(ativo.id)}
                   className="text-subtle hover:text-destructive hover:bg-surface-raised/50 grid size-8 shrink-0 place-items-center rounded-full transition-colors"
                 >
                   <Trash2 className="size-3.5" />
@@ -987,11 +1018,7 @@ function Chat() {
                             {m.anexo_url && m.tipo === "documento" && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  abrirArquivoProtegido(m.anexo_url).catch(() =>
-                                    setErro("Não foi possível abrir o anexo"),
-                                  )
-                                }
+                                onClick={() => setPdfAberto(m.anexo_url)}
                                 className="mb-1 flex w-full items-center gap-2 rounded-md bg-foreground/10 px-2 py-2 text-left font-mono text-[11px]"
                               >
                                 <FileText className="size-4 shrink-0" />
@@ -1177,6 +1204,30 @@ function Chat() {
         erro={erroVincular}
         onVincular={vincularClienteAgora}
       />
+      <VisualizadorPdf url={pdfAberto} onClose={() => setPdfAberto(null)} />
+      <AlertDialog open={!!apagandoConversaId} onOpenChange={(open) => !open && setApagandoConversaId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar esta conversa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todo o histórico de mensagens dela é apagado junto. Não tem como desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apagando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmarApagarConversa();
+              }}
+              disabled={apagando}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {apagando ? "Apagando…" : "Apagar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
