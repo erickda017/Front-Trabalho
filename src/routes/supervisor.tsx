@@ -342,21 +342,38 @@ type FiltroPdfPix = (typeof FILTRO_PDF_PIX)[number]["value"];
 const TAMANHO_PAGINA_SUPERVISOR = 50;
 
 function AbaClientes({ operadores }: { operadores: Operador[] }) {
-  const [clientes, setClientes] = useState<ClienteSup[]>([]);
-  const [total, setTotal] = useState(0);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [buscaDebounced, setBuscaDebounced] = useState("");
   const [operadorId, setOperadorId] = useState("");
   const [filtro, setFiltro] = useState<FiltroPdfPix>("");
   const [pagina, setPagina] = useState(1);
 
-  const carregar = useCallback(() => {
-    setCarregando(true);
-    setErro(null);
-    api.supervisor
-      .clientes({
-        busca: busca || undefined,
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaDebounced(busca), 300);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  // Qualquer mudança de filtro volta pra página 1 -- senão dá pra ficar
+  // "preso" numa página vazia depois de filtrar pra um resultado menor
+  // (mesma regra da tela de Clientes do operador).
+  useEffect(() => {
+    setPagina(1);
+  }, [buscaDebounced, operadorId, filtro]);
+
+  // [perf] useQuery em vez de useEffect+useState -- cacheia por combinação de
+  // filtros/página, então trocar de sub-aba dentro do Supervisor e voltar pra
+  // "Clientes" não recarrega do zero (era o sintoma reportado: reabrir a aba
+  // sempre disparava a busca de novo, mesmo sem nada ter mudado).
+  const {
+    data,
+    isLoading: carregando,
+    error: erroObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["supervisor-clientes", buscaDebounced, operadorId, filtro, pagina],
+    queryFn: () =>
+      api.supervisor.clientes({
+        busca: buscaDebounced || undefined,
         operador_id: operadorId || undefined,
         com_pix: filtro === "com_pix" ? "true" : undefined,
         sem_pix: filtro === "sem_pix" ? "true" : undefined,
@@ -364,26 +381,12 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
         sem_pdf: filtro === "sem_pdf" ? "true" : undefined,
         page: pagina,
         per_page: TAMANHO_PAGINA_SUPERVISOR,
-      })
-      .then((data) => {
-        setClientes(Array.isArray(data?.itens) ? data.itens : []);
-        setTotal(typeof data?.total === "number" ? data.total : 0);
-      })
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
-  }, [busca, operadorId, filtro, pagina]);
-
-  // Qualquer mudança de filtro volta pra página 1 -- senão dá pra ficar
-  // "preso" numa página vazia depois de filtrar pra um resultado menor
-  // (mesma regra da tela de Clientes do operador).
-  useEffect(() => {
-    setPagina(1);
-  }, [busca, operadorId, filtro]);
-
-  useEffect(() => {
-    const t = setTimeout(carregar, 300);
-    return () => clearTimeout(t);
-  }, [carregar]);
+      }),
+    staleTime: 15_000,
+  });
+  const clientes: ClienteSup[] = Array.isArray(data?.itens) ? data.itens : [];
+  const total = typeof data?.total === "number" ? data.total : 0;
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   const totalPaginas = Math.max(1, Math.ceil(total / TAMANHO_PAGINA_SUPERVISOR));
 
@@ -413,7 +416,7 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <ErroCarregamento erro={erro} onRetry={carregar} />
+        <ErroCarregamento erro={erro} onRetry={() => carregar()} />
       ) : !carregando && clientes.length === 0 ? (
         <EmptyState icon={Users} titulo="Nenhum cliente encontrado" descricao="Ajuste a busca ou os filtros acima." compacto />
       ) : (
@@ -468,40 +471,45 @@ function AbaClientes({ operadores }: { operadores: Operador[] }) {
 }
 
 function AbaFaturas({ operadores }: { operadores: Operador[] }) {
-  const [faturas, setFaturas] = useState<FaturaSup[]>([]);
-  const [total, setTotal] = useState(0);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [buscaDebounced, setBuscaDebounced] = useState("");
   const [operadorId, setOperadorId] = useState("");
   const [pagina, setPagina] = useState(1);
+  // Erro de abrir um PDF avulso (ação pontual, fora do useQuery abaixo) --
+  // mesmo painel de erro que o erro de carregar a lista, igual já era antes
+  // da migração pra useQuery.
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
 
-  const carregar = useCallback(() => {
-    setCarregando(true);
-    setErro(null);
-    api.supervisor
-      .faturas({
-        busca: busca || undefined,
-        operador_id: operadorId || undefined,
-        page: pagina,
-        per_page: TAMANHO_PAGINA_SUPERVISOR,
-      })
-      .then((data) => {
-        setFaturas(Array.isArray(data?.itens) ? data.itens : []);
-        setTotal(typeof data?.total === "number" ? data.total : 0);
-      })
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
-  }, [busca, operadorId, pagina]);
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaDebounced(busca), 300);
+    return () => clearTimeout(t);
+  }, [busca]);
 
   useEffect(() => {
     setPagina(1);
-  }, [busca, operadorId]);
+  }, [buscaDebounced, operadorId]);
 
-  useEffect(() => {
-    const t = setTimeout(carregar, 300);
-    return () => clearTimeout(t);
-  }, [carregar]);
+  // [perf] useQuery em vez de useEffect+useState -- ver comentário equivalente
+  // em AbaClientes (mesmo sintoma: reabrir a sub-aba recarregava do zero).
+  const {
+    data,
+    isLoading: carregando,
+    error: erroObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["supervisor-faturas", buscaDebounced, operadorId, pagina],
+    queryFn: () =>
+      api.supervisor.faturas({
+        busca: buscaDebounced || undefined,
+        operador_id: operadorId || undefined,
+        page: pagina,
+        per_page: TAMANHO_PAGINA_SUPERVISOR,
+      }),
+    staleTime: 15_000,
+  });
+  const faturas: FaturaSup[] = Array.isArray(data?.itens) ? data.itens : [];
+  const total = typeof data?.total === "number" ? data.total : 0;
+  const erro = erroObj ? (erroObj as Error).message : erroAcao;
 
   const totalPaginas = Math.max(1, Math.ceil(total / TAMANHO_PAGINA_SUPERVISOR));
 
@@ -528,7 +536,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <ErroCarregamento erro={erro} onRetry={carregar} />
+        <ErroCarregamento erro={erro} onRetry={() => { setErroAcao(null); carregar(); }} />
       ) : !carregando && faturas.length === 0 ? (
         <EmptyState icon={FileText} titulo="Nenhuma fatura encontrada" descricao="Ajuste a busca ou o filtro de operador acima." compacto />
       ) : (
@@ -557,7 +565,7 @@ function AbaFaturas({ operadores }: { operadores: Operador[] }) {
                         {f.pdf_url ? (
                           <button
                             type="button"
-                            onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErro((e as Error).message))}
+                            onClick={() => abrirArquivoProtegido(f.pdf_url).catch((e) => setErroAcao((e as Error).message))}
                             className="text-primary-strong inline-flex items-center gap-1 hover:underline"
                           >
                             <FileText className="size-3.5" /> Ver
@@ -598,25 +606,23 @@ const STATUS_DISPARO: Record<string, { label: string; tone: "muted" | "brand" | 
 };
 
 function AbaDisparos({ operadores }: { operadores: Operador[] }) {
-  const [disparos, setDisparos] = useState<DisparoSup[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState("todos");
   const [operadorId, setOperadorId] = useState("");
 
-  const carregar = useCallback(() => {
-    setCarregando(true);
-    setErro(null);
-    api.supervisor
-      .disparos({ status, operador_id: operadorId || undefined })
-      .then((data) => setDisparos(Array.isArray(data) ? data : []))
-      .catch((e) => setErro((e as Error).message))
-      .finally(() => setCarregando(false));
-  }, [status, operadorId]);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
+  // [perf] useQuery em vez de useEffect+useState -- ver comentário equivalente
+  // em AbaClientes (mesmo sintoma: reabrir a sub-aba recarregava do zero).
+  const {
+    data,
+    isLoading: carregando,
+    error: erroObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["supervisor-disparos", status, operadorId],
+    queryFn: () => api.supervisor.disparos({ status, operador_id: operadorId || undefined }),
+    staleTime: 15_000,
+  });
+  const disparos: DisparoSup[] = Array.isArray(data) ? data : [];
+  const erro = erroObj ? (erroObj as Error).message : null;
 
   return (
     <SectionCard
@@ -640,7 +646,7 @@ function AbaDisparos({ operadores }: { operadores: Operador[] }) {
       bodyClassName="p-0"
     >
       {erro ? (
-        <ErroCarregamento erro={erro} onRetry={carregar} />
+        <ErroCarregamento erro={erro} onRetry={() => carregar()} />
       ) : !carregando && disparos.length === 0 ? (
         <EmptyState icon={KeyRound} titulo="Nenhum disparo encontrado" descricao="Ajuste o status ou o filtro de operador acima." compacto />
       ) : (

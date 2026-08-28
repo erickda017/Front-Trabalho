@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pencil, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -52,9 +53,21 @@ const CORES = [
 type TagComContagem = Tag & { clientes_count?: number | null };
 
 function Tags() {
-  const [tags, setTags] = useState<TagComContagem[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erroLista, setErroLista] = useState<string | null>(null);
+  // [perf] useQuery em vez de useEffect+useState -- cacheia entre trocas de
+  // aba (voltar pra Tags não recarrega do zero se os dados ainda estão
+  // dentro do staleTime).
+  const {
+    data,
+    isLoading: carregando,
+    error: erroListaObj,
+    refetch: carregar,
+  } = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => api.tags.listar(),
+    staleTime: 15_000,
+  });
+  const tags: TagComContagem[] = Array.isArray(data) ? data : [];
+  const erroLista = erroListaObj ? (erroListaObj as Error).message : null;
 
   const [dialogAberto, setDialogAberto] = useState(false);
   const [editando, setEditando] = useState<TagComContagem | null>(null);
@@ -66,23 +79,6 @@ function Tags() {
 
   const [excluindo, setExcluindo] = useState<TagComContagem | null>(null);
   const [removendo, setRemovendo] = useState(false);
-
-  async function carregar() {
-    setCarregando(true);
-    try {
-      const data = await api.tags.listar();
-      setTags(Array.isArray(data) ? data : []);
-      setErroLista(null);
-    } catch (e) {
-      setErroLista((e as Error).message);
-    } finally {
-      setCarregando(false);
-    }
-  }
-
-  useEffect(() => {
-    carregar();
-  }, []);
 
   function abrirCriacao() {
     setEditando(null);
@@ -150,7 +146,7 @@ function Tags() {
           <Aviso tone="danger">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span>{erroLista}</span>
-              <Botao tamanho="sm" variante="outline" onClick={carregar}>
+              <Botao tamanho="sm" variante="outline" onClick={() => carregar()}>
                 Tentar novamente
               </Botao>
             </div>
