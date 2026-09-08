@@ -42,8 +42,10 @@ Duas formas de gerar um disparo:
   servidor próprio. Autenticação via Supabase Auth (e-mail/senha).
 - **Backend**: Node + Express + Baileys (`@whiskeysockets/baileys`, conecta no WhatsApp
   via QR Code, sem API oficial) + Supabase (Postgres pro banco, Storage pros PDFs).
-  Roda no Render como Web Service com Persistent Disk (sessão do WhatsApp precisa
-  sobreviver a redeploys).
+  Roda no Render como Web Service. A sessão do WhatsApp é persistida na
+  tabela `whatsapp_sessions` do Supabase (`backend/src/lib/
+  supabaseAuthState.js`), não em disco — não precisa de Persistent Disk pra
+  sobreviver a redeploys (era assim antes, mudou).
 - **Banco**: Supabase Postgres. Schema em `backend/supabase-schema.sql` (idempotente,
   pode rodar de novo com segurança).
 
@@ -474,8 +476,11 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Deploy
 
-- **Backend**: Render (Web Service + Persistent Disk pra sessão do WhatsApp), via
-  `render.yaml` na raiz (Blueprint). Detalhes no `README.md` raiz.
+- **Backend**: Render, Web Service configurado manualmente pelo painel (não
+  via Blueprint/`render.yaml` — se existir um `render.yaml` no repo, é só
+  referência/histórico, não é a fonte de verdade do deploy real; ver
+  `backend/CLAUDE.md`). Sessão do WhatsApp persistida no Supabase (tabela
+  `whatsapp_sessions`), não precisa de Persistent Disk.
 - **Frontend**: 100% estático, hospedável em qualquer CDN. Suporte oficial a:
   - **Render Static Site** (via `render.yaml`, já configurado).
   - **Vercel** (`[2026-08]`) — `frontend/vercel.json` (build command, output
@@ -501,12 +506,18 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   números internacionais — decisão consciente porque o sistema é de uso pessoal/local.
   Se algum dia precisar de clientes fora do Brasil, essa função precisa aceitar o
   código do país como parâmetro em vez de assumir `55`.
-- **RLS habilitado no Postgres mas sem policies.** Isso é intencional, não um bug: o
-  backend usa a `service_role key` (ignora RLS), e a ausência de policies faz com que
-  qualquer tentativa de acesso direto via `anon key` (bypassando o backend) retorne
-  zero linhas — é a postura mais segura por padrão. Se um dia o frontend precisar
-  falar direto com o Supabase (sem passar pelo backend) pra algo, aí sim vai precisar
-  escrever policies explícitas.
+- **RLS**: a `migration-13-multi-tenant.sql` (2026-08) já adicionou policies reais de
+  isolamento por `usuario_id` nas tabelas principais (`clientes`, `envios`, `envio_itens`,
+  `conversas`, `mensagens`, `tags`, `cliente_tags`, `respostas_rapidas`, `pix_extracoes`,
+  e depois `faturas_pendentes`/`safras_historico`). Só `whatsapp_sessions`,
+  `auditoria_exclusoes`, `perfis` e `tratativas` continuam com RLS habilitado **sem**
+  policy — intencional, não bug: o backend usa a `service_role key` (ignora RLS de
+  qualquer forma), e a ausência de policy nessas tabelas específicas faz uma tentativa
+  de acesso direto via `anon key` (bypassando o backend) retornar zero linhas — postura
+  mais segura por padrão. Vale lembrar: um vazamento da `service_role key` ainda expõe
+  tudo mesmo com as policies das tabelas principais (ela sempre ignora RLS) — elas
+  protegem contra outro cenário (JWT de usuário comum vazado, ou bug de rota que
+  esqueça o filtro `usuario_id`), não contra isso.
 - **WhatsApp normal (Baileys/QR Code), não a API oficial da Meta.** Decisão original do
   projeto — mais barato e sem burocracia de aprovação de template, mas com risco real
   de bloqueio de número (ver `README.md`, seção "Avisos importantes"). O código já foi
