@@ -257,6 +257,20 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-09] Converter lista crua descartava cliente inteiro quando cada
+  campo vinha em linha separada por linha em branco.** Listas coladas direto
+  de PDF/relatório (ex.: nome, linha em branco, número de contrato, linha em
+  branco, "CPF ...", linha em branco, telefone(s)) faziam o parser fechar o
+  bloco do cliente em CADA linha em branco (`ehSeparador` tratava `''` igual
+  a `#####`), então o nome era finalizado sem telefone (virava aviso "nenhum
+  telefone encontrado" e sumia) e os campos seguintes (contrato/telefone/
+  fatura/valor) viravam "trecho não reconhecido" por não ter bloco aberto —
+  o cliente inteiro era perdido na conversão, mesmo com fatura/valor
+  presentes. Corrigido em `backend/src/lib/parseListaClientes.js`: só o
+  separador explícito `#####` fecha o bloco atual agora; linha em branco
+  pura é ignorada (um NOME novo já fecha o bloco anterior sozinho, então não
+  dependia da linha em branco pra separar clientes diferentes).
+
 - **[2026-08] Dashboard do Supervisor contava clientes com números vinculados
   em dobro.** `GET /api/supervisor/dashboard` (`backend/src/routes/
   supervisor.routes.js`) contava toda linha da tabela `clientes` sem filtrar
