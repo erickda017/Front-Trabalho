@@ -380,6 +380,11 @@ declare module "@/api" {
          *  texto; a elegibilidade passa a exigir pix_code em vez de pdf_path
          *  (ver backend/src/routes/envios.routes.js, resolverClienteIds). */
         enviar_pix?: boolean | undefined;
+        /** [2026-09] true = lote "livre" -- não exige PDF nem PIX cadastrado
+         *  pra elegibilidade; manda só a mensagem de texto (anexa o PDF do
+         *  cliente que por acaso tiver um, igual ao modo padrão). Ignorado
+         *  se `enviar_pix` também vier true. */
+        livre?: boolean | undefined;
       }) => Promise<Envio & { ignorados_sem_pdf: number; ignorados_por_tag: number }>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       pausar: (id: string) => Promise<{ ok: boolean; status: string }>;

@@ -348,6 +348,11 @@ function StatusBadgeSimples({ status }: { status: string }) {
 /* 5/6/7. Configurações avançadas (Anexo + Intervalo + Agendamento)          */
 /* -------------------------------------------------------------------------- */
 
+// [2026-09] O que o lote exige de cada cliente pra entrar: 'pdf' (padrão)
+// exige PDF vinculado, 'pix' exige código Pix cadastrado, 'livre' não exige
+// nenhum dos dois -- só a mensagem de texto (ver backend, resolverClienteIds).
+type ModoDisparo = "pdf" | "pix" | "livre";
+
 // [layout] As 3 etapas acima eram 3 SectionCard sempre abertos, sempre
 // visíveis -- itens "configura uma vez, raramente revisita" (anexo PDF,
 // espalhar no tempo, agendar) empilhados junto com as etapas realmente
@@ -356,8 +361,8 @@ function StatusBadgeSimples({ status }: { status: string }) {
 // "Disparo de teste" já usava (ver `aberto`/ChevronDown abaixo) -- reduz o
 // scroll sem esconder nada que já não fosse opcional.
 function ConfiguracoesAvancadas({
-  comPdf,
-  setComPdf,
+  modo,
+  setModo,
   janelaHoras,
   setJanelaHoras,
   janelaMinutos,
@@ -365,8 +370,8 @@ function ConfiguracoesAvancadas({
   agendarPara,
   setAgendarPara,
 }: {
-  comPdf: boolean;
-  setComPdf: (v: boolean) => void;
+  modo: ModoDisparo;
+  setModo: (v: ModoDisparo) => void;
   janelaHoras: string;
   setJanelaHoras: (v: string) => void;
   janelaMinutos: string;
@@ -379,8 +384,9 @@ function ConfiguracoesAvancadas({
   const minutos = Number(janelaMinutos) || 0;
   const janelaAtiva = horas > 0 || minutos > 0;
 
+  const resumoAnexo = { pdf: "com PDF", pix: "só Pix", livre: "livre" }[modo];
   const resumo = [
-    comPdf ? "com PDF" : "só texto/Pix",
+    resumoAnexo,
     janelaAtiva ? `janela ${horas > 0 ? `${horas}h` : ""}${minutos > 0 ? `${minutos}min` : ""}` : null,
     agendarPara ? "agendado" : null,
   ]
@@ -410,23 +416,52 @@ function ConfiguracoesAvancadas({
           <div className="p-4 sm:p-5">
             <p className="label-eyebrow mb-3 flex items-center gap-1.5">
               Anexo
-              <HelpTooltip texto="O arquivo é o PDF já cadastrado em cada cliente. Clientes sem PDF cadastrado recebem só a mensagem de texto." />
+              <HelpTooltip texto="Escolha o que cada cliente precisa ter cadastrado pra entrar no lote: PDF da fatura, código Pix, ou nenhum dos dois (livre, só a mensagem de texto)." />
             </p>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={comPdf}
-                onChange={(e) => setComPdf(e.target.checked)}
-                className="accent-primary mt-0.5 size-4"
-              />
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <Paperclip className="size-3.5" /> Enviar PDF da fatura
-              </span>
-            </label>
-            {!comPdf && (
+            <div className="space-y-2.5">
+              <label className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="modo-disparo"
+                  checked={modo === "pdf"}
+                  onChange={() => setModo("pdf")}
+                  className="accent-primary mt-0.5 size-4"
+                />
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Paperclip className="size-3.5" /> Enviar PDF da fatura
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="modo-disparo"
+                  checked={modo === "pix"}
+                  onChange={() => setModo("pix")}
+                  className="accent-primary mt-0.5 size-4"
+                />
+                <span className="text-sm font-medium">Só Pix (texto, sem PDF)</span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="modo-disparo"
+                  checked={modo === "livre"}
+                  onChange={() => setModo("livre")}
+                  className="accent-primary mt-0.5 size-4"
+                />
+                <span className="text-sm font-medium">Livre (texto, sem exigir PDF nem Pix)</span>
+              </label>
+            </div>
+            {modo === "pix" && (
               <p className="text-muted-foreground mt-3 text-xs">
-                Desligado: ninguém recebe PDF neste lote -- só a mensagem, com o Pix de cada cliente. Só entram
-                clientes com PIX cadastrado.
+                Ninguém recebe PDF neste lote -- só a mensagem, com o Pix de cada cliente. Só entram clientes com PIX
+                cadastrado.
+              </p>
+            )}
+            {modo === "livre" && (
+              <p className="text-muted-foreground mt-3 text-xs">
+                Ninguém precisa ter PDF nem PIX cadastrado pra entrar no lote -- só a mensagem de texto. Cliente que
+                já tiver PDF vinculado recebe ele anexado normalmente.
               </p>
             )}
           </div>
@@ -498,7 +533,7 @@ function ConfirmarDisparo({
   aberto,
   onOpenChange,
   totalClientes,
-  comPdf,
+  modo,
   agendarPara,
   onConfirmar,
   confirmando,
@@ -506,11 +541,16 @@ function ConfirmarDisparo({
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
   totalClientes: number;
-  comPdf: boolean;
+  modo: ModoDisparo;
   agendarPara: string;
   onConfirmar: () => void;
   confirmando: boolean;
 }) {
+  const anexoLabel = {
+    pdf: "com PDF da fatura",
+    pix: "somente mensagem de texto, com o Pix",
+    livre: "somente mensagem de texto (sem exigir PDF nem Pix)",
+  }[modo];
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -522,7 +562,7 @@ function ConfirmarDisparo({
           <p>
             Você está prestes a enviar para <strong>{totalClientes}</strong> cliente(s).
           </p>
-          <p className="text-muted-foreground">Anexo: {comPdf ? "com PDF da fatura" : "somente mensagem de texto"}</p>
+          <p className="text-muted-foreground">Anexo: {anexoLabel}</p>
           <p className="text-muted-foreground">
             {agendarPara
               ? `Agendado para ${new Date(agendarPara).toLocaleString("pt-BR")}`
@@ -969,7 +1009,7 @@ function Disparo() {
   const [templates, setTemplates] = useState<string[]>([
     "Olá {{nome}}, tudo bem? Segue em anexo sua fatura no valor de {{valor}}, com vencimento em {{vencimento}}. Qualquer dúvida estou à disposição!",
   ]);
-  const [comPdf, setComPdf] = useState(true);
+  const [modo, setModo] = useState<ModoDisparo>("pdf");
   const [janelaHoras, setJanelaHoras] = useState("");
   const [janelaMinutos, setJanelaMinutos] = useState("");
   const [agendarPara, setAgendarPara] = useState("");
@@ -1024,17 +1064,21 @@ function Disparo() {
         mensagens: variacoesPreenchidas,
         ...(janela_ms ? { janela_ms } : {}),
         ...(agendarPara ? { agendado_para: new Date(agendarPara).toISOString() } : {}),
-        // [correção] o toggle "Enviar PDF da fatura" (EtapaAnexo) já existia
-        // na tela mas nunca era mandado pro backend -- desligar o checkbox
-        // não tinha efeito nenhum antes disso. Off = lote "só PIX": nunca
-        // anexa PDF, manda o código PIX como texto (ver migration-17).
-        enviar_pix: !comPdf,
+        // "pix" = lote "só PIX" (nunca anexa PDF, manda o código PIX como
+        // texto -- ver migration-17); "livre" = não exige PDF nem PIX pra
+        // elegibilidade, só a mensagem de texto (ver resolverClienteIds no
+        // backend). Nos dois casos ainda anexa o PDF do cliente que por
+        // acaso tiver um vinculado, exceto em "pix" (força texto puro).
+        enviar_pix: modo === "pix",
+        livre: modo === "livre",
       });
       const ignoradosSemPdf = (envio as { ignorados_sem_pdf?: number }).ignorados_sem_pdf ?? 0;
       const ignoradosPorTag = (envio as { ignorados_por_tag?: number }).ignorados_por_tag ?? 0;
       if (ignoradosSemPdf || ignoradosPorTag) {
         const partes = [];
-        if (ignoradosSemPdf) partes.push(comPdf ? `${ignoradosSemPdf} sem PDF vinculado` : `${ignoradosSemPdf} sem PIX cadastrado`);
+        // ignoradosSemPdf nunca vem > 0 quando modo === "livre" (backend não
+        // exige PDF nem PIX nesse modo -- ver resolverClienteIds).
+        if (ignoradosSemPdf) partes.push(modo === "pix" ? `${ignoradosSemPdf} sem PIX cadastrado` : `${ignoradosSemPdf} sem PDF vinculado`);
         if (ignoradosPorTag) partes.push(`${ignoradosPorTag} com tag ou status que bloqueia disparo (ex.: Pago/Cancelado/Fraude)`);
         setAvisoIgnorados(`${partes.join(" e ")} ficaram de fora do lote.`);
       } else {
@@ -1083,8 +1127,8 @@ function Disparo() {
             <EtapaMensagem templates={templates} setTemplates={setTemplates} />
             <EtapaConexao />
             <ConfiguracoesAvancadas
-              comPdf={comPdf}
-              setComPdf={setComPdf}
+              modo={modo}
+              setModo={setModo}
               janelaHoras={janelaHoras}
               setJanelaHoras={setJanelaHoras}
               janelaMinutos={janelaMinutos}
@@ -1111,7 +1155,7 @@ function Disparo() {
               aberto={confirmarAberto}
               onOpenChange={setConfirmarAberto}
               totalClientes={selecionados.length}
-              comPdf={comPdf}
+              modo={modo}
               agendarPara={agendarPara}
               onConfirmar={criarEIniciar}
               confirmando={criando}

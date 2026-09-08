@@ -170,6 +170,21 @@ Duas formas de gerar um disparo:
   `GET /api/clientes` do operador, mas nunca tinha sido replicado em
   `GET /api/supervisor/clientes`) e uma coluna "PDF" na tabela.
 
+- **[2026-09] Disparo "livre" (sem exigir PDF nem PIX)** — até aqui, montar um
+  lote de disparo (`POST /api/envios`) sempre exigia que cada cliente tivesse
+  PDF vinculado (modo padrão) ou PIX cadastrado (lote "só PIX", `enviar_pix:
+  true`) — não tinha como mandar só a mensagem de texto pra cliente sem
+  nenhum dos dois ainda cadastrado. Pedido explícito: às vezes o operador
+  quer avisar/cobrar por texto antes mesmo de ter a fatura em mãos. Adicionado
+  um terceiro modo de elegibilidade em `resolverClienteIds`
+  (`backend/src/routes/envios.routes.js`), acionado por `livre: true` no
+  body — todo cliente passa nesse filtro (os filtros de tag `permite_disparo`
+  e `status_operador` bloqueando continuam valendo normalmente); se o
+  cliente tiver PDF mesmo assim, ainda é anexado normalmente (só o modo
+  "PIX" força texto puro pra todo mundo). No front (`routes/disparos.tsx`,
+  "Configurações avançadas" → Anexo), o checkbox único "Enviar PDF da
+  fatura" virou 3 opções (rádio): PDF / Só Pix / Livre.
+
 ## [2026-08] Safras (FPD/SPD) e histórico consolidado
 
 Pedido: acompanhar clientes por "safra" mensal de 60 dias (primeira fatura + segunda
