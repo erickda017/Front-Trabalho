@@ -176,6 +176,12 @@ declare module "@/api" {
       };
     };
     clientes: {
+      /** [2026-09] Paginado -- devolve só a página pedida + `total` da carteira
+       *  inteira (mesmo padrão de GET /supervisor/faturas). Pra carregar TODOS
+       *  os clientes (o caso comum no app, que filtra em memória), use
+       *  `listarTodosClientes` de `@/lib/clientesPaginados`, que pagina por
+       *  baixo dos panos até trazer tudo -- chamar isto direto sem paginar
+       *  trunca em silêncio acima do limite padrão do backend (1000). */
       listar: (params?: {
         busca?: string | undefined;
         filtro?: string | undefined;
@@ -187,7 +193,9 @@ declare module "@/api" {
         recebeu_disparo?: boolean | undefined;
         safra?: string | undefined;
         tipo_fatura?: TipoFatura | undefined;
-      } | undefined) => Promise<Cliente[]>;
+        page?: number | undefined;
+        per_page?: number | undefined;
+      } | undefined) => Promise<{ itens: Cliente[]; total: number }>;
       buscar: (id: string) => Promise<Cliente>;
       criar: (payload: { nome: string; telefone: string; valor?: string | undefined; vencimento?: string | undefined } | undefined) => Promise<Cliente>;
       atualizar: (id: string, payload: Record<string, unknown>) => Promise<Cliente>;

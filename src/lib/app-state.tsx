@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured, supabase } from "@/supabaseClient";
 import { api, buscarBlobUrlProtegida } from "@/api";
+import { listarTodosClientes } from "@/lib/clientesPaginados";
 import type {
   Cliente,
   Tag,
@@ -215,7 +216,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const refreshClientes = useCallback(async () => {
     setClientesCarregando(true);
     try {
-      const data = await api.clientes.listar();
+      const data = await listarTodosClientes();
       setClientes(Array.isArray(data) ? data : []);
       setClientesErro(null);
     } catch (e) {

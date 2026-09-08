@@ -96,6 +96,7 @@ type SugestaoSpd = {
 };
 import { agruparClientesPorNumero, type ClienteAgrupado } from "@/lib/agruparClientes";
 import { api } from "@/api";
+import { listarTodosClientes } from "@/lib/clientesPaginados";
 import { cn, formatoMoeda } from "@/lib/utils";
 
 export const Route = createFileRoute("/clientes")({
@@ -319,7 +320,7 @@ function VincularNumero({ cliente, onMudou }: { cliente: Cliente; onMudou: () =>
     setBuscando(true);
     setErro(null);
     try {
-      const data = await api.clientes.listar({ busca: termo.trim() });
+      const data = await listarTodosClientes({ busca: termo.trim() });
       setResultados((Array.isArray(data) ? data : []).filter((c: Cliente) => c.id !== cliente.id));
     } catch (e) {
       setErro((e as Error).message);

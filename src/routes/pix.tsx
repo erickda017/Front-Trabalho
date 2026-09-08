@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api, buscarBlobArquivoProtegido } from "@/api";
+import { listarTodosClientes } from "@/lib/clientesPaginados";
 import { extrairDadosPix } from "@/lib/pixWorkerClient";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorArquivo } from "@/lib/clienteMatch";
@@ -423,7 +424,7 @@ function Pix() {
     setErroVerificacao(null);
     setResumoVerificacao(null);
     try {
-      const semPix = await api.clientes.listar({ com_pdf: true, sem_pix: true });
+      const semPix = await listarTodosClientes({ com_pdf: true, sem_pix: true });
       const lista: typeof clientes = Array.isArray(semPix) ? semPix : [];
       const total = lista.length;
       setResumoVerificacao({ total, processados: 0, encontrados: 0, semSucesso: 0 });
