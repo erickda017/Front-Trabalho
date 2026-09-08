@@ -19,6 +19,7 @@ import { Route as HistoricoRouteImport } from './routes/historico'
 import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as PixRouteImport } from './routes/pix'
+import { Route as QualidadeRouteImport } from './routes/qualidade'
 import { Route as SafrasRouteImport } from './routes/safras'
 import { Route as SupervisorRouteImport } from './routes/supervisor'
 import { Route as TagsRouteImport } from './routes/tags'
@@ -73,6 +74,11 @@ const PixRoute = PixRouteImport.update({
   path: '/pix',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QualidadeRoute = QualidadeRouteImport.update({
+  id: '/qualidade',
+  path: '/qualidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SafrasRoute = SafrasRouteImport.update({
   id: '/safras',
   path: '/safras',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/importar': typeof ImportarRoute
   '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
+  '/qualidade': typeof QualidadeRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/importar': typeof ImportarRoute
   '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
+  '/qualidade': typeof QualidadeRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/importar': typeof ImportarRoute
   '/perfil': typeof PerfilRoute
   '/pix': typeof PixRoute
+  '/qualidade': typeof QualidadeRoute
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/importar'
     | '/perfil'
     | '/pix'
+    | '/qualidade'
     | '/safras'
     | '/supervisor'
     | '/tags'
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/importar'
     | '/perfil'
     | '/pix'
+    | '/qualidade'
     | '/safras'
     | '/supervisor'
     | '/tags'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/importar'
     | '/perfil'
     | '/pix'
+    | '/qualidade'
     | '/safras'
     | '/supervisor'
     | '/tags'
@@ -194,6 +206,7 @@ export interface RootRouteChildren {
   ImportarRoute: typeof ImportarRoute
   PerfilRoute: typeof PerfilRoute
   PixRoute: typeof PixRoute
+  QualidadeRoute: typeof QualidadeRoute
   SafrasRoute: typeof SafrasRoute
   SupervisorRoute: typeof SupervisorRoute
   TagsRoute: typeof TagsRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PixRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/qualidade': {
+      id: '/qualidade'
+      path: '/qualidade'
+      fullPath: '/qualidade'
+      preLoaderRoute: typeof QualidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/safras': {
       id: '/safras'
       path: '/safras'
@@ -306,6 +326,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportarRoute: ImportarRoute,
   PerfilRoute: PerfilRoute,
   PixRoute: PixRoute,
+  QualidadeRoute: QualidadeRoute,
   SafrasRoute: SafrasRoute,
   SupervisorRoute: SupervisorRoute,
   TagsRoute: TagsRoute,

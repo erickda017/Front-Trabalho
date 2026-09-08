@@ -382,6 +382,19 @@ export const api = {
         body: JSON.stringify({ cliente_id: clienteId }),
       }),
   },
+  // [2026-09] Fila de trabalho + registro de tratativa de cobrança por
+  // cliente (ver backend/src/routes/qualidade.routes.js,
+  // backend/src/lib/statusOperador.js). Status registrado aqui é o mesmo
+  // que a elegibilidade de disparo já respeitava por baixo dos panos desde
+  // a migration-20 -- só não tinha tela nenhuma pra o operador registrar.
+  qualidade: {
+    status: () => request('/qualidade/status'),
+    fila: (params) => request(`/qualidade/fila${qs(params)}`),
+    resumo: () => request('/qualidade/resumo'),
+    registrarTratativa: (clienteId, payload) =>
+      request(`/qualidade/${clienteId}/tratativa`, { method: 'POST', body: JSON.stringify(payload) }),
+    historico: (clienteId) => request(`/qualidade/${clienteId}/historico`),
+  },
   tags: {
     listar: () => request('/tags'),
     criar: (payload) => request('/tags', { method: 'POST', body: JSON.stringify(payload) }),

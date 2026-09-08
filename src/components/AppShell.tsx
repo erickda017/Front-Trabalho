@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Gauge,
   History,
   KeyRound,
@@ -45,6 +46,10 @@ const nav = [
   // faturas". /faturas continua existindo como redirect (ver routes/faturas.tsx),
   // só sai do menu.
   { to: "/clientes", label: "Clientes", icon: Users, grupo: "Gestão" },
+  // [2026-09] Fila de trabalho + registro de tratativa de cobrança (ver
+  // CONTEXTO.md) -- status_operador já existia e já bloqueava disparo desde
+  // a migration-20, só não tinha tela nenhuma pra registrar.
+  { to: "/qualidade", label: "Qualidade", icon: ClipboardList, grupo: "Gestão" },
   // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado").
   { to: "/safras", label: "Safras", icon: Layers, grupo: "Gestão" },
   { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Gestão" },

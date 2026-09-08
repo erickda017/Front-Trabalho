@@ -10,9 +10,13 @@ declare module "@/api" {
     Mensagem,
     PixExtracao,
     PixExtracaoStatus,
+    ResumoQualidade,
     SafraResumo,
+    StatusOperador,
+    StatusOperadorInfo,
     Tag,
     TipoFatura,
+    Tratativa,
     WhatsappConexao,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
@@ -360,6 +364,13 @@ declare module "@/api" {
         modo: "pdf" | "pix" | "pdf_pix",
       ) => Promise<{ fatura: Mensagem | null; pix: Mensagem | null }>;
       vincularCliente: (conversaId: string, clienteId: string | null) => Promise<Conversa>;
+    };
+    qualidade: {
+      status: () => Promise<StatusOperadorInfo[]>;
+      fila: (params?: { busca?: string | undefined; status?: StatusOperador | undefined; page?: number | undefined; per_page?: number | undefined } | undefined) => Promise<{ itens: Cliente[]; total: number }>;
+      resumo: () => Promise<ResumoQualidade>;
+      registrarTratativa: (clienteId: string, payload: { status: StatusOperador; observacao?: string | undefined }) => Promise<Tratativa>;
+      historico: (clienteId: string) => Promise<Tratativa[]>;
     };
     tags: {
       listar: () => Promise<Tag[]>;

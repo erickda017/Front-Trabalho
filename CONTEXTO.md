@@ -215,6 +215,56 @@ Duas formas de gerar um disparo:
   identidade do cliente no BANCO continua sendo `(usuario_id, telefone)`
   (upsert/duplicidade não mudou).
 
+- **[2026-09] [branch `feature/identificacao-por-contrato`, ainda não
+  mergeada] Rodada de correções a partir de auditoria técnica completa**
+  (5 frentes: backend, banco de dados, frontend, UX/identidade,
+  segurança/infra). Achados críticos e importantes corrigidos nesta rodada:
+  - **Segurança**: proxy de arquivos (`arquivos.routes.js`) não conferia
+    dono do path -- corrigido; upload de anexo do chat sem sanitizar nome
+    de arquivo -- corrigido; rate limiting básico adicionado em toda a API
+    (geral + limite apertado nas rotas de disparo/importação/upload); webhook
+    de saída ganhou assinatura HMAC-SHA256 (`X-Webhook-Signature`).
+  - **Banco de dados**: `numero_contrato` ganhou unique parcial por
+    operador + `casarCliente` tratando duplicata de contrato como ambíguo
+    (mesmo cuidado que já existia pra nome); `envio_itens.message_id`
+    ganhou índice único parcial (hot path de status do WhatsApp); cascade
+    delete de cliente agora registra em auditoria quantos
+    `envio_itens`/`tratativas` foram junto (migration-22).
+  - **Backend**: removido `lib/estrategia.js` (código morto e quebrado);
+    wrapper de erro de upload (413 amigável) padronizado em
+    clientes/faturasPendentes/chat, igual importacao/pix já tinham.
+  - **Frontend**: `GET /clientes` agora pagina de verdade (`{itens, total}`)
+    -- antes truncava silenciosamente acima de 1000; `api.d.ts` sincronizado
+    com `api.js` (removidos 3 métodos fantasma, `api.chat.*` tipado
+    corretamente com `Conversa`/`Mensagem` movidos pra `lib/types.ts`);
+    removida rota órfã `/conexao` (modelo de 1 slot desatualizado,
+    substituído por `/conexoes`).
+  - **UX/produto -- maior gap encontrado**: não existia NENHUMA tela pro
+    operador registrar a tratativa de cobrança, mesmo o backend
+    (`qualidade.routes.js`/`lib/statusOperador.js`) já existindo inteiro
+    desde a migration-20 e `status_operador` já bloqueando disparo. Nova
+    tela **Qualidade** (`routes/qualidade.tsx`, menu "Gestão"): cards de
+    resumo (carteira/fila/tocados/resolvidos/taxa de resolução), fila de
+    trabalho paginada com busca e filtro por status, e diálogo "Registrar
+    tratativa" (seletor de desfecho + observação + histórico de tratativas
+    anteriores do cliente). Consome `GET /qualidade/status`, `/fila`,
+    `/resumo`, `POST /:clienteId/tratativa`, `GET /:clienteId/historico` --
+    todos já existentes, só sem cliente nenhum até agora.
+  - **Identidade**: `package.json` (front) trocado de `tanstack_start_ts`
+    pra `voxcel-faturas-front`; `README.md` reescrito (antes só falava do
+    editor Lovable, sem mencionar o produto).
+  - Corrigidos comentários desatualizados que ainda diziam "1 sessão de
+    WhatsApp, slot removido" (o produto suporta 2 slots por operador desde
+    a migration-13) em `lib/types.ts` e `api.js`.
+  - **Não corrigido nesta rodada** (fora de escopo/maior risco, registrado
+    como achado): ~10 erros de TypeScript pré-existentes em
+    `pixWorkerClient.ts`/`historico.tsx`/`supervisor.tsx` (só ficaram
+    visíveis depois que `npm install` completou o `node_modules`, que
+    estava parcial); mensagem de erro crua do Postgres ainda vazando em
+    boa parte das rotas (só o wrapper de upload foi padronizado); nice-to-
+    haves de qualidade de código (duplicações menores, acessibilidade,
+    testes automatizados, naming `created_at`/`criado_em` no banco).
+
 ## [2026-08] Safras (FPD/SPD) e histórico consolidado
 
 Pedido: acompanhar clientes por "safra" mensal de 60 dias (primeira fatura + segunda

@@ -125,6 +125,34 @@ export const STATUS_OPERADOR_BLOQUEIA_DISPARO = new Set<StatusOperador>([
   "contrato_cancelado",
 ]);
 
+/** Um item de GET /qualidade/status -- catálogo completo, com rótulo pronto
+ *  pra exibir e se aquele status bloqueia disparo (mesmo dado que
+ *  STATUS_OPERADOR_BLOQUEIA_DISPARO acima, mas vindo do backend em vez de
+ *  hardcoded aqui -- usado pra montar o seletor de status na tela Qualidade). */
+export type StatusOperadorInfo = {
+  valor: StatusOperador;
+  rotulo: string;
+  bloqueia_disparo: boolean;
+};
+
+/** Uma tratativa registrada (histórico, ver GET /qualidade/:clienteId/historico). */
+export type Tratativa = {
+  id: string;
+  cliente_id: string;
+  status: StatusOperador;
+  observacao: string | null;
+  criado_em: string;
+};
+
+/** GET /qualidade/resumo -- KPI simples da carteira do operador. */
+export type ResumoQualidade = {
+  total_carteira: number;
+  em_fila: number;
+  tocados: number;
+  resolvidos: number;
+  taxa_resolucao: number;
+};
+
 /** Resumo de métricas de uma safra -- ver GET /safras, /safras/:safra. */
 export type SafraResumo = {
   safra: string; // "2026-09"
