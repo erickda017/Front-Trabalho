@@ -2,10 +2,12 @@ declare module "@/api" {
   import type {
     Cliente,
     ConfigDisparo,
+    Conversa,
     DashboardResumo,
     EnvioItem,
     EnvioResumo,
     EnvioStatus,
+    Mensagem,
     PixExtracao,
     PixExtracaoStatus,
     SafraResumo,
@@ -144,8 +146,6 @@ declare module "@/api" {
         busca?: string | undefined;
         status?: PixExtracaoStatus | "todos" | undefined;
       } | undefined) => Promise<PixExtracao[]>;
-      enviarArquivos: (arquivos: File[]) => Promise<PixExtracao[]>;
-      reprocessar: (id: string) => Promise<PixExtracao>;
       aplicarNoCliente: (id: string, clienteId: string) => Promise<{ ok: boolean }>;
       exportar: (
         formato: "csv" | "xlsx",
@@ -345,19 +345,21 @@ declare module "@/api" {
       }[]>;
     };
     importacao: {
-      enviar: (args: { planilha: File; zip: File; mensagem?: string | undefined } | undefined) => Promise<any>;
       enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;
       uploadPdf: (args: { caminho: string; blob: Blob; nomeArquivo: string }) => Promise<{ path: string; signedUrl: string | null }>;
       baixarModelo: () => Promise<void>;
     };
     chat: {
-      listarConversas: () => Promise<any[]>;
-      listarMensagens: (conversaId: string) => Promise<any[]>;
-      marcarLida: (conversaId: string) => Promise<any>;
+      listarConversas: () => Promise<Conversa[]>;
+      listarMensagens: (conversaId: string) => Promise<Mensagem[]>;
+      marcarLida: (conversaId: string) => Promise<Conversa>;
       apagar: (conversaId: string) => Promise<{ ok: boolean }>;
-      enviar: (conversaId: string, args: { mensagem?: string | undefined; anexo?: File | undefined }) => Promise<any>;
-      enviarFatura: (conversaId: string, modo: "pdf" | "pix" | "pdf_pix") => Promise<{ fatura: any; pix: any | null }>;
-      vincularCliente: (conversaId: string, clienteId: string | null) => Promise<any>;
+      enviar: (conversaId: string, args: { mensagem?: string | undefined; anexo?: File | undefined }) => Promise<Mensagem>;
+      enviarFatura: (
+        conversaId: string,
+        modo: "pdf" | "pix" | "pdf_pix",
+      ) => Promise<{ fatura: Mensagem | null; pix: Mensagem | null }>;
+      vincularCliente: (conversaId: string, clienteId: string | null) => Promise<Conversa>;
     };
     tags: {
       listar: () => Promise<Tag[]>;

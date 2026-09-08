@@ -27,6 +27,7 @@ import { api, buscarBlobUrlProtegida } from "@/api";
 import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
 import { useAppState, type Tag } from "@/lib/app-state";
+import type { Conversa, Mensagem } from "@/lib/types";
 import { Aviso } from "@/components/shared/Controls";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TagPicker } from "@/components/shared/TagPicker";
@@ -66,29 +67,6 @@ export const Route = createFileRoute("/chat")({
   }),
   component: Chat,
 });
-
-type Conversa = {
-  id: string;
-  telefone: string;
-  nome_contato: string | null;
-  cliente_id: string | null;
-  nao_lidas: number;
-  ultima_mensagem: string | null;
-  ultima_mensagem_em: string | null;
-  clientes: { nome: string; pdf_url: string | null; pix_code: string | null; tags: Tag[] } | null;
-};
-
-type Mensagem = {
-  id: string;
-  conversa_id: string;
-  direcao: "entrada" | "saida";
-  tipo: "texto" | "imagem" | "audio" | "documento";
-  texto: string | null;
-  anexo_url: string | null;
-  anexo_nome: string | null;
-  status_entrega: string | null;
-  created_at: string;
-};
 
 function EnviarFaturaModal({
   aberto,
@@ -667,7 +645,7 @@ function Chat() {
       const resultado = await api.chat.enviarFatura(ativo.id, modo);
       setMensagensPorConversa((prev) => {
         const existentes = prev[ativo.id] || [];
-        const novas = [resultado.fatura, resultado.pix].filter(Boolean);
+        const novas = [resultado.fatura, resultado.pix].filter((m): m is Mensagem => m !== null);
         return { ...prev, [ativo.id]: [...existentes, ...novas] };
       });
       setModalFaturaAberto(false);

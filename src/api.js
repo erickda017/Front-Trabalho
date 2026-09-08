@@ -165,7 +165,8 @@ export const api = {
     desconectar: (slot) => request('/whatsapp/logout', { method: 'POST', body: JSON.stringify({ slot }) }),
   },
   // [2026-08] MULTI-TENANT: api.estrategia removida -- não existe mais
-  // round-robin entre slots (cada usuário tem 1 WhatsApp só).
+  // round-robin AUTOMÁTICO entre slots (cada operador escolhe manualmente
+  // qual dos seus até 2 números usar em cada disparo, ver api.whatsapp acima).
   configuracoes: {
     disparo: () => request('/configuracoes/disparo'),
   },

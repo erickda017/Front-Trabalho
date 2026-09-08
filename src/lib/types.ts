@@ -31,9 +31,11 @@ export type EnvioStatus = "pendente" | "agendado" | "em_andamento" | "pausado" |
 
 export type WhatsappStatus = "disconnected" | "connecting" | "qr" | "connected";
 
-// [2026-08] MULTI-TENANT: WhatsappSlot removido -- cada usuário (operador)
-// tem exatamente 1 sessão de WhatsApp própria, não há mais "slot 1/2"
-// compartilhado. WhatsappConexao virou o status dessa única sessão.
+// [2026-08] MULTI-TENANT: cada usuário (operador) tem até 2 sessões de
+// WhatsApp PRÓPRIAS (não mais compartilhadas entre operadores como antes) --
+// "slot 1/2" voltou a existir, mas agora escopado por usuário (ver
+// api.whatsapp.statusAmbosSlots, backend/src/services/whatsapp.js). Este
+// tipo descreve o status de UMA dessas sessões.
 export type WhatsappConexao = {
   configurada: boolean;
   status: WhatsappStatus;
@@ -310,6 +312,32 @@ export function statusDoItem(item: Pick<EnvioItem, "status" | "status_entrega">)
   if (item.status_entrega === "entregue") return "entregue";
   return "enviado";
 }
+
+// [2026-09] Movidos de routes/chat.tsx (onde eram declarados só localmente,
+// o que deixava api.d.ts sem como referenciá-los e caindo em `any`) --
+// mesma tabela `conversas`/`mensagens`, ver backend/supabase-schema.sql.
+export type Conversa = {
+  id: string;
+  telefone: string;
+  nome_contato: string | null;
+  cliente_id: string | null;
+  nao_lidas: number;
+  ultima_mensagem: string | null;
+  ultima_mensagem_em: string | null;
+  clientes: { nome: string; pdf_url: string | null; pix_code: string | null; tags: Tag[] } | null;
+};
+
+export type Mensagem = {
+  id: string;
+  conversa_id: string;
+  direcao: "entrada" | "saida";
+  tipo: "texto" | "imagem" | "audio" | "documento";
+  texto: string | null;
+  anexo_url: string | null;
+  anexo_nome: string | null;
+  status_entrega: string | null;
+  created_at: string;
+};
 
 /** Variáveis que a interface oferece no editor de mensagem. */
 export const VARIAVEIS_MENSAGEM = [
