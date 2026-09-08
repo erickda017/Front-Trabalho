@@ -271,6 +271,22 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   pura é ignorada (um NOME novo já fecha o bloco anterior sozinho, então não
   dependia da linha em branco pra separar clientes diferentes).
 
+- **[2026-09] Converter lista crua perdia valor/Fatura N/prazo de TODOS os
+  clientes quando a lista tinha o nome do plano/operadora (ex.: "CLARO
+  MEGA") entre os telefones e a linha "Fatura N".** Esse texto tem letra e
+  não bate com nenhum campo reconhecido (CPF/Fatura/valor/data/dígitos), então
+  o parser tratava como o NOME do PRÓXIMO cliente — fechando o bloco do
+  cliente real ANTES da linha "Fatura N"/valor/prazo (que ficavam `null`) e
+  abrindo um bloco fantasma ("CLARO MEGA") sem telefone, descartado com
+  aviso "nenhum telefone encontrado". Os telefones/contrato continuavam
+  sendo importados, mas sem valor/tipo_fatura/data_prazo nenhum — silencioso,
+  só percebido comparando com a lista original. Corrigido em
+  `backend/src/lib/parseListaClientes.js` com lookahead: um trecho com letra
+  só abre bloco novo se o PRÓXIMO campo reconhecido não for Fatura/valor/
+  prazo (cliente de verdade sempre tem contrato/CPF/telefone antes desses
+  campos); parser reescrito pra operar sobre um stream de tokens (em vez de
+  linha por linha) pra viabilizar esse lookahead através de quebras de linha.
+
 - **[2026-08] Dashboard do Supervisor contava clientes com números vinculados
   em dobro.** `GET /api/supervisor/dashboard` (`backend/src/routes/
   supervisor.routes.js`) contava toda linha da tabela `clientes` sem filtrar
