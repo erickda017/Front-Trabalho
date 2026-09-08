@@ -554,7 +554,12 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ encontrados: { cliente_nome: string }[]; nao_encontrados: string[]; sugestoes_spd: SugestaoSpd[] } | null>(null);
+  const [resultado, setResultado] = useState<{
+    encontrados: { cliente_nome: string }[];
+    nao_encontrados: string[];
+    ambiguos: { nome_colado: string; candidatos: number }[];
+    sugestoes_spd: SugestaoSpd[];
+  } | null>(null);
   // [regra de negócio] FPD pago -> sugestão de virar SPD na próxima safra (ver
   // backend/src/lib/promocaoSpd.js). Nunca aplica sozinho -- guarda aqui só
   // pra controlar edição da data sugerida e quais já foram confirmadas/
@@ -602,9 +607,11 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
         <DialogHeader>
           <DialogTitle>Importar clientes pagos</DialogTitle>
           <DialogDescription>
-            Cole abaixo os nomes de quem já pagou (1 nome por linha). O sistema casa cada nome com um
+            Cole abaixo os nomes de quem já pagou (1 nome por linha, ou o mesmo bloco cru
+            nome/contrato/CPF/telefone do relatório de cobrança). O sistema casa cada nome com um
             cliente já cadastrado e aplica a tag "Pago" — quem leva essa tag sai dos disparos
-            pendentes e futuros automaticamente.
+            pendentes e futuros automaticamente. Se dois clientes tiverem o mesmo nome, cole o bloco
+            com o número do contrato: é ele que desempata quem é quem.
           </DialogDescription>
         </DialogHeader>
         {erro && <Aviso tone="danger">{erro}</Aviso>}
@@ -630,13 +637,32 @@ function ImportarPagosDialog({ aberto, onOpenChange, onImportado }: { aberto: bo
               <p>
                 <span className="text-success font-semibold">{resultado.encontrados.length}</span> cliente(s)
                 marcado(s) como pago — <span className="font-semibold">{resultado.nao_encontrados.length}</span> nome(s)
-                não encontrado(s).
+                não encontrado(s)
+                {resultado.ambiguos.length > 0 && (
+                  <>
+                    {" "}— <span className="font-semibold">{resultado.ambiguos.length}</span> ambíguo(s)
+                  </>
+                )}
+                .
               </p>
               {resultado.nao_encontrados.length > 0 && (
                 <div className="bg-surface-sunken border-border max-h-40 overflow-y-auto rounded-md border p-2.5 text-xs">
                   <p className="text-subtle mb-1 font-medium">Não encontrados:</p>
                   {resultado.nao_encontrados.map((n, i) => (
                     <p key={i}>{n}</p>
+                  ))}
+                </div>
+              )}
+              {resultado.ambiguos.length > 0 && (
+                <div className="bg-surface-sunken border-border max-h-40 overflow-y-auto rounded-md border p-2.5 text-xs">
+                  <p className="text-subtle mb-1 font-medium">
+                    Ambíguos (nome bate com mais de um cliente cadastrado, sem contrato pra desempatar —
+                    recole com o número do contrato pra resolver):
+                  </p>
+                  {resultado.ambiguos.map((a, i) => (
+                    <p key={i}>
+                      {a.nome_colado} <span className="text-subtle">({a.candidatos} clientes com esse nome)</span>
+                    </p>
                   ))}
                 </div>
               )}

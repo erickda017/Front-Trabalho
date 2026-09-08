@@ -23,39 +23,44 @@ function normalizarNomeArquivo(nomeArquivo: string): string {
     .trim();
 }
 
-// Mesma ideia de `casarClientePorNome`, mas comparando direto um nome de
+// Acha TODOS os clientes cujo nome bate (exato tem prioridade sobre parcial
+// -- se há qualquer exato, só eles contam) com `alvoNormalizado`. [2026-09]
+// Devolve a lista inteira (pode ter mais de 1 -- duas pessoas diferentes com
+// o mesmo nome é uma situação real, não bug) em vez de já escolher uma;
+// `casarClientePorNome`/`casarClientePorArquivo` abaixo é quem decide, e
+// agora tratam mais de 1 candidato como "não dá pra saber qual" em vez de
+// pegar o primeiro do array -- pegar o primeiro arbitrariamente era o bug
+// real (risco de casar o Pix/PDF com o cliente errado quando 2 tinham nome
+// igual/parecido).
+function encontrarClientesPorNome<C extends { nome: string }>(alvoNormalizado: string, clientes: C[]): C[] {
+  if (!alvoNormalizado) return [];
+
+  const exatos = clientes.filter((c) => normalizarTexto(c.nome) === alvoNormalizado);
+  if (exatos.length) return exatos;
+
+  return clientes.filter((c) => {
+    const nomeCliente = normalizarTexto(c.nome);
+    return nomeCliente.length >= 3 && (alvoNormalizado.includes(nomeCliente) || nomeCliente.includes(alvoNormalizado));
+  });
+}
+
+// Mesma ideia de `casarClientePorArquivo`, mas comparando direto um nome de
 // texto (ex.: célula "CLIENTE" de uma planilha) em vez de um nome de
 // arquivo -- usado pela função de planilha de PIX do Supervisor.
 export function casarClientePorNome<C extends { nome: string }>(nome: string, clientes: C[]): C | null {
   const alvo = normalizarTexto(nome).replace(/\s+/g, " ").trim();
-  if (!alvo) return null;
-
-  const exato = clientes.find((c) => normalizarTexto(c.nome) === alvo);
-  if (exato) return exato;
-
-  const parcial = clientes.find((c) => {
-    const nomeCliente = normalizarTexto(c.nome);
-    return nomeCliente.length >= 3 && (alvo.includes(nomeCliente) || nomeCliente.includes(alvo));
-  });
-  return parcial ?? null;
+  const candidatos = encontrarClientesPorNome(alvo, clientes);
+  return candidatos.length === 1 ? candidatos[0]! : null;
 }
 
 // Estratégia: 1) nome do arquivo bate exatamente com o nome do cliente;
 // 2) por fallback, um "contém" o outro (cobre arquivo com sufixo/prefixo
 // extra, tipo "joao_silva_fatura_agosto.pdf" ou nome de cliente abreviado).
-// Mesmo critério usado no backend (boletos.routes.js/resolverCliente), só
-// que aqui roda no navegador com a lista de clientes já em memória -- evita
+// Mesmo critério usado no backend (lib/nomeMatch.js, `casarCliente`), só que
+// aqui roda no navegador com a lista de clientes já em memória -- evita
 // depender de round-trip ao servidor pra cada arquivo do lote.
 export function casarClientePorArquivo(nomeArquivo: string, clientes: Cliente[]): Cliente | null {
   const alvo = normalizarNomeArquivo(nomeArquivo);
-  if (!alvo) return null;
-
-  const exato = clientes.find((c) => normalizarTexto(c.nome) === alvo);
-  if (exato) return exato;
-
-  const parcial = clientes.find((c) => {
-    const nomeCliente = normalizarTexto(c.nome);
-    return nomeCliente.length >= 3 && (alvo.includes(nomeCliente) || nomeCliente.includes(alvo));
-  });
-  return parcial ?? null;
+  const candidatos = encontrarClientesPorNome(alvo, clientes);
+  return candidatos.length === 1 ? candidatos[0]! : null;
 }

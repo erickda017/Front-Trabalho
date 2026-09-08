@@ -185,6 +185,36 @@ Duas formas de gerar um disparo:
   "Configurações avançadas" → Anexo), o checkbox único "Enviar PDF da
   fatura" virou 3 opções (rádio): PDF / Só Pix / Livre.
 
+- **[2026-09] [branch `feature/identificacao-por-contrato`, ainda não
+  mergeada] Contrato como identificador principal nos "casamentos" por
+  nome.** Todo fluxo que acha um cliente já cadastrado a partir de um texto/
+  nome de arquivo (Importar Pagos, Extrator de PIX, upload de fatura avulsa)
+  usava só o NOME e pegava o PRIMEIRO cliente que batesse -- dois clientes
+  de mesmo nome (pessoas diferentes, contratos diferentes) tinham risco real
+  de conflito (marcar o errado como pago, anexar o PDF/PIX de um na conta do
+  outro). `backend/src/lib/nomeMatch.js` ganhou `casarCliente({ nome,
+  arquivo, numeroContrato, clientes })`: contrato é o critério PRINCIPAL
+  quando disponível (bate exato com `numero_contrato`, nem olha pro nome);
+  nome só resolve sozinho se for inequívoco (exatamente 1 candidato) --
+  ambíguo não adivinha mais, vira `status: 'ambiguo'`.
+  `casarClientePorNome`/`casarClientePorArquivo` (usados por vários fluxos)
+  viraram wrappers finos disso, mesma assinatura de sempre. `POST
+  /clientes/importar-pagos` passou a extrair também o contrato do texto
+  colado (`extrairNomesEContratosDeListaCrua`, nova em
+  `lib/parseListaClientes.js` -- antes só `extrairNomesDeListaCrua`, que
+  descartava o contrato) e usar `casarCliente` com ele; resposta ganhou
+  `ambiguos` (nome bateu com 2+ clientes, sem contrato pra desempatar),
+  mostrado separado de `nao_encontrados` no diálogo "Importar clientes
+  pagos" (`routes/clientes.tsx`), orientando a recolar com o contrato.
+  `lib/pixPersistencia.js` (`resolverClientePix`, usado pelo Extrator de PIX
+  no servidor e por `POST /boletos/salvar-pix`) trocou `.limit(1)` (pegava
+  qualquer um dos candidatos do ILIKE) por exigir exatamente 1 candidato.
+  Frontend `lib/clienteMatch.ts` (espelho do backend, usado por Extrator de
+  PIX e planilha de PIX do Supervisor) ganhou a mesma correção de
+  ambiguidade. **Escopo desta rodada**: só os "casamentos" por nome -- a
+  identidade do cliente no BANCO continua sendo `(usuario_id, telefone)`
+  (upsert/duplicidade não mudou).
+
 ## [2026-08] Safras (FPD/SPD) e histórico consolidado
 
 Pedido: acompanhar clientes por "safra" mensal de 60 dias (primeira fatura + segunda

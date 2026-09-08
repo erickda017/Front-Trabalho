@@ -217,6 +217,11 @@ declare module "@/api" {
         total_colados: number;
         encontrados: { nome_colado: string; cliente_id: string; cliente_nome: string }[];
         nao_encontrados: string[];
+        /** [2026-09] Nome colado bate com 2+ clientes cadastrados e não havia
+         *  contrato no texto pra desempatar -- o sistema não adivinha (evita
+         *  marcar o cliente errado como pago). Cole o bloco com o número do
+         *  contrato pra resolver (ver backend, lib/nomeMatch.js). */
+        ambiguos: { nome_colado: string; candidatos: number }[];
         sugestoes_spd: SugestaoSpd[];
       }>;
       promoverSpd: (id: string, dataPrazo?: string | undefined) => Promise<Cliente>;
