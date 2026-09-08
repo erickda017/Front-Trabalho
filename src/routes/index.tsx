@@ -19,9 +19,16 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ptBR } from "date-fns/locale";
-import { formatDistanceToNow } from "date-fns";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { AppShell, statusConexao } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -31,6 +38,7 @@ import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import { formatoMoeda } from "@/lib/utils";
+import { formatarDataRelativa, formatarDiaCurto } from "@/lib/format";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -41,33 +49,36 @@ export const Route = createFileRoute("/")({
         content: "Visão geral da conexão e dos indicadores de disparo de faturas.",
       },
       { property: "og:title", content: "Painel — Voxcel Faturas" },
-      { property: "og:description", content: "Indicadores de disparo e status da conexão do WhatsApp." },
+      {
+        property: "og:description",
+        content: "Indicadores de disparo e status da conexão do WhatsApp.",
+      },
     ],
   }),
   component: Dashboard,
 });
 
-function formatarData(iso: string | null) {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
-  } catch {
-    return "—";
-  }
-}
+const formatarData = formatarDataRelativa;
 
 const formatoPercentual = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
-
-function formatarDiaCurto(data: string) {
-  // "data" vem como YYYY-MM-DD (ver backend/src/routes/dashboard.routes.js)
-  const [, mes, dia] = data.split("-");
-  return `${dia}/${mes}`;
-}
 
 /** "2026-09" -> "Set/2026" (rótulo curto, cabe no eixo do gráfico). */
 function rotuloSafraCurto(safra: string) {
   const [ano, mes] = safra.split("-").map(Number);
-  const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const MESES = [
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
+  ];
   return `${MESES[(mes ?? 1) - 1] ?? mes}/${ano}`;
 }
 
@@ -185,7 +196,7 @@ function Dashboard() {
               <MetricCard
                 key={m.label}
                 label={m.label}
-                valor={erro ? null : m.valor ?? null}
+                valor={erro ? null : (m.valor ?? null)}
                 carregando={carregando}
                 icon={m.icon}
               />
@@ -200,14 +211,30 @@ function Dashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <MetricCard
               label="Valor médio por fatura"
-              valor={erro ? null : carregando ? null : resumo?.valor_medio !== undefined ? formatoMoeda.format(resumo.valor_medio) : "—"}
+              valor={
+                erro
+                  ? null
+                  : carregando
+                    ? null
+                    : resumo?.valor_medio !== undefined
+                      ? formatoMoeda.format(resumo.valor_medio)
+                      : "—"
+              }
               carregando={carregando}
               icon={Wallet}
               destaque
             />
             <MetricCard
               label="Valor total das faturas"
-              valor={erro ? null : carregando ? null : resumo?.valor_total !== undefined ? formatoMoeda.format(resumo.valor_total) : "—"}
+              valor={
+                erro
+                  ? null
+                  : carregando
+                    ? null
+                    : resumo?.valor_total !== undefined
+                      ? formatoMoeda.format(resumo.valor_total)
+                      : "—"
+              }
               carregando={carregando}
               icon={Wallet}
             />
@@ -227,22 +254,54 @@ function Dashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <MetricCard
               label="Taxa de entrega"
-              valor={erro ? null : carregando ? null : taxas.entrega !== null ? `${formatoPercentual.format(taxas.entrega)}%` : "—"}
+              valor={
+                erro
+                  ? null
+                  : carregando
+                    ? null
+                    : taxas.entrega !== null
+                      ? `${formatoPercentual.format(taxas.entrega)}%`
+                      : "—"
+              }
               carregando={carregando}
               icon={CheckCheck}
-              hint={!carregando && resumo?.enviados ? `${resumo.entregues} de ${resumo.enviados} enviados` : undefined}
+              hint={
+                !carregando && resumo?.enviados
+                  ? `${resumo.entregues} de ${resumo.enviados} enviados`
+                  : undefined
+              }
               destaque
             />
             <MetricCard
               label="Taxa de leitura"
-              valor={erro ? null : carregando ? null : taxas.leitura !== null ? `${formatoPercentual.format(taxas.leitura)}%` : "—"}
+              valor={
+                erro
+                  ? null
+                  : carregando
+                    ? null
+                    : taxas.leitura !== null
+                      ? `${formatoPercentual.format(taxas.leitura)}%`
+                      : "—"
+              }
               carregando={carregando}
               icon={Eye}
-              hint={!carregando && resumo?.enviados ? `${resumo.lidos} de ${resumo.enviados} enviados` : undefined}
+              hint={
+                !carregando && resumo?.enviados
+                  ? `${resumo.lidos} de ${resumo.enviados} enviados`
+                  : undefined
+              }
             />
             <MetricCard
               label="Taxa de falha"
-              valor={erro ? null : carregando ? null : taxas.falha !== null ? `${formatoPercentual.format(taxas.falha)}%` : "—"}
+              valor={
+                erro
+                  ? null
+                  : carregando
+                    ? null
+                    : taxas.falha !== null
+                      ? `${formatoPercentual.format(taxas.falha)}%`
+                      : "—"
+              }
               carregando={carregando}
               icon={AlertTriangle}
               hint={!carregando && resumo?.falhas ? `${resumo.falhas} falha(s)` : undefined}
@@ -265,7 +324,13 @@ function Dashboard() {
                     axisLine={false}
                     tickLine={false}
                   />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                  />
                   <Tooltip
                     labelFormatter={(v) => formatarDiaCurto(String(v))}
                     formatter={(v: number) => [v, "Disparos"]}
@@ -286,7 +351,9 @@ function Dashboard() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-subtle py-8 text-center text-xs">Nenhum disparo enviado nos últimos 7 dias.</p>
+            <p className="text-subtle py-8 text-center text-xs">
+              Nenhum disparo enviado nos últimos 7 dias.
+            </p>
           )}
         </SectionCard>
 
@@ -311,19 +378,40 @@ function Dashboard() {
             </Aviso>
           ) : !safrasCarregando && safrasAtivas.length === 0 ? (
             <p className="text-subtle py-8 text-center text-xs">
-              Nenhuma safra ativa no momento — importe clientes pela lista crua (Fatura 1/2 + prazo) em Importar.
+              Nenhuma safra ativa no momento — importe clientes pela lista crua (Fatura 1/2 + prazo)
+              em Importar.
             </p>
           ) : (
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <MetricCard label="Safras ativas" valor={safrasCarregando ? null : safrasResumo.totalSafras} carregando={safrasCarregando} icon={Layers} />
-                <MetricCard label="Clientes em acompanhamento" valor={safrasCarregando ? null : safrasResumo.totalClientes} carregando={safrasCarregando} icon={Users} />
+                <MetricCard
+                  label="Safras ativas"
+                  valor={safrasCarregando ? null : safrasResumo.totalSafras}
+                  carregando={safrasCarregando}
+                  icon={Layers}
+                />
+                <MetricCard
+                  label="Clientes em acompanhamento"
+                  valor={safrasCarregando ? null : safrasResumo.totalClientes}
+                  carregando={safrasCarregando}
+                  icon={Users}
+                />
                 <MetricCard
                   label="Taxa de pagamento"
-                  valor={safrasCarregando ? null : safrasResumo.taxaPagamento !== null ? `${formatoPercentual.format(safrasResumo.taxaPagamento)}%` : "—"}
+                  valor={
+                    safrasCarregando
+                      ? null
+                      : safrasResumo.taxaPagamento !== null
+                        ? `${formatoPercentual.format(safrasResumo.taxaPagamento)}%`
+                        : "—"
+                  }
                   carregando={safrasCarregando}
                   icon={TrendingUp}
-                  hint={!safrasCarregando ? `${safrasResumo.totalPagos} de ${safrasResumo.totalClientes} pagos` : undefined}
+                  hint={
+                    !safrasCarregando
+                      ? `${safrasResumo.totalPagos} de ${safrasResumo.totalClientes} pagos`
+                      : undefined
+                  }
                   destaque
                 />
                 <MetricCard
@@ -331,7 +419,11 @@ function Dashboard() {
                   valor={safrasCarregando ? null : formatoMoeda.format(safrasResumo.valorEmAberto)}
                   carregando={safrasCarregando}
                   icon={PiggyBank}
-                  hint={!safrasCarregando ? `de ${formatoMoeda.format(safrasResumo.valorTotal)} no total` : undefined}
+                  hint={
+                    !safrasCarregando
+                      ? `de ${formatoMoeda.format(safrasResumo.valorTotal)} no total`
+                      : undefined
+                  }
                 />
               </div>
 
@@ -340,10 +432,30 @@ function Dashboard() {
               ) : (
                 <div className="h-48 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={safrasAtivas.map((s) => ({ ...s, rotuloCurto: rotuloSafraCurto(s.safra) }))}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
-                      <XAxis dataKey="rotuloCurto" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                    <BarChart
+                      data={safrasAtivas.map((s) => ({
+                        ...s,
+                        rotuloCurto: rotuloSafraCurto(s.safra),
+                      }))}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        className="stroke-border"
+                      />
+                      <XAxis
+                        dataKey="rotuloCurto"
+                        tick={{ fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={28}
+                      />
                       <Tooltip
                         cursor={{ fill: "var(--color-muted)" }}
                         contentStyle={{
@@ -361,8 +473,18 @@ function Dashboard() {
                         wrapperStyle={{ fontSize: "0.75rem" }}
                         formatter={(value) => (value === "pagos" ? "Pagos" : "Não pagos")}
                       />
-                      <Bar dataKey="pagos" stackId="safra" fill="var(--color-success)" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="nao_pagos" stackId="safra" fill="var(--color-warning)" radius={[4, 4, 0, 0]} />
+                      <Bar
+                        dataKey="pagos"
+                        stackId="safra"
+                        fill="var(--color-success)"
+                        radius={[0, 0, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="nao_pagos"
+                        stackId="safra"
+                        fill="var(--color-warning)"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -389,8 +511,13 @@ function Dashboard() {
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="text-subtle text-xs tabular-nums">{formatoMoeda.format(s.valor_total)}</span>
-                          <StatusPill tone={taxa >= 50 ? "success" : taxa > 0 ? "warning" : "muted"} dot>
+                          <span className="text-subtle text-xs tabular-nums">
+                            {formatoMoeda.format(s.valor_total)}
+                          </span>
+                          <StatusPill
+                            tone={taxa >= 50 ? "success" : taxa > 0 ? "warning" : "muted"}
+                            dot
+                          >
                             {formatoPercentual.format(taxa)}% pago
                           </StatusPill>
                         </div>
@@ -422,7 +549,7 @@ function Dashboard() {
               </div>
             ) : (
               (() => {
-                const info = statusConexao[conexao.status] ?? statusConexao['disconnected']!;
+                const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
                 return (
                   <div className="panel flex flex-col gap-2 rounded-md p-4">
                     <div className="flex items-center justify-between gap-2">

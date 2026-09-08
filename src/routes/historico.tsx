@@ -1,5 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Download, History, RefreshCcw, Send, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  History,
+  RefreshCcw,
+  Send,
+  SlidersHorizontal,
+  TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -28,6 +36,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { formatarDataHoraAbsoluta } from "@/lib/format";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import { statusDoItem, type EnvioResumo, type EnvioStatus, type ItemStatus } from "@/lib/types";
@@ -42,7 +51,10 @@ export const Route = createFileRoute("/historico")({
           "Consulte o histórico de lotes de disparo de faturas: totais, entregas, leituras e falhas, com filtros por período, status e conexão.",
       },
       { property: "og:title", content: "Histórico de disparos — Voxcel Faturas" },
-      { property: "og:description", content: "Lotes de disparo com filtros por período, status e conexão." },
+      {
+        property: "og:description",
+        content: "Lotes de disparo com filtros por período, status e conexão.",
+      },
     ],
   }),
   component: Historico,
@@ -78,10 +90,7 @@ const FILTRO_ITENS: { valor: string; label: string }[] = [
   { valor: "cancelado", label: "Cancelados" },
 ];
 
-function formatarData(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-}
+const formatarData = formatarDataHoraAbsoluta;
 
 /* -------------------------------------------------------------------------- */
 /* Detalhes do lote (Sheet)                                                  */
@@ -98,7 +107,13 @@ type EnvioProgresso = {
   status: string;
 };
 
-function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChange: (v: boolean) => void }) {
+function DetalhesLote({
+  envio,
+  onOpenChange,
+}: {
+  envio: EnvioResumo;
+  onOpenChange: (v: boolean) => void;
+}) {
   const navigate = useNavigate();
   const { setEnvioAtivoId } = useAppState();
   const [progresso, setProgresso] = useState<EnvioProgresso | null>(null);
@@ -157,7 +172,11 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
   }
 
   async function cancelar() {
-    if (!window.confirm("Interromper este disparo? Os itens ainda não enviados não serão disparados e o lote não poderá ser retomado.")) {
+    if (
+      !window.confirm(
+        "Interromper este disparo? Os itens ainda não enviados não serão disparados e o lote não poderá ser retomado.",
+      )
+    ) {
       return;
     }
     setAcao("cancelar");
@@ -175,7 +194,9 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
     <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
       <SheetHeader>
         <SheetTitle>{envio.lote || "Detalhes do lote"}</SheetTitle>
-        <SheetDescription>Lote #{envio.id.slice(0, 8)} — {formatarData(envio.criado_em)}</SheetDescription>
+        <SheetDescription>
+          Lote #{envio.id.slice(0, 8)} — {formatarData(envio.criado_em)}
+        </SheetDescription>
       </SheetHeader>
 
       {(statusAtual === "pendente" || statusAtual === "pausado") && (
@@ -197,11 +218,23 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
       {(statusAtual === "em_andamento" || statusAtual === "pausado") && (
         <div className="mt-4 flex gap-2">
           {statusAtual === "em_andamento" && (
-            <Botao variante="secondary" tamanho="sm" className="flex-1" onClick={pausar} disabled={acao !== null}>
+            <Botao
+              variante="secondary"
+              tamanho="sm"
+              className="flex-1"
+              onClick={pausar}
+              disabled={acao !== null}
+            >
               {acao === "pausar" ? "Pausando…" : "Pausar disparo"}
             </Botao>
           )}
-          <Botao variante="outline" tamanho="sm" className="flex-1" onClick={cancelar} disabled={acao !== null}>
+          <Botao
+            variante="outline"
+            tamanho="sm"
+            className="flex-1"
+            onClick={cancelar}
+            disabled={acao !== null}
+          >
             {acao === "cancelar" ? "Interrompendo…" : "Interromper disparo"}
           </Botao>
         </div>
@@ -217,7 +250,12 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
           </Aviso>
         )}
 
-        <BarraProgressoLote status={statusAtual} envio={envio} progresso={progresso} carregando={carregando} />
+        <BarraProgressoLote
+          status={statusAtual}
+          envio={envio}
+          progresso={progresso}
+          carregando={carregando}
+        />
 
         <div className="grid grid-cols-4 gap-2.5 text-center sm:gap-3">
           <MiniMetrica label="Total" valor={progresso?.total ?? envio.total} />
@@ -225,7 +263,11 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
           <MiniMetrica label="Entregues" valor={progresso?.entregues ?? envio.entregues} />
           <MiniMetrica label="Lidos" valor={progresso?.lidos ?? envio.lidos} />
           <MiniMetrica label="Falhas" valor={progresso?.falhas ?? envio.falhas} tone="danger" />
-          <MiniMetrica label="Inválidos" valor={progresso?.numeros_invalidos ?? envio.numeros_invalidos} tone="warning" />
+          <MiniMetrica
+            label="Inválidos"
+            valor={progresso?.numeros_invalidos ?? envio.numeros_invalidos}
+            tone="warning"
+          />
           <MiniMetrica label="Pendentes" valor={progresso?.pendentes ?? envio.pendentes} />
           <MiniMetrica label="Cancelados" valor={envio.cancelados ?? 0} />
         </div>
@@ -233,7 +275,11 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
         <div>
           <Rotulo>Filtrar destinatários</Rotulo>
           <FiltroChips valor={filtro} opcoes={FILTRO_ITENS} onChange={setFiltro} className="mb-3" />
-          <Busca placeholder="Buscar por nome ou telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <Busca
+            placeholder="Buscar por nome ou telefone…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
         </div>
 
         <TabelaWrap compact>
@@ -267,12 +313,21 @@ function DetalhesLote({ envio, onOpenChange }: { envio: EnvioResumo; onOpenChang
                 const status: ItemStatus = statusDoItem(item);
                 return (
                   <tr key={item.id} className="border-border border-t align-top">
-                    <td className="td-cell truncate" title={item.clientes?.nome ?? undefined}>{item.clientes?.nome ?? "—"}</td>
-                    <td className="td-cell truncate font-mono text-xs" title={item.clientes?.telefone ?? undefined}>{item.clientes?.telefone ?? "—"}</td>
+                    <td className="td-cell truncate" title={item.clientes?.nome ?? undefined}>
+                      {item.clientes?.nome ?? "—"}
+                    </td>
+                    <td
+                      className="td-cell truncate font-mono text-xs"
+                      title={item.clientes?.telefone ?? undefined}
+                    >
+                      {item.clientes?.telefone ?? "—"}
+                    </td>
                     <td className="td-cell truncate">{item.clientes?.valor ?? "—"}</td>
                     <td className="td-cell">
                       <StatusBadge status={status} />
-                      {item.erro && <p className="text-destructive mt-1 text-[11px] text-pretty">{item.erro}</p>}
+                      {item.erro && (
+                        <p className="text-destructive mt-1 text-[11px] text-pretty">{item.erro}</p>
+                      )}
                     </td>
                     <td className="td-cell truncate text-xs">{formatarData(item.enviado_em)}</td>
                   </tr>
@@ -306,7 +361,8 @@ function BarraProgressoLote({
 }) {
   const total = progresso?.total ?? envio.total;
   const pendentes = progresso?.pendentes ?? envio.pendentes;
-  const falhas = (progresso?.falhas ?? envio.falhas) + (progresso?.numeros_invalidos ?? envio.numeros_invalidos);
+  const falhas =
+    (progresso?.falhas ?? envio.falhas) + (progresso?.numeros_invalidos ?? envio.numeros_invalidos);
   const processados = Math.max(0, total - pendentes);
   const percentual = total > 0 ? Math.round((processados / total) * 100) : 0;
   const finalizado = status === "concluido" || status === "cancelado";
@@ -315,7 +371,8 @@ function BarraProgressoLote({
     return <div className="bg-surface-sunken mb-1 h-2 w-full animate-pulse rounded-full" />;
   }
 
-  const corIndicador = finalizado && falhas === 0 ? "bg-success" : falhas > 0 ? "bg-destructive" : undefined;
+  const corIndicador =
+    finalizado && falhas === 0 ? "bg-success" : falhas > 0 ? "bg-destructive" : undefined;
 
   return (
     <div>
@@ -365,7 +422,15 @@ function MiniBarraLinha({ envio }: { envio: EnvioResumo }) {
   );
 }
 
-function MiniMetrica({ label, valor, tone }: { label: string; valor: number | string; tone?: "danger" | "warning" }) {
+function MiniMetrica({
+  label,
+  valor,
+  tone,
+}: {
+  label: string;
+  valor: number | string;
+  tone?: "danger" | "warning";
+}) {
   return (
     <div>
       <p className="label-eyebrow mb-1">{label}</p>
@@ -457,7 +522,12 @@ function Historico() {
           {/* [2026-08] Mesmo ajuste da tela Clientes: Busca com largura fixa
               em vez de `flex-1` -- não disputa espaço com os chips de status
               e não encolhe a ponto de cortar o próprio texto. */}
-          <Busca placeholder="Cliente, telefone…" value={busca} onChange={(e) => setBusca(e.target.value)} className="flex-none w-full sm:w-52" />
+          <Busca
+            placeholder="Cliente, telefone…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="flex-none w-full sm:w-52"
+          />
           <FiltroChips valor={status} onChange={setStatus} opcoes={STATUS_OPCOES} />
           <button
             type="button"
@@ -479,14 +549,31 @@ function Historico() {
           <div className="toolbar flex flex-wrap items-end gap-3">
             <div>
               <Rotulo>De</Rotulo>
-              <Campo type="date" value={de} onChange={(e) => setDe(e.target.value)} className="w-auto" />
+              <Campo
+                type="date"
+                value={de}
+                onChange={(e) => setDe(e.target.value)}
+                className="w-auto"
+              />
             </div>
             <div>
               <Rotulo>Até</Rotulo>
-              <Campo type="date" value={ate} onChange={(e) => setAte(e.target.value)} className="w-auto" />
+              <Campo
+                type="date"
+                value={ate}
+                onChange={(e) => setAte(e.target.value)}
+                className="w-auto"
+              />
             </div>
             {filtrosAvancadosAtivos && (
-              <Botao variante="ghost" tamanho="sm" onClick={() => { setDe(""); setAte(""); }}>
+              <Botao
+                variante="ghost"
+                tamanho="sm"
+                onClick={() => {
+                  setDe("");
+                  setAte("");
+                }}
+              >
                 Limpar
               </Botao>
             )}
@@ -515,7 +602,8 @@ function Historico() {
                   <div key={i} className="panel-flat h-[11.5rem] animate-pulse" />
                 ))
               : lotes.map((envio) => {
-                  const statusLabel = STATUS_OPCOES.find((o) => o.valor === envio.status)?.label ?? envio.status;
+                  const statusLabel =
+                    STATUS_OPCOES.find((o) => o.valor === envio.status)?.label ?? envio.status;
                   return (
                     <button
                       key={envio.id}
@@ -527,7 +615,11 @@ function Historico() {
                         <span className="text-subtle truncate font-mono text-xs">
                           {envio.lote ?? `#${envio.id.slice(0, 8)}`}
                         </span>
-                        <StatusPill tone={TONE_STATUS_LOTE[envio.status] ?? "muted"} dot pulse={envio.status === "em_andamento"}>
+                        <StatusPill
+                          tone={TONE_STATUS_LOTE[envio.status] ?? "muted"}
+                          dot
+                          pulse={envio.status === "em_andamento"}
+                        >
                           {statusLabel}
                         </StatusPill>
                       </div>
@@ -552,7 +644,12 @@ function Historico() {
                           <p className="text-subtle text-[10px] uppercase">Lidos</p>
                         </div>
                         <div>
-                          <p className={cn("tabular text-sm font-semibold", envio.falhas > 0 && "text-destructive")}>
+                          <p
+                            className={cn(
+                              "tabular text-sm font-semibold",
+                              envio.falhas > 0 && "text-destructive",
+                            )}
+                          >
                             {envio.falhas}
                           </p>
                           <p className="text-subtle text-[10px] uppercase">Falhas</p>
@@ -578,7 +675,9 @@ function Historico() {
           }
         }}
       >
-        {loteSelecionado && <DetalhesLote envio={loteSelecionado} onOpenChange={() => setLoteSelecionado(null)} />}
+        {loteSelecionado && (
+          <DetalhesLote envio={loteSelecionado} onOpenChange={() => setLoteSelecionado(null)} />
+        )}
       </Sheet>
     </AppShell>
   );

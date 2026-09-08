@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, QrCode, ShieldCheck, Smartphone } from "lucide-react";
 import { useState } from "react";
-import { ptBR } from "date-fns/locale";
-import { formatDistanceToNow } from "date-fns";
 
 import { AppShell, statusConexao } from "@/components/AppShell";
+import { formatarDataRelativa } from "@/lib/format";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -33,27 +32,31 @@ export const Route = createFileRoute("/conexoes")({
         content: "Gerencie sua sessão de WhatsApp usada para o disparo de faturas.",
       },
       { property: "og:title", content: "Conexão — Voxcel Faturas" },
-      { property: "og:description", content: "Conectar, desconectar e acompanhar o status da sua sessão." },
+      {
+        property: "og:description",
+        content: "Conectar, desconectar e acompanhar o status da sua sessão.",
+      },
     ],
   }),
   component: Conexoes,
 });
 
-function formatarData(iso: string | null) {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
-  } catch {
-    return "—";
-  }
-}
+const formatarData = formatarDataRelativa;
 
-function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; slot: 1 | 2; titulo: string }) {
+function PainelConexao({
+  conexao,
+  slot,
+  titulo,
+}: {
+  conexao: WhatsappConexao;
+  slot: 1 | 2;
+  titulo: string;
+}) {
   const { refreshConexao } = useAppState();
   const [acaoCarregando, setAcaoCarregando] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
 
-  const info = statusConexao[conexao.status] ?? statusConexao['disconnected']!;
+  const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
 
   async function conectar() {
     setAcaoCarregando(true);
@@ -114,7 +117,11 @@ function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; sl
 
         <div className="bg-surface-sunken flex min-h-40 flex-col items-center justify-center gap-2 rounded-md p-4">
           {conexao.status === "qr" && conexao.qr ? (
-            <img src={conexao.qr} alt="QR Code WhatsApp" className="bg-qr-surface size-40 rounded-md p-1" />
+            <img
+              src={conexao.qr}
+              alt="QR Code WhatsApp"
+              className="bg-qr-surface size-40 rounded-md p-1"
+            />
           ) : conexao.status === "connecting" ? (
             <>
               <Loader2 className="text-subtle size-6 animate-spin" />
@@ -146,7 +153,11 @@ function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; sl
           </Botao>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Botao variante="danger" tamanho="sm" disabled={acaoCarregando || conexao.status === "disconnected"}>
+              <Botao
+                variante="danger"
+                tamanho="sm"
+                disabled={acaoCarregando || conexao.status === "disconnected"}
+              >
                 Desconectar
               </Botao>
             </AlertDialogTrigger>
@@ -154,7 +165,8 @@ function PainelConexao({ conexao, slot, titulo }: { conexao: WhatsappConexao; sl
               <AlertDialogHeader>
                 <AlertDialogTitle>Desconectar WhatsApp?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  A sessão atual será encerrada e será necessário escanear um novo QR Code para reconectar.
+                  A sessão atual será encerrada e será necessário escanear um novo QR Code para
+                  reconectar.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -193,18 +205,31 @@ function Conexoes() {
 
         {temSlot2 && (
           <Aviso tone="info">
-            Dois números conectados: os disparos são distribuídos entre os dois automaticamente (50/50, alternado),
-            pra reduzir a concentração de mensagens num número só. Se um cair, os disparos continuam pelo outro.
+            Dois números conectados: os disparos são distribuídos entre os dois automaticamente
+            (50/50, alternado), pra reduzir a concentração de mensagens num número só. Se um cair,
+            os disparos continuam pelo outro.
           </Aviso>
         )}
 
-        <SectionCard titulo="Proteções de envio" eyebrow="Segurança" descricao="Mecanismos aplicados automaticamente pelo backend durante o disparo.">
+        <SectionCard
+          titulo="Proteções de envio"
+          eyebrow="Segurança"
+          descricao="Mecanismos aplicados automaticamente pelo backend durante o disparo."
+        >
           <ul className="text-muted-foreground list-inside list-disc space-y-1.5 text-xs">
             <li>Delay aleatório entre o envio de cada mensagem.</li>
             <li>Pausa automática a cada bloco de envios.</li>
-            <li>Limite diário de disparos (por operador), com retomada à meia-noite no horário de Brasília.</li>
-            <li>Número validado no WhatsApp antes do envio, evitando disparos para contatos inválidos.</li>
-            <li>Distribuição entre 2 números (se ambos conectados), reduzindo concentração de mensagens num só.</li>
+            <li>
+              Limite diário de disparos (por operador), com retomada à meia-noite no horário de
+              Brasília.
+            </li>
+            <li>
+              Número validado no WhatsApp antes do envio, evitando disparos para contatos inválidos.
+            </li>
+            <li>
+              Distribuição entre 2 números (se ambos conectados), reduzindo concentração de
+              mensagens num só.
+            </li>
           </ul>
         </SectionCard>
       </div>

@@ -1,5 +1,10 @@
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+} from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -17,7 +22,8 @@ const variantes: Record<Variante, string> = {
     "bg-surface text-foreground border border-border-strong hover:bg-surface-raised shadow-panel",
   outline: "border border-border-strong text-foreground hover:bg-surface-raised",
   ghost: "text-muted-foreground hover:text-foreground hover:bg-surface-raised",
-  danger: "border border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground",
+  danger:
+    "border border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground",
 };
 
 const tamanhos: Record<Tamanho, string> = {
@@ -81,10 +87,7 @@ export function Seletor({
   );
 }
 
-export function Busca({
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+export function Busca({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className={cn("relative min-w-0 flex-1 sm:max-w-xs", className)}>
       <Search className="text-subtle pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
@@ -93,8 +96,25 @@ export function Busca({
   );
 }
 
-export function Rotulo({ children, className }: { children: ReactNode; className?: string }) {
-  return <label className={cn("label-eyebrow mb-1.5 block", className)}>{children}</label>;
+// [2026-09] `htmlFor` opcional -- sem ele, o `<label>` fica solto (nenhum
+// leitor de tela associa ele ao campo, clicar no texto não foca o input).
+// Passe o mesmo valor que o `id` do `Campo`/`Seletor` correspondente pra
+// associar de verdade; omitido, continua funcionando como label visual
+// solto (comportamento de sempre), só sem a associação semântica.
+export function Rotulo({
+  children,
+  className,
+  htmlFor,
+}: {
+  children: ReactNode;
+  className?: string;
+  htmlFor?: string;
+}) {
+  return (
+    <label htmlFor={htmlFor} className={cn("label-eyebrow mb-1.5 block", className)}>
+      {children}
+    </label>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -249,8 +269,11 @@ export function Paginacao({
       )}
     >
       <p className="text-subtle text-xs">
-        Mostrando <span className="text-foreground font-medium tabular-nums">{inicio}–{fim}</span> de{" "}
-        <span className="text-foreground font-medium tabular-nums">{totalItens}</span>
+        Mostrando{" "}
+        <span className="text-foreground font-medium tabular-nums">
+          {inicio}–{fim}
+        </span>{" "}
+        de <span className="text-foreground font-medium tabular-nums">{totalItens}</span>
       </p>
       <div className="flex items-center gap-2">
         <Botao

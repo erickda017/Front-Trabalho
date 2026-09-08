@@ -175,8 +175,12 @@ function RegistrarTratativaDialog({
 
         <div className="space-y-3">
           <div>
-            <Rotulo>Desfecho</Rotulo>
-            <Seletor value={status} onChange={(e) => setStatus(e.target.value as StatusOperador)}>
+            <Rotulo htmlFor="qualidade-status">Desfecho</Rotulo>
+            <Seletor
+              id="qualidade-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as StatusOperador)}
+            >
               <option value="">Selecione…</option>
               {statusCatalogo.map((s) => (
                 <option key={s.valor} value={s.valor}>
@@ -187,8 +191,9 @@ function RegistrarTratativaDialog({
             </Seletor>
           </div>
           <div>
-            <Rotulo>Observação (opcional)</Rotulo>
+            <Rotulo htmlFor="qualidade-observacao">Observação (opcional)</Rotulo>
             <textarea
+              id="qualidade-observacao"
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
               placeholder="Ex.: prometeu pagar até sexta, pediu pra ligar de novo semana que vem…"

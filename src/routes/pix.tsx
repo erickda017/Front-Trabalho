@@ -1,14 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Check,
-  Copy,
-  FileText,
-  KeyRound,
-  Link2,
-  RefreshCcw,
-  Upload,
-  X,
-} from "lucide-react";
+import { Check, Copy, FileText, KeyRound, Link2, RefreshCcw, Upload, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -33,6 +24,7 @@ import { casarClientePorArquivo } from "@/lib/clienteMatch";
 import { useAppState } from "@/lib/app-state";
 import type { PixExtracao, PixExtracaoStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { formatarDataHoraAbsoluta } from "@/lib/format";
 
 export const Route = createFileRoute("/pix")({
   head: () => ({
@@ -40,7 +32,8 @@ export const Route = createFileRoute("/pix")({
       { title: "Extrator de PIX — Voxcel Faturas" },
       {
         name: "description",
-        content: "Envie faturas em PDF e acompanhe a extração automática da chave PIX de cada cliente.",
+        content:
+          "Envie faturas em PDF e acompanhe a extração automática da chave PIX de cada cliente.",
       },
       { property: "og:title", content: "Extrator de PIX — Voxcel Faturas" },
       {
@@ -52,7 +45,10 @@ export const Route = createFileRoute("/pix")({
   component: Pix,
 });
 
-const statusInfo: Record<PixExtracaoStatus, { label: string; tone: "muted" | "brand" | "success" | "warning" | "danger" }> = {
+const statusInfo: Record<
+  PixExtracaoStatus,
+  { label: string; tone: "muted" | "brand" | "success" | "warning" | "danger" }
+> = {
   aguardando: { label: "Aguardando", tone: "muted" },
   processando: { label: "Processando", tone: "brand" },
   encontrado: { label: "Encontrado", tone: "success" },
@@ -66,14 +62,7 @@ function formatarTamanho(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatarData(iso: string | null) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
+const formatarData = formatarDataHoraAbsoluta;
 
 function CopiarChave({ valor }: { valor: string }) {
   const [copiado, setCopiado] = useState(false);
@@ -98,11 +87,7 @@ function CopiarChave({ valor }: { valor: string }) {
   );
 }
 
-function Dropzone({
-  onFiles,
-}: {
-  onFiles: (files: File[]) => void;
-}) {
+function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -116,7 +101,9 @@ function Dropzone({
       onDrop={(e) => {
         e.preventDefault();
         setArrastando(false);
-        const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type === "application/pdf");
+        const files = Array.from(e.dataTransfer.files ?? []).filter(
+          (f) => f.type === "application/pdf",
+        );
         if (files.length) onFiles(files);
       }}
       onClick={() => inputRef.current?.click()}
@@ -127,7 +114,9 @@ function Dropzone({
       }}
       className={cn(
         "flex cursor-pointer flex-col items-center gap-2.5 rounded-lg border border-dashed px-6 py-10 text-center transition-colors",
-        arrastando ? "border-primary bg-primary-soft" : "border-border hover:border-border-strong bg-surface-sunken",
+        arrastando
+          ? "border-primary bg-primary-soft"
+          : "border-border hover:border-border-strong bg-surface-sunken",
       )}
     >
       <div className="bg-surface text-primary-strong grid size-10 place-items-center rounded-lg shadow-panel">
@@ -215,11 +204,16 @@ function Pix() {
     queryFn: () => api.pix.listar(),
     refetchInterval: (query) => {
       const data = query.state.data;
-      const pendente = Array.isArray(data) && data.some((e) => e.status === "aguardando" || e.status === "processando");
+      const pendente =
+        Array.isArray(data) &&
+        data.some((e) => e.status === "aguardando" || e.status === "processando");
       return pendente ? 4000 : false;
     },
   });
-  const extracoes = useMemo(() => (Array.isArray(extracoesData) ? extracoesData : []), [extracoesData]);
+  const extracoes = useMemo(
+    () => (Array.isArray(extracoesData) ? extracoesData : []),
+    [extracoesData],
+  );
   const erroLista = erroListaObj ? (erroListaObj as Error).message : null;
 
   // [paginação] 50 extrações por página -- mesma ideia da tela Clientes.
@@ -239,7 +233,10 @@ function Pix() {
   // backend/src/services/extratorServidorPix.js).
   const [modoExtracao, setModoExtracao] = useState<"navegador" | "servidor">("navegador");
 
-  const tamanhoTotalMb = useMemo(() => arquivos.reduce((soma, f) => soma + f.size, 0) / (1024 * 1024), [arquivos]);
+  const tamanhoTotalMb = useMemo(
+    () => arquivos.reduce((soma, f) => soma + f.size, 0) / (1024 * 1024),
+    [arquivos],
+  );
   const loteExcedeLimite = arquivos.length > MAX_ARQUIVOS || tamanhoTotalMb > MAX_TOTAL_MB;
 
   function adicionarArquivos(novos: File[]) {
@@ -273,7 +270,11 @@ function Pix() {
   // dentro do pacote (poucos PDFs sendo lidos/processados ao mesmo tempo,
   // alinhado ao tamanho do pool), o pacote de 10 ainda é a unidade
   // "visível" de progresso, mas o trabalho de fato roda em ondas menores.
-  async function processarEmLotes<T>(itens: T[], tamanhoLote: number, tarefa: (item: T) => Promise<void>) {
+  async function processarEmLotes<T>(
+    itens: T[],
+    tamanhoLote: number,
+    tarefa: (item: T) => Promise<void>,
+  ) {
     for (let inicio = 0; inicio < itens.length; inicio += tamanhoLote) {
       const pacote = itens.slice(inicio, inicio + tamanhoLote);
 
@@ -293,7 +294,9 @@ function Pix() {
       }
 
       await Promise.all(
-        Array.from({ length: Math.min(CONCORRENCIA_REAL_DENTRO_DO_PACOTE, pacote.length) }, () => processador()),
+        Array.from({ length: Math.min(CONCORRENCIA_REAL_DENTRO_DO_PACOTE, pacote.length) }, () =>
+          processador(),
+        ),
       );
     }
   }
@@ -443,16 +446,22 @@ function Pix() {
           if (resultado?.pixCopiaCola) {
             await api.clientes.atualizarPix(cliente.id, resultado.pixCopiaCola);
             setResumoVerificacao((prev) =>
-              prev ? { ...prev, processados: prev.processados + 1, encontrados: prev.encontrados + 1 } : prev,
+              prev
+                ? { ...prev, processados: prev.processados + 1, encontrados: prev.encontrados + 1 }
+                : prev,
             );
           } else {
             setResumoVerificacao((prev) =>
-              prev ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 } : prev,
+              prev
+                ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 }
+                : prev,
             );
           }
         } catch {
           setResumoVerificacao((prev) =>
-            prev ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 } : prev,
+            prev
+              ? { ...prev, processados: prev.processados + 1, semSucesso: prev.semSucesso + 1 }
+              : prev,
           );
         }
       });
@@ -487,7 +496,10 @@ function Pix() {
   }
 
   return (
-    <AppShell title="Extrator de PIX" subtitle="Envie faturas em PDF e a chave PIX de cada cliente é extraída automaticamente">
+    <AppShell
+      title="Extrator de PIX"
+      subtitle="Envie faturas em PDF e a chave PIX de cada cliente é extraída automaticamente"
+    >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-8">
           <SectionCard
@@ -550,15 +562,21 @@ function Pix() {
               {arquivos.length > 0 && (
                 <>
                   <p className="text-subtle text-xs">
-                    {arquivos.length} arquivo(s) selecionado(s) — {tamanhoTotalMb.toFixed(1)} MB no total.
+                    {arquivos.length} arquivo(s) selecionado(s) — {tamanhoTotalMb.toFixed(1)} MB no
+                    total.
                   </p>
                   <ul className="divide-border border-border divide-y rounded-md border">
                     {arquivos.map((f, idx) => (
-                      <li key={`${f.name}-${idx}`} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <li
+                        key={`${f.name}-${idx}`}
+                        className="flex items-center justify-between gap-3 px-3 py-2"
+                      >
                         <div className="flex min-w-0 items-center gap-2">
                           <FileText className="text-subtle size-4 shrink-0" />
                           <span className="truncate text-sm">{f.name}</span>
-                          <span className="text-subtle shrink-0 text-xs">{formatarTamanho(f.size)}</span>
+                          <span className="text-subtle shrink-0 text-xs">
+                            {formatarTamanho(f.size)}
+                          </span>
                         </div>
                         <button
                           type="button"
@@ -576,8 +594,9 @@ function Pix() {
 
               {loteExcedeLimite && (
                 <Aviso tone="danger">
-                  Lote grande demais ({arquivos.length} arquivos, {tamanhoTotalMb.toFixed(0)}MB). Limite: {MAX_ARQUIVOS}{" "}
-                  arquivos ou {MAX_TOTAL_MB}MB no total. Remova alguns arquivos ou envie em partes.
+                  Lote grande demais ({arquivos.length} arquivos, {tamanhoTotalMb.toFixed(0)}MB).
+                  Limite: {MAX_ARQUIVOS} arquivos ou {MAX_TOTAL_MB}MB no total. Remova alguns
+                  arquivos ou envie em partes.
                 </Aviso>
               )}
 
@@ -586,7 +605,9 @@ function Pix() {
                   <div className="bg-surface-sunken h-1.5 w-full overflow-hidden rounded-full">
                     <div
                       className="bg-primary h-full rounded-full transition-all"
-                      style={{ width: `${resumoEnvio.total ? (resumoEnvio.processados / resumoEnvio.total) * 100 : 0}%` }}
+                      style={{
+                        width: `${resumoEnvio.total ? (resumoEnvio.processados / resumoEnvio.total) * 100 : 0}%`,
+                      }}
                     />
                   </div>
                   <p className="text-subtle text-xs">
@@ -603,14 +624,15 @@ function Pix() {
                         )}
                       </>
                     )}
-                    {!enviando && resumoEnvio.processados === resumoEnvio.total && resumoEnvio.total > 0 && " — concluído."}
+                    {!enviando &&
+                      resumoEnvio.processados === resumoEnvio.total &&
+                      resumoEnvio.total > 0 &&
+                      " — concluído."}
                   </p>
                 </div>
               )}
 
-              {erroEnvio && (
-                <Aviso tone="danger">{erroEnvio}</Aviso>
-              )}
+              {erroEnvio && <Aviso tone="danger">{erroEnvio}</Aviso>}
             </div>
           </SectionCard>
 
@@ -643,7 +665,9 @@ function Pix() {
                         {resumoVerificacao.processados > 0 && (
                           <>
                             {" — "}
-                            <span className="text-success">{resumoVerificacao.encontrados} achado(s)</span>
+                            <span className="text-success">
+                              {resumoVerificacao.encontrados} achado(s)
+                            </span>
                             {resumoVerificacao.semSucesso > 0 && (
                               <>
                                 {", "}
@@ -667,7 +691,12 @@ function Pix() {
             </div>
           </SectionCard>
 
-          <SectionCard titulo="Extrações" descricao="Status de extração da chave PIX por fatura enviada." flush bodyClassName="p-0">
+          <SectionCard
+            titulo="Extrações"
+            descricao="Status de extração da chave PIX por fatura enviada."
+            flush
+            bodyClassName="p-0"
+          >
             {erroLista ? (
               <div className="p-5">
                 <Aviso tone="danger">
@@ -720,7 +749,9 @@ function Pix() {
                         <td className="td-cell">
                           <span className="flex min-w-0 items-center gap-1.5">
                             <FileText className="text-subtle size-3.5 shrink-0" />
-                            <span className="min-w-0 truncate" title={e.arquivo}>{e.arquivo}</span>
+                            <span className="min-w-0 truncate" title={e.arquivo}>
+                              {e.arquivo}
+                            </span>
                           </span>
                         </td>
                         <td className="td-cell">
@@ -731,7 +762,10 @@ function Pix() {
                         <td className="td-cell">
                           {e.pix_code ? (
                             <span className="flex min-w-0 items-center gap-1.5">
-                              <span className="min-w-0 truncate font-mono text-xs" title={e.pix_code}>
+                              <span
+                                className="min-w-0 truncate font-mono text-xs"
+                                title={e.pix_code}
+                              >
                                 {e.pix_code}
                               </span>
                               <CopiarChave valor={e.pix_code} />
@@ -745,14 +779,21 @@ function Pix() {
                             <StatusPill tone={info.tone} dot pulse={e.status === "processando"}>
                               {info.label}
                             </StatusPill>
-                            {e.erro && <p className="text-destructive text-[11px] text-pretty">{e.erro}</p>}
+                            {e.erro && (
+                              <p className="text-destructive text-[11px] text-pretty">{e.erro}</p>
+                            )}
                           </div>
                         </td>
                         <td className="td-cell text-subtle text-xs">{formatarData(e.criado_em)}</td>
                         <td className="td-cell">
                           <div className="flex flex-wrap justify-end gap-2">
                             {!e.cliente_id && (
-                              <Botao tamanho="sm" variante="ghost" onClick={() => abrirVinculo(e)} className="whitespace-nowrap">
+                              <Botao
+                                tamanho="sm"
+                                variante="ghost"
+                                onClick={() => abrirVinculo(e)}
+                                className="whitespace-nowrap"
+                              >
                                 <Link2 className="size-3.5" />
                                 Vincular
                               </Botao>
@@ -785,11 +826,13 @@ function Pix() {
                 },
                 {
                   titulo: "2. Extração automática",
-                  descricao: "O PDF é lido no seu navegador e enviado, página por página, ao serviço de OCR até localizar a chave PIX.",
+                  descricao:
+                    "O PDF é lido no seu navegador e enviado, página por página, ao serviço de OCR até localizar a chave PIX.",
                 },
                 {
                   titulo: "3. Vínculo com o cliente",
-                  descricao: "Pelo nome do arquivo, o PIX e o próprio PDF são associados automaticamente ao cliente já cadastrado. Sem casamento, vincule manualmente na lista abaixo.",
+                  descricao:
+                    "Pelo nome do arquivo, o PIX e o próprio PDF são associados automaticamente ao cliente já cadastrado. Sem casamento, vincule manualmente na lista abaixo.",
                 },
               ].map((passo) => (
                 <li key={passo.titulo} className="flex gap-3">
@@ -798,7 +841,9 @@ function Pix() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{passo.titulo}</p>
-                    <p className="text-muted-foreground mt-0.5 text-xs text-pretty">{passo.descricao}</p>
+                    <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
+                      {passo.descricao}
+                    </p>
                   </div>
                 </li>
               ))}
