@@ -1,24 +1,39 @@
-# Lovable UI Revamp
+# Voxcel Faturas — Front
 
-Melhore completamente o visual desse projeto. mantenha o front 100% estático e seprados do backend
+Painel operacional do Voxcel Faturas: disparo de faturas em PDF via WhatsApp,
+dashboard, controle de safras (FPD/SPD), extrator de PIX de boletos e chat
+com clientes. Front estático (React 19 + Vite + TanStack Router/Start),
+separado do backend (`Backend-Trabalho/`, Node + Express + Baileys +
+Supabase) — os dois vivem em repositórios/pastas irmãos no mesmo monorepo.
 
-This project was built with [Lovable](https://lovable.dev).
+Para contexto completo de produto, regras de negócio e histórico de
+funcionalidades/bugs corrigidos, ver [`CONTEXTO.md`](./CONTEXTO.md) — é a
+fonte de verdade, leia antes de qualquer mudança não-trivial.
 
-## Build with Lovable
+## Rodando localmente
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/60fc38be-29b2-4d7a-ad43-2a7000138971).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Precisa de Node.js e npm — [instale com o nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+se ainda não tiver.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+npm install
+cp .env.example .env   # preencher VITE_API_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+npm run dev            # vite dev
 ```
+
+`VITE_API_URL` precisa apontar pro backend rodando (local: `http://localhost:3333/api`;
+produção: a URL do serviço no Render + `/api`). Sem os três valores reais
+preenchidos, a tela sobe mas todo request dá `Failed to fetch`.
+
+## Deploy
+
+Estático na Vercel. Ver seção "Deploy em produção" do `CLAUDE.md` do backend
+(`Backend-Trabalho/CLAUDE.md`) para o passo a passo completo (variáveis de
+ambiente obrigatórias, CORS, etc.).
+
+## Scripts
+
+- `npm run dev` — servidor de desenvolvimento (Vite)
+- `npm run build` — build de produção
+- `npm run lint` — ESLint
+- `npm run format` — Prettier
