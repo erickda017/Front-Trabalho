@@ -28,6 +28,7 @@ import { supabase } from "@/supabaseClient";
 import { cn } from "@/lib/utils";
 import { useAppState, type Tag } from "@/lib/app-state";
 import type { Conversa, Mensagem } from "@/lib/types";
+import { listarTodasConversas } from "@/lib/conversasPaginadas";
 import { Aviso } from "@/components/shared/Controls";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TagPicker } from "@/components/shared/TagPicker";
@@ -498,8 +499,7 @@ function Chat() {
   // Carga inicial das conversas
   useEffect(() => {
     let cancelado = false;
-    api.chat
-      .listarConversas()
+    listarTodasConversas()
       .then((data: Conversa[]) => {
         if (cancelado) return;
         setConversas(data);
@@ -530,7 +530,7 @@ function Chat() {
   // devolve a conversa atualizada) -- recarrega a lista pra refletir no card
   // e no cabeçalho.
   function recarregarConversas() {
-    api.chat.listarConversas().then((data: Conversa[]) => setConversas(data)).catch(() => {});
+    listarTodasConversas().then((data: Conversa[]) => setConversas(data)).catch(() => {});
   }
 
   // Histórico da conversa ativa (busca só na primeira vez que ela é aberta)

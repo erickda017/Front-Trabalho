@@ -354,7 +354,7 @@ declare module "@/api" {
       baixarModelo: () => Promise<void>;
     };
     chat: {
-      listarConversas: () => Promise<Conversa[]>;
+      listarConversas: (params?: { page?: number; per_page?: number }) => Promise<{ itens: Conversa[]; total: number }>;
       listarMensagens: (conversaId: string) => Promise<Mensagem[]>;
       marcarLida: (conversaId: string) => Promise<Conversa>;
       apagar: (conversaId: string) => Promise<{ ok: boolean }>;

@@ -473,6 +473,38 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   ele, um erro do multer (ex: tipo de arquivo rejeitado) caía no handler padrão do
   Express e devolvia uma página HTML de erro em vez de JSON, quebrando o
   `res.json().catch()` do `frontend/src/api.js`.
+- **[2026-09] Responder um contato de "@lid" pelo WhatsApp OFICIAL no celular (fora
+  da plataforma) criava um contato NOVO "Contato não identificado" duplicado.**
+  Causa: quando o WhatsApp esconde o número real de um contato atrás de um `@lid`
+  (identificador opaco, cada vez mais comum), o Baileys só manda os campos que
+  permitem resolver o telefone real (`remoteJidAlt`/`senderPn`) em certas mensagens —
+  normalmente resolve na primeira mensagem que o cliente manda pra gente, mas o eco de
+  uma resposta enviada pelo WhatsApp oficial no celular (sincronização multi-device,
+  fora da plataforma) chega sem esses campos e sem cache do Baileys, então cada
+  resposta assim criava uma conversa-fantasma nova. Corrigido: a conversa já resolvida
+  guarda o `@lid` numa coluna própria (`conversas.lid`, ver
+  `migration-24-lid-persistente.sql`) na primeira vez que resolve com sucesso; da
+  próxima vez que esse mesmo lid aparecer sem dar pra resolver pelos campos do
+  Baileys, o código consulta essa coluna antes de desistir e reaproveita a conversa já
+  existente. Arquivo: `backend/src/services/chatIngest.js`
+  (`resolverTelefonePorLid`).
+- **[2026-09] Contador de "não lidas" do chat podia inflar em reentrega de
+  mensagem.** `upsertConversa` incrementava `nao_lidas` (e trocava "última mensagem")
+  toda vez que uma mensagem era PROCESSADA, mesmo quando ela já tinha sido gravada
+  antes (o `mensagens.upsert` com `ignoreDuplicates` evita duplicar a LINHA da
+  mensagem, mas o contador já tinha subido antes dessa checagem) — um replay do mesmo
+  evento pelo WhatsApp (reconexão, sincronização de histórico) inflava o badge de não
+  lidas de mensagens que o operador já tinha lido. Corrigido: a atualização de
+  resumo/contador (`atualizarResumoConversa`) só roda depois de confirmar que o
+  `upsert` da mensagem devolveu uma linha nova (mensagem realmente inédita), não mais
+  incondicionalmente. Arquivo: `backend/src/services/chatIngest.js`.
+- **[2026-09] `GET /chat/conversas` sem paginação — mesmo padrão do bug já corrigido
+  em `GET /clientes`.** Sem `.range()`, o PostgREST cortava em 1000 conversas por
+  padrão sem avisar; uma carteira de chat com mais uso (meses de conversas) perderia
+  as mais antigas da lista em silêncio. Corrigido: rota agora devolve
+  `{ itens, total }` paginado (mesmo `lerPaginacao` das outras rotas); o front pagina
+  por baixo dos panos até coletar tudo (`frontend/src/lib/conversasPaginadas.ts`,
+  mesmo padrão de `clientesPaginados.ts`).
 
 ## Deploy
 

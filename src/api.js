@@ -360,7 +360,7 @@ export const api = {
     baixarModelo: () => download('/importacao/modelo', 'modelo-importacao.xlsx'),
   },
   chat: {
-    listarConversas: () => request('/chat/conversas'),
+    listarConversas: (params) => request(`/chat/conversas${qs(params)}`),
     listarMensagens: (conversaId) => request(`/chat/conversas/${conversaId}/mensagens`),
     marcarLida: (conversaId) => request(`/chat/conversas/${conversaId}/marcar-lida`, { method: 'POST' }),
     apagar: (conversaId) => request(`/chat/conversas/${conversaId}`, { method: 'DELETE' }),
