@@ -340,6 +340,34 @@ export type IndicePixItem = {
 
 export type SerieDia = { data: string; total: number };
 
+/* -------------------------------------------------------------------------- */
+/* Painel de Exclusão -- ver backend/src/routes/exclusao.routes.js e          */
+/* backend/src/lib/exclusaoCriterios.js. Só supervisor.                       */
+/* -------------------------------------------------------------------------- */
+
+export type CriterioExclusao = "pdfs_por_safra" | "pdfs_por_tipo_fatura" | "clientes_por_tag" | "historico_mensagens";
+
+/** Filtro aceito por cada critério -- os campos variam conforme `criterio`. */
+export type FiltroExclusao = {
+  safra?: string;
+  tipo_fatura?: TipoFatura;
+  tag_nome?: string;
+  campanha?: Campanha | "todas";
+  dias_mais_antigo_que?: number;
+};
+
+/** Um item de GET /supervisor/exclusao/resumo -- "o que mais está ocupando
+ *  espaço", por contagem (não bytes reais), já ordenado do maior pro menor. */
+export type ItemResumoExclusao = {
+  criterio: CriterioExclusao;
+  filtro: FiltroExclusao;
+  rotulo: string;
+  quantidade: number;
+  detalhe: string;
+};
+
+export type PreviewExclusao = { quantidade: number; amostra: string[] };
+
 export type DashboardSupervisor = {
   totais: {
     operadores: number;

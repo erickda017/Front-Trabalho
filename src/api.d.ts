@@ -4,13 +4,17 @@ declare module "@/api" {
     Cliente,
     ConfigDisparo,
     Conversa,
+    CriterioExclusao,
     DashboardResumo,
     EnvioItem,
     EnvioResumo,
     EnvioStatus,
+    FiltroExclusao,
+    ItemResumoExclusao,
     Mensagem,
     PixExtracao,
     PixExtracaoStatus,
+    PreviewExclusao,
     ResumoQualidade,
     SafraResumo,
     StatusChip,
@@ -358,6 +362,14 @@ declare module "@/api" {
         usuario_id: string;
         operador: OperadorResumo | null;
       }[]>;
+    };
+    // [2026-09] PAINEL DE EXCLUSÃO -- exclusão em massa por critério, só
+    // supervisor. `preview` nunca apaga nada; `executar` exige
+    // confirmacao:"APAGAR" (validado no backend também).
+    exclusao: {
+      resumo: () => Promise<{ itens: ItemResumoExclusao[] }>;
+      preview: (criterio: CriterioExclusao, filtro: FiltroExclusao) => Promise<PreviewExclusao>;
+      executar: (criterio: CriterioExclusao, filtro: FiltroExclusao, confirmacao: string) => Promise<{ apagados: number }>;
     };
     importacao: {
       enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;

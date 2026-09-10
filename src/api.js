@@ -334,6 +334,20 @@ export const api = {
     // (planilha de PIX e extrator pessoal, ver routes/supervisor.tsx).
     indicePix: () => request('/supervisor/indice-pix'),
   },
+  // [2026-09] PAINEL DE EXCLUSÃO -- exclusão em massa por critério, só
+  // supervisor (ver backend/src/routes/exclusao.routes.js). `preview` nunca
+  // apaga nada; `executar` exige confirmacao:"APAGAR" (validado no backend
+  // também, defesa em profundidade).
+  exclusao: {
+    resumo: () => request('/supervisor/exclusao/resumo'),
+    preview: (criterio, filtro) =>
+      request(`/supervisor/exclusao/${criterio}/preview`, { method: 'POST', body: JSON.stringify({ filtro }) }),
+    executar: (criterio, filtro, confirmacao) =>
+      request(`/supervisor/exclusao/${criterio}/executar`, {
+        method: 'POST',
+        body: JSON.stringify({ filtro, confirmacao }),
+      }),
+  },
   importacao: {
     // [2026-08] Único fluxo suportado: recebe o resultado já processado no
     // navegador (parse de planilha/zip, fatiamento do PDF + extração de Pix

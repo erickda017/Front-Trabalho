@@ -36,6 +36,7 @@ import {
 } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { api } from "@/api";
+import { PainelExclusao } from "@/components/supervisor/PainelExclusao";
 import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
@@ -81,6 +82,8 @@ const ABAS = [
   { id: "disparos", label: "Disparos", icon: KeyRound },
   { id: "planilha", label: "Planilha de PIX", icon: FileSpreadsheet },
   { id: "extrator", label: "Extrator pessoal", icon: ShieldCheck },
+  // [2026-09] Ver docs/superpowers/specs/2026-09-10-painel-exclusao-design.md
+  { id: "exclusao", label: "Exclusão", icon: Trash2 },
 ] as const;
 type AbaId = (typeof ABAS)[number]["id"];
 
@@ -142,6 +145,7 @@ function Supervisor() {
       {aba === "disparos" && <AbaDisparos operadores={operadores} />}
       {aba === "planilha" && <AbaPlanilha />}
       {aba === "extrator" && <AbaExtratorPessoal />}
+      {aba === "exclusao" && <PainelExclusao />}
     </AppShell>
   );
 }

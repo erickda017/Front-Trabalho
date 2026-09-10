@@ -412,6 +412,50 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   dentro da lista de chat de cobrança em tempo real. `ativacao-chip.chat.tsx`
   tem o filtro espelhado (`campanha=eq.chip_ativacao`).
 
+### Painel de Exclusão em massa (só supervisor) — 2026-09
+
+- **O que é**: aba nova "Exclusão" em `/supervisor` (só quem tem
+  `role=supervisor`) pra apagar em massa, por critério, em vez de 1 registro
+  de cada vez. Pedido explícito: "apagar um grupo de PDFs... deve aparecer
+  em lista oque mais está ocupando espaço no banco... apagar esse grupo de
+  PDFs de tal safra ou FPD ou SPD ou pagos ou deletar histórico de
+  mensagens". Ver
+  `Backend-Trabalho/docs/superpowers/specs/2026-09-10-painel-exclusao-design.md`.
+- **Medição de espaço**: por CONTAGEM de linhas/arquivos (não bytes reais —
+  o sistema nunca guardou tamanho de arquivo em byte nenhum lugar, e somar
+  via Storage API sob demanda seria lento). `GET /api/supervisor/exclusao/resumo`
+  varre 4 critérios com um filtro natural cada e devolve tudo numa lista só,
+  ordenada do maior pro menor.
+- **4 critérios (v1)**, cada um com escopo de exclusão diferente:
+  `pdfs_por_safra`/`pdfs_por_tipo_fatura` (só o ARQUIVO some,
+  `pdf_path`/`pdf_url`/`pdf_atualizado_em` viram null — cliente sobrevive,
+  mesmo efeito da limpeza automática de 40 dias só que sob demanda);
+  `clientes_por_tag` (cliente INTEIRO, cascade já existente cuida de
+  `envio_itens`/`tratativas`/`cliente_tags` — casa por NOME da tag,
+  case-insensitive, cobrindo todos os operadores de uma vez);
+  `historico_mensagens` (conversas inteiras, mensagens cascadeiam — filtro
+  por campanha cobrança/ativação chip + idade opcional). Catálogo em
+  `Backend-Trabalho/src/lib/exclusaoCriterios.js`.
+- **Salvaguardas obrigatórias** (ação irreversível em massa): preview
+  sempre antes (`POST /:criterio/preview`, nunca apaga nada, mostra
+  contagem exata + amostra de até 5 itens); confirmação por texto — precisa
+  digitar literalmente "APAGAR", validado tanto no frontend quanto **no
+  backend** (`POST /:criterio/executar` rejeita qualquer outra coisa em
+  `confirmacao`); auditoria em `auditoria_exclusoes` com **uma linha resumo
+  por operação** (não uma por item apagado, pra não inundar a tabela numa
+  exclusão de milhares de linhas) — `{criterio, filtro, total_apagado,
+  amostra_ids}`.
+- **Acesso**: só supervisor (`requireSupervisor`, mesmo middleware de
+  `/api/supervisor/*`) — decisão consciente do brainstorm, dado o risco de
+  uma ação destrutiva em massa; operador comum não vê a aba nem tem acesso
+  à rota.
+- **Frontend**: componente próprio
+  `Front-Trabalho/src/components/supervisor/PainelExclusao.tsx` (não dentro
+  de `routes/supervisor.tsx`, que já estava grande) — lista "o que mais
+  ocupa espaço" clicável + formulário manual pra um filtro que não apareceu
+  na lista, os dois levando ao mesmo fluxo de preview → digitar "APAGAR" →
+  confirmar.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
