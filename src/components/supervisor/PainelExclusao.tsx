@@ -26,6 +26,7 @@ import type { CriterioExclusao, FiltroExclusao, TipoFatura } from "@/lib/types";
 const ROTULOS_CRITERIO: Record<CriterioExclusao, string> = {
   pdfs_por_safra: "PDFs por safra",
   pdfs_por_tipo_fatura: "PDFs por FPD/SPD",
+  pdfs_sem_safra: "PDFs sem safra (cadastros antigos)",
   clientes_por_tag: "Clientes por tag",
   historico_mensagens: "Histórico de mensagens",
 };
@@ -36,6 +37,8 @@ function rotuloFiltro(criterio: CriterioExclusao, filtro: FiltroExclusao): strin
       return `Safra ${filtro.safra}`;
     case "pdfs_por_tipo_fatura":
       return `Tipo ${filtro.tipo_fatura}`;
+    case "pdfs_sem_safra":
+      return "Cadastros de antes do conceito de safra existir";
     case "clientes_por_tag":
       return `Tag "${filtro.tag_nome}"`;
     case "historico_mensagens": {
@@ -162,7 +165,13 @@ function ConfirmarExclusaoDialog({
   );
 }
 
-const CAMPOS_POR_CRITERIO: CriterioExclusao[] = ["pdfs_por_safra", "pdfs_por_tipo_fatura", "clientes_por_tag", "historico_mensagens"];
+const CAMPOS_POR_CRITERIO: CriterioExclusao[] = [
+  "pdfs_por_safra",
+  "pdfs_por_tipo_fatura",
+  "pdfs_sem_safra",
+  "clientes_por_tag",
+  "historico_mensagens",
+];
 
 function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExclusao, filtro: FiltroExclusao) => void }) {
   const [criterio, setCriterio] = useState<CriterioExclusao>("pdfs_por_safra");
@@ -178,6 +187,8 @@ function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExc
       onSolicitar(criterio, { safra: safra.trim() });
     } else if (criterio === "pdfs_por_tipo_fatura") {
       onSolicitar(criterio, { tipo_fatura: tipoFatura });
+    } else if (criterio === "pdfs_sem_safra") {
+      onSolicitar(criterio, {});
     } else if (criterio === "clientes_por_tag") {
       if (!tagNome.trim()) return;
       onSolicitar(criterio, { tag_nome: tagNome.trim() });

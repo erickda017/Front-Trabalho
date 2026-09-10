@@ -345,7 +345,12 @@ export type SerieDia = { data: string; total: number };
 /* backend/src/lib/exclusaoCriterios.js. Só supervisor.                       */
 /* -------------------------------------------------------------------------- */
 
-export type CriterioExclusao = "pdfs_por_safra" | "pdfs_por_tipo_fatura" | "clientes_por_tag" | "historico_mensagens";
+export type CriterioExclusao =
+  | "pdfs_por_safra"
+  | "pdfs_por_tipo_fatura"
+  | "pdfs_sem_safra"
+  | "clientes_por_tag"
+  | "historico_mensagens";
 
 /** Filtro aceito por cada critério -- os campos variam conforme `criterio`. */
 export type FiltroExclusao = {
