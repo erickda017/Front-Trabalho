@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Stethoscope, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -277,6 +277,95 @@ function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExc
   );
 }
 
+// [2026-09] Diagnóstico -- relatado: painel dizia "apagado" mas os PDFs
+// continuavam no bucket. Sobe + tenta apagar um arquivo de teste descartável
+// (`_diagnostico/teste-*.txt`, nunca toca em fatura real) e mostra o
+// resultado cru de cada etapa, pra isolar se o problema é permissão de
+// upload, de remoção, ou bucket errado -- sem precisar de acesso ao projeto
+// Supabase por fora.
+function DiagnosticoStorage() {
+  const [resultado, setResultado] = useState<Awaited<ReturnType<typeof api.exclusao.diagnosticoStorage>> | null>(null);
+  const [rodando, setRodando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function rodar() {
+    setRodando(true);
+    setErro(null);
+    setResultado(null);
+    try {
+      const r = await api.exclusao.diagnosticoStorage();
+      setResultado(r);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setRodando(false);
+    }
+  }
+
+  return (
+    <SectionCard
+      titulo="Diagnóstico do Storage"
+      descricao='Se apagar aqui não estiver liberando espaço de verdade, roda isso: sobe e tenta apagar um arquivo de teste (nunca toca em fatura real) e mostra exatamente onde falhou.'
+    >
+      <div className="space-y-3">
+        <Botao variante="outline" onClick={rodar} disabled={rodando}>
+          {rodando ? <Loader2 className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
+          Rodar diagnóstico
+        </Botao>
+
+        {erro && <Aviso tone="danger">{erro}</Aviso>}
+
+        {resultado && (
+          <div className="space-y-2 text-xs">
+            <p>
+              <span className="font-medium">Bucket:</span> <span className="font-mono">{resultado.bucket}</span>
+            </p>
+            <p>
+              <span className="font-medium">1. Upload do arquivo de teste:</span>{" "}
+              {resultado.upload.ok ? (
+                <span className="text-success">OK</span>
+              ) : (
+                <span className="text-destructive">falhou -- {resultado.upload.erro}</span>
+              )}
+            </p>
+            {resultado.remocao && (
+              <p>
+                <span className="font-medium">2. Remoção logo em seguida:</span>{" "}
+                {resultado.remocao.ok ? (
+                  <span className="text-success">OK, confirmada</span>
+                ) : (
+                  <span className="text-destructive">
+                    NÃO confirmada{resultado.remocao.erro ? ` -- erro: ${resultado.remocao.erro}` : " (sem erro reportado -- é exatamente o sintoma relatado)"}
+                  </span>
+                )}
+              </p>
+            )}
+            {resultado.confirmacao_via_list && (
+              <p>
+                <span className="font-medium">3. Conferência via listagem da pasta:</span>{" "}
+                {resultado.confirmacao_via_list.erro ? (
+                  <span className="text-destructive">erro ao listar -- {resultado.confirmacao_via_list.erro}</span>
+                ) : resultado.confirmacao_via_list.ainda_existe ? (
+                  <span className="text-destructive">o arquivo AINDA existe no bucket</span>
+                ) : (
+                  <span className="text-success">arquivo realmente sumiu</span>
+                )}
+              </p>
+            )}
+            {resultado.upload.ok && resultado.remocao?.ok && !resultado.confirmacao_via_list?.ainda_existe && (
+              <Aviso tone="info">
+                Upload e remoção funcionam normalmente pro backend. Se PDFs de verdade continuam no bucket depois de
+                usar o painel acima, pode ser o número de uso (Settings → Usage) do Supabase demorando a atualizar --
+                confira navegando direto pela pasta do cliente em Storage.
+              </Aviso>
+            )}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 export function PainelExclusao() {
   const [criterioAberto, setCriterioAberto] = useState<CriterioExclusao | null>(null);
   const [filtroAberto, setFiltroAberto] = useState<FiltroExclusao>({});
@@ -306,6 +395,8 @@ export function PainelExclusao() {
         (quem, quando, qual critério).
       </Aviso>
       {erro && <Aviso tone="danger">{erro}</Aviso>}
+
+      <DiagnosticoStorage />
 
       <SectionCard
         titulo="O que mais está ocupando espaço"

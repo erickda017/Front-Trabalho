@@ -370,6 +370,13 @@ declare module "@/api" {
       resumo: () => Promise<{ itens: ItemResumoExclusao[] }>;
       preview: (criterio: CriterioExclusao, filtro: FiltroExclusao) => Promise<PreviewExclusao>;
       executar: (criterio: CriterioExclusao, filtro: FiltroExclusao, confirmacao: string) => Promise<{ apagados: number }>;
+      diagnosticoStorage: () => Promise<{
+        bucket: string;
+        caminho: string;
+        upload: { ok: boolean; erro?: string };
+        remocao?: { ok: boolean; erro?: string; confirmados?: string[] };
+        confirmacao_via_list?: { ainda_existe?: boolean; erro?: string };
+      }>;
     };
     importacao: {
       enviarLote: (args: { itens: unknown[]; mensagem?: string | undefined; lote?: string | undefined }) => Promise<any>;

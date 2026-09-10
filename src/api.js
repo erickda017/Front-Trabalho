@@ -347,6 +347,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ filtro, confirmacao }),
       }),
+    // [2026-09] Sobe + tenta apagar um arquivo de teste descartável no bucket
+    // de faturas, devolve o resultado cru de cada etapa -- isola se o
+    // problema é upload, remoção, ou bucket/permissão (relatado: painel
+    // dizia "apagado" mas os arquivos continuavam no Storage).
+    diagnosticoStorage: () => request('/supervisor/exclusao/diagnostico-storage'),
   },
   importacao: {
     // [2026-08] Único fluxo suportado: recebe o resultado já processado no

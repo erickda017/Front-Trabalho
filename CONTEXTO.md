@@ -476,6 +476,23 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   linha/conversa mesmo com falha isolada no Storage (é o propósito deles),
   mas agora logam alto quando isso acontece.
 
+- **[2026-09] (continuação do bug acima) Fix anterior não bastou -- Storage
+  falhava SEM devolver erro nenhum.** Depois do fix acima, o usuário ainda
+  relatou que TODOS os PDFs continuavam no bucket após usar o painel.
+  Causa raiz mais funda: `removerDoStorageEmLotes` só considerava falha
+  quando a API do Supabase devolvia `error` preenchido -- só que a API pode
+  devolver `error: null` e mesmo assim não remover nada (não erra pra
+  "arquivo não encontrado" nem pra alguns cenários de permissão, só
+  devolve em `data` a lista do que FOI removido de verdade). Corrigido:
+  agora compara o tamanho de `data` com o do lote pedido -- qualquer
+  diferença, mesmo sem erro, conta como falha (loga um "ATENÇÃO" nos logs
+  do Render). Também adicionado
+  `GET /api/supervisor/exclusao/diagnostico-storage` (botão "Rodar
+  diagnóstico" na própria aba Exclusão) -- sobe + tenta apagar um arquivo
+  de teste descartável (nunca toca em fatura real) e mostra o resultado
+  cru de cada etapa, pra isolar upload vs. remoção vs. bucket errado sem
+  precisar de acesso externo ao Supabase.
+
 - **[2026-09] Converter lista crua descartava cliente inteiro quando cada
   campo vinha em linha separada por linha em branco.** Listas coladas direto
   de PDF/relatório (ex.: nome, linha em branco, número de contrato, linha em
