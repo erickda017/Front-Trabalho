@@ -460,6 +460,22 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-09] Painel de Exclusão podia deixar PDF órfão no Storage sem
+  avisar (relatado: Storage size não caía depois de apagar).** Se a chamada
+  ao Storage pra remover o arquivo falhasse por qualquer motivo (rede,
+  permissão pontual), o código mesmo assim limpava `pdf_path` do cliente no
+  banco logo em seguida -- perdendo a única referência que permitiria achar
+  aquele arquivo de novo. O operador via "sucesso" (N clientes apagados) sem
+  saber que o espaço não foi liberado de verdade. Corrigido em
+  `backend/src/lib/exclusaoCriterios.js`: `removerDoStorageEmLotes` agora
+  devolve quais caminhos falharam, e `apagarPdfsDeClientes` só limpa
+  `pdf_path` de quem teve o arquivo CONFIRMADAMENTE removido -- cliente com
+  falha continua com o ponteiro intacto (reaparece no próximo preview/
+  execução em vez de virar órfão irrastreável). Os outros dois critérios
+  (`clientes_por_tag`, `historico_mensagens`) continuam apagando a
+  linha/conversa mesmo com falha isolada no Storage (é o propósito deles),
+  mas agora logam alto quando isso acontece.
+
 - **[2026-09] Converter lista crua descartava cliente inteiro quando cada
   campo vinha em linha separada por linha em branco.** Listas coladas direto
   de PDF/relatório (ex.: nome, linha em branco, número de contrato, linha em
