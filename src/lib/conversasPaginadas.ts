@@ -4,16 +4,23 @@
 // cabe numa página só (que caía no default do backend, cortando em silêncio
 // quem tivesse mais de 1000 conversas).
 import { api } from "@/api";
-import type { Conversa } from "@/lib/types";
+import type { Campanha, Conversa } from "@/lib/types";
 
 const PER_PAGE = 5000;
 
-export async function listarTodasConversas(): Promise<Conversa[]> {
+/** `campanha` omitida = 'cobranca' (comportamento de sempre). Ver
+ *  CONTEXTO.md ("Ativação Chip") -- a aba de chat de chip chama isto com
+ *  campanha: 'chip_ativacao'. */
+export async function listarTodasConversas(campanha?: Campanha): Promise<Conversa[]> {
   let pagina = 1;
   let coletadas: Conversa[] = [];
 
   while (true) {
-    const { itens, total } = await api.chat.listarConversas({ page: pagina, per_page: PER_PAGE });
+    const { itens, total } = await api.chat.listarConversas({
+      page: pagina,
+      per_page: PER_PAGE,
+      ...(campanha ? { campanha } : {}),
+    });
     coletadas = coletadas.concat(itens);
     if (coletadas.length >= total || itens.length === 0) break;
     pagina += 1;

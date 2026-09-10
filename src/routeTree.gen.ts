@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AtivacaoChipRouteImport } from './routes/ativacao-chip'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as ConexoesRouteImport } from './routes/conexoes'
@@ -23,10 +24,16 @@ import { Route as QualidadeRouteImport } from './routes/qualidade'
 import { Route as SafrasRouteImport } from './routes/safras'
 import { Route as SupervisorRouteImport } from './routes/supervisor'
 import { Route as TagsRouteImport } from './routes/tags'
+import { Route as AtivacaoChipChatRouteImport } from './routes/ativacao-chip.chat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtivacaoChipRoute = AtivacaoChipRouteImport.update({
+  id: '/ativacao-chip',
+  path: '/ativacao-chip',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -94,9 +101,15 @@ const TagsRoute = TagsRouteImport.update({
   path: '/tags',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtivacaoChipChatRoute = AtivacaoChipChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => AtivacaoChipRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ativacao-chip': typeof AtivacaoChipRouteWithChildren
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
   '/conexoes': typeof ConexoesRoute
@@ -110,9 +123,11 @@ export interface FileRoutesByFullPath {
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
+  '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ativacao-chip': typeof AtivacaoChipRouteWithChildren
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
   '/conexoes': typeof ConexoesRoute
@@ -126,10 +141,12 @@ export interface FileRoutesByTo {
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
+  '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ativacao-chip': typeof AtivacaoChipRouteWithChildren
   '/chat': typeof ChatRoute
   '/clientes': typeof ClientesRoute
   '/conexoes': typeof ConexoesRoute
@@ -143,11 +160,13 @@ export interface FileRoutesById {
   '/safras': typeof SafrasRoute
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
+  '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ativacao-chip'
     | '/chat'
     | '/clientes'
     | '/conexoes'
@@ -161,9 +180,11 @@ export interface FileRouteTypes {
     | '/safras'
     | '/supervisor'
     | '/tags'
+    | '/ativacao-chip/chat'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ativacao-chip'
     | '/chat'
     | '/clientes'
     | '/conexoes'
@@ -177,9 +198,11 @@ export interface FileRouteTypes {
     | '/safras'
     | '/supervisor'
     | '/tags'
+    | '/ativacao-chip/chat'
   id:
     | '__root__'
     | '/'
+    | '/ativacao-chip'
     | '/chat'
     | '/clientes'
     | '/conexoes'
@@ -193,10 +216,12 @@ export interface FileRouteTypes {
     | '/safras'
     | '/supervisor'
     | '/tags'
+    | '/ativacao-chip/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AtivacaoChipRoute: typeof AtivacaoChipRouteWithChildren
   ChatRoute: typeof ChatRoute
   ClientesRoute: typeof ClientesRoute
   ConexoesRoute: typeof ConexoesRoute
@@ -219,6 +244,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ativacao-chip': {
+      id: '/ativacao-chip'
+      path: '/ativacao-chip'
+      fullPath: '/ativacao-chip'
+      preLoaderRoute: typeof AtivacaoChipRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -312,11 +344,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TagsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ativacao-chip/chat': {
+      id: '/ativacao-chip/chat'
+      path: '/chat'
+      fullPath: '/ativacao-chip/chat'
+      preLoaderRoute: typeof AtivacaoChipChatRouteImport
+      parentRoute: typeof AtivacaoChipRoute
+    }
   }
 }
 
+interface AtivacaoChipRouteChildren {
+  AtivacaoChipChatRoute: typeof AtivacaoChipChatRoute
+}
+
+const AtivacaoChipRouteChildren: AtivacaoChipRouteChildren = {
+  AtivacaoChipChatRoute: AtivacaoChipChatRoute,
+}
+
+const AtivacaoChipRouteWithChildren = AtivacaoChipRoute._addFileChildren(
+  AtivacaoChipRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AtivacaoChipRoute: AtivacaoChipRouteWithChildren,
   ChatRoute: ChatRoute,
   ClientesRoute: ClientesRoute,
   ConexoesRoute: ConexoesRoute,

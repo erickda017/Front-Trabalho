@@ -96,6 +96,48 @@ export type Cliente = {
   safra?: string | null;
   status_operador?: StatusOperador | null;
   status_operador_atualizado_em?: string | null;
+  /** [2026-09] ATIVAÇÃO CHIP: qual campanha este cliente pertence -- ausente
+   *  em respostas antigas antes da migration equivale a "cobranca" (default
+   *  do banco). Ver backend/migration-25-ativacao-chip.sql. */
+  campanha?: Campanha;
+  /** Campos abaixo só fazem sentido pra campanha 'chip_ativacao' -- vêm
+   *  null/ausentes pra clientes de cobrança. */
+  operadora?: string | null;
+  os_numero?: string | null;
+  cpf?: string | null;
+  cidade?: string | null;
+  bko_responsavel?: string | null;
+  vendedor?: string | null;
+  telefone_2?: string | null;
+  telefone_3?: string | null;
+};
+
+/** As duas campanhas que rodam em paralelo no sistema (ver CONTEXTO.md,
+ *  "Ativação Chip"). 'cobranca' é a original (fatura); default em toda
+ *  rota/tela que não especifica campanha. */
+export type Campanha = "cobranca" | "chip_ativacao";
+
+/** [2026-09] Desfecho de tratativa da campanha de Ativação Chip -- mesmo
+ *  mecanismo de StatusOperador (tabela tratativas + clientes.status_operador),
+ *  vocabulário próprio. Ver backend/src/lib/statusChip.js. */
+export type StatusChip =
+  | "pendente"
+  | "tentativa_contato"
+  | "contato_estabelecido"
+  | "chip_ativado"
+  | "recusado"
+  | "numero_invalido";
+
+export const STATUS_CHIP_BLOQUEIA_DISPARO = new Set<StatusChip>([
+  "chip_ativado",
+  "recusado",
+  "numero_invalido",
+]);
+
+export type StatusChipInfo = {
+  valor: StatusChip;
+  rotulo: string;
+  bloqueia_disparo: boolean;
 };
 
 /** FPD = primeira fatura, SPD = segunda fatura -- ver CONTEXTO.md ("Safras"). */
@@ -353,6 +395,9 @@ export type Conversa = {
   ultima_mensagem: string | null;
   ultima_mensagem_em: string | null;
   clientes: { nome: string; pdf_url: string | null; pix_code: string | null; tags: Tag[] } | null;
+  /** [2026-09] ATIVAÇÃO CHIP -- ver Campanha. Ausente em respostas antigas
+   *  equivale a "cobranca". */
+  campanha?: Campanha;
 };
 
 export type Mensagem = {

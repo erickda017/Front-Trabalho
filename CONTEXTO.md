@@ -350,6 +350,68 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   seguindo o mesmo padrão de `nome`/`telefone`, mas não implementei isso agora pra
   não arriscar regressão num fluxo já usado em produção sem necessidade.
 
+### Ativação Chip (campanha nova, em paralelo à de cobrança) — 2026-09
+
+- **O que é**: o sistema foi criado originalmente pra uma campanha de
+  cobrança (disparo de fatura). Passou a rodar, EM PARALELO, uma segunda
+  campanha -- ativação de chip da operadora -- com clientes, planilha,
+  disparo e chat **separados** da carteira de cobrança que continua ativa. O
+  mesmo telefone pode existir nas duas campanhas como cadastros distintos.
+- **Arquitetura escolhida** (ver `docs/superpowers/specs/2026-09-10-ativacao-chip-design.md`
+  no repo do backend): reaproveitar `clientes`/`envios`/`conversas` com uma
+  coluna `campanha` (`'cobranca'` | `'chip_ativacao'`, default `'cobranca'`),
+  em vez de tabelas paralelas dedicadas -- decisão consciente de menor
+  mudança possível agora; uma migração mais robusta pode vir no futuro se o
+  volume justificar. Ver `Backend-Trabalho/migration-25-ativacao-chip.sql`.
+- **Banco**: `clientes` ganhou `campanha` + campos exclusivos de chip
+  (`operadora`, `os_numero`, `cpf`, `cidade`, `bko_responsavel`, `vendedor`,
+  `telefone_2`, `telefone_3` -- planilha de chip traz até 3 telefones por
+  cliente). `conversas` ganhou `campanha`; o índice único de telefone (tanto
+  em `clientes` quanto em `conversas`) passou a incluir `campanha` -- **todo
+  upsert de `clientes` no código usa `onConflict: 'usuario_id,telefone,campanha'`**,
+  nunca mais só `'usuario_id,telefone'`. `envios` ganhou `campanha`.
+  `envio_itens` ganhou `telefone_usado` (qual dos 3 telefones respondeu de
+  verdade no WhatsApp).
+- **Disparo**: cliente de chip não tem PDF/Pix (conceitos que não existem
+  nessa campanha) -- elegibilidade é sempre "livre". O disparo tenta
+  `telefone` → `telefone_2` → `telefone_3` em sequência até achar um que
+  exista no WhatsApp (ver `dispatchQueue.js`, `enviarItem`).
+- **Chat**: como o mesmo telefone pode existir nas duas campanhas, uma
+  mensagem de ENTRADA que não sabe de qual campanha é (WhatsApp não manda
+  esse dado) cai na conversa com atividade mais recente entre as duas; sem
+  nenhuma conversa ainda, a campanha nasce a partir do cadastro em `clientes`
+  (só numa campanha = usa essa; nas duas ou nenhuma = `'cobranca'`, default
+  seguro). Mensagem de SAÍDA (disparo ou resposta manual) sempre sabe a
+  campanha de contexto, nunca ambígua. Ver `chatIngest.js`.
+- **Status/tratativa de chip**: reaproveita a mesma tabela `tratativas` e
+  coluna `clientes.status_operador` que a campanha de cobrança já usa (ver
+  "Qualidade" abaixo), com vocabulário próprio em `src/lib/statusChip.js`
+  (pendente / tentativa de contato / contato estabelecido / chip ativado /
+  recusado / número inválido).
+- **Rota nova**: `POST /api/ativacao-chip/importar` (planilha própria:
+  OPERADORA, OS, CLIENTE, CPF, cidade, BKO, VENDEDOR, TEL 1/2/3, parse
+  server-side via `services/importLoteChip.js` -- sem PDF/OCR envolvido,
+  diferente do fluxo de fatura). `GET /api/ativacao-chip/status`,
+  `POST/GET /api/ativacao-chip/clientes/:id/status` e `.../historico` pro
+  status/tratativa. CRUD de clientes de chip reaproveita as rotas normais de
+  `/api/clientes` (aceitam `?campanha=chip_ativacao`).
+- **Frontend**: item de menu novo "Ativação Chip" (grupo próprio na
+  sidebar) com duas telas: `/ativacao-chip` (listagem/gerenciamento +
+  importar planilha + status, com seleção de linhas e um disparo simplificado
+  de texto direto da tabela) e `/ativacao-chip/chat` (chat separado, mesma
+  UI do `/chat` normal só sem "Enviar fatura" -- não existe PDF/Pix pra
+  chip). A tela de **Disparos completa não foi estendida** pra chip nesta
+  primeira leva: a seleção de clientes de lá é acoplada ao estado global
+  `useAppState` (usado em várias telas) -- misturar campanhas ali seria um
+  risco maior que o "por enquanto" pedido, então o disparo de chip vive como
+  uma ação simples e isolada dentro da própria tela de Ativação Chip.
+- **[CRÍTICO] Realtime do Chat**: como `conversas` agora carrega as duas
+  campanhas, a subscription do Supabase Realtime em `routes/chat.tsx`
+  (lista ao vivo de conversas) precisou ganhar um filtro
+  `campanha=eq.cobranca` -- sem isso, uma conversa de chip vazaria pra
+  dentro da lista de chat de cobrança em tempo real. `ativacao-chip.chat.tsx`
+  tem o filtro espelhado (`campanha=eq.chip_ativacao`).
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).

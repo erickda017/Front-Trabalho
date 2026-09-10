@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Cpu,
   Gauge,
   History,
   KeyRound,
@@ -60,6 +61,11 @@ const nav = [
   // (ver middleware/supervisor.js), então esconder o link é só UX, não é a
   // barreira de segurança de verdade.
   { to: "/supervisor", label: "Supervisor", icon: ShieldCheck, grupo: "Gestão", supervisorOnly: true },
+  // [2026-09] Campanha nova, separada da de cobrança (ver CONTEXTO.md,
+  // "Ativação Chip") -- grupo próprio no menu pra deixar claro que é uma
+  // carteira/fluxo à parte, não uma sub-tela de Clientes/Chat.
+  { to: "/ativacao-chip", label: "Clientes", icon: Cpu, grupo: "Ativação Chip" },
+  { to: "/ativacao-chip/chat", label: "Chat", icon: MessageSquare, grupo: "Ativação Chip" },
   { to: "/conexoes", label: "Conexão", icon: Smartphone, grupo: "Sistema" },
   // [2026-08] Unificada com o perfil do operador (ex-"Configurações" --
   // sobrava só um card de debug de ambiente e uma conexão duplicada, ver
@@ -67,7 +73,7 @@ const nav = [
   { to: "/perfil", label: "Perfil", icon: Settings, grupo: "Sistema" },
 ] as const;
 
-const grupos = ["Operação", "Gestão", "Sistema"] as const;
+const grupos = ["Operação", "Gestão", "Ativação Chip", "Sistema"] as const;
 
 export const statusConexao: Record<string, { label: string; tone: Tone }> = {
   connected: { label: "Conectado", tone: "success" },

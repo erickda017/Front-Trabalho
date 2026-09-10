@@ -499,7 +499,7 @@ function Chat() {
   // Carga inicial das conversas
   useEffect(() => {
     let cancelado = false;
-    listarTodasConversas()
+    listarTodasConversas("cobranca")
       .then((data: Conversa[]) => {
         if (cancelado) return;
         setConversas(data);
@@ -530,7 +530,7 @@ function Chat() {
   // devolve a conversa atualizada) -- recarrega a lista pra refletir no card
   // e no cabeçalho.
   function recarregarConversas() {
-    listarTodasConversas().then((data: Conversa[]) => setConversas(data)).catch(() => {});
+    listarTodasConversas("cobranca").then((data: Conversa[]) => setConversas(data)).catch(() => {});
   }
 
   // Histórico da conversa ativa (busca só na primeira vez que ela é aberta)
@@ -568,17 +568,26 @@ function Chat() {
           };
         });
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversas" }, (payload) => {
-        if (payload.eventType === "DELETE") return;
-        const c = payload.new as Conversa;
-        setConversas((prev) => {
-          const ja = prev.some((x) => x.id === c.id);
-          const proximas = ja ? prev.map((x) => (x.id === c.id ? { ...x, ...c } : x)) : [...prev, c];
-          return proximas.sort((a, b) =>
-            (b.ultima_mensagem_em || "").localeCompare(a.ultima_mensagem_em || ""),
-          );
-        });
-      })
+      // [2026-09] ATIVAÇÃO CHIP: `conversas` agora tem campanha de chip
+      // também (ver migration-25-ativacao-chip.sql) -- sem este filtro, uma
+      // conversa de chip vazaria pra dentro da lista de chat de cobrança via
+      // realtime (ver src/routes/ativacao-chip.chat.tsx pro filtro espelhado
+      // do lado de chip).
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversas", filter: "campanha=eq.cobranca" },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const c = payload.new as Conversa;
+          setConversas((prev) => {
+            const ja = prev.some((x) => x.id === c.id);
+            const proximas = ja ? prev.map((x) => (x.id === c.id ? { ...x, ...c } : x)) : [...prev, c];
+            return proximas.sort((a, b) =>
+              (b.ultima_mensagem_em || "").localeCompare(a.ultima_mensagem_em || ""),
+            );
+          });
+        },
+      )
       .subscribe();
 
     return () => {

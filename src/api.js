@@ -403,6 +403,24 @@ export const api = {
     atribuir: (tagId, clienteId) => request(`/tags/${tagId}/clientes/${clienteId}`, { method: 'POST' }),
     remover_do_cliente: (tagId, clienteId) => request(`/tags/${tagId}/clientes/${clienteId}`, { method: 'DELETE' }),
   },
+  // [2026-09] ATIVAÇÃO CHIP: campanha separada da de cobrança (ver
+  // backend/CONTEXTO.md e backend/src/routes/ativacaoChip.routes.js). Os
+  // clientes de chip são as MESMAS tabelas/rotas de sempre (api.clientes,
+  // api.envios, api.chat), só passando `campanha: 'chip_ativacao'` --
+  // reaproveita todo o CRUD/disparo/chat já existente. Este namespace cobre
+  // só o que é exclusivo de chip: importar a planilha própria e o
+  // status/tratativa dessa campanha.
+  ativacaoChip: {
+    importar: (file) => {
+      const formData = new FormData();
+      formData.append('planilha', file);
+      return request('/ativacao-chip/importar', { method: 'POST', body: formData });
+    },
+    status: () => request('/ativacao-chip/status'),
+    registrarStatus: (clienteId, payload) =>
+      request(`/ativacao-chip/clientes/${clienteId}/status`, { method: 'POST', body: JSON.stringify(payload) }),
+    historico: (clienteId) => request(`/ativacao-chip/clientes/${clienteId}/historico`),
+  },
   respostasRapidas: {
     listar: () => request('/respostas-rapidas'),
     criar: (payload) => request('/respostas-rapidas', { method: 'POST', body: JSON.stringify(payload) }),

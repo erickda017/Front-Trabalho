@@ -1,5 +1,6 @@
 declare module "@/api" {
   import type {
+    Campanha,
     Cliente,
     ConfigDisparo,
     Conversa,
@@ -12,6 +13,8 @@ declare module "@/api" {
     PixExtracaoStatus,
     ResumoQualidade,
     SafraResumo,
+    StatusChip,
+    StatusChipInfo,
     StatusOperador,
     StatusOperadorInfo,
     Tag,
@@ -197,11 +200,19 @@ declare module "@/api" {
         recebeu_disparo?: boolean | undefined;
         safra?: string | undefined;
         tipo_fatura?: TipoFatura | undefined;
+        /** [2026-09] ATIVAÇÃO CHIP -- default 'cobranca' quando omitido. */
+        campanha?: Campanha | undefined;
         page?: number | undefined;
         per_page?: number | undefined;
       } | undefined) => Promise<{ itens: Cliente[]; total: number }>;
       buscar: (id: string) => Promise<Cliente>;
-      criar: (payload: { nome: string; telefone: string; valor?: string | undefined; vencimento?: string | undefined } | undefined) => Promise<Cliente>;
+      criar: (payload: {
+        nome: string;
+        telefone: string;
+        valor?: string | undefined;
+        vencimento?: string | undefined;
+        campanha?: Campanha | undefined;
+      } | undefined) => Promise<Cliente>;
       atualizar: (id: string, payload: Record<string, unknown>) => Promise<Cliente>;
       remover: (id: string) => Promise<{ ok: boolean }>;
       // Vincula outro cliente (outro número) como o MESMO cliente -- PDF/pix/
@@ -354,7 +365,7 @@ declare module "@/api" {
       baixarModelo: () => Promise<void>;
     };
     chat: {
-      listarConversas: (params?: { page?: number; per_page?: number }) => Promise<{ itens: Conversa[]; total: number }>;
+      listarConversas: (params?: { page?: number; per_page?: number; campanha?: Campanha }) => Promise<{ itens: Conversa[]; total: number }>;
       listarMensagens: (conversaId: string) => Promise<Mensagem[]>;
       marcarLida: (conversaId: string) => Promise<Conversa>;
       apagar: (conversaId: string) => Promise<{ ok: boolean }>;
@@ -385,6 +396,23 @@ declare module "@/api" {
       atribuir: (tagId: string, clienteId: string) => Promise<{ ok: boolean }>;
       remover_do_cliente: (tagId: string, clienteId: string) => Promise<{ ok: boolean }>;
     };
+    // [2026-09] ATIVAÇÃO CHIP -- ver src/api.js pro porquê deste namespace ser
+    // enxuto (CRUD/disparo/chat de clientes de chip reaproveitam
+    // api.clientes/api.envios/api.chat com campanha: 'chip_ativacao').
+    ativacaoChip: {
+      importar: (file: File) => Promise<{
+        criados: number;
+        clienteIds: string[];
+        erros: { erro: string; [chave: string]: unknown }[];
+        total: number;
+      }>;
+      status: () => Promise<StatusChipInfo[]>;
+      registrarStatus: (
+        clienteId: string,
+        payload: { status: StatusChip; observacao?: string | undefined },
+      ) => Promise<Tratativa>;
+      historico: (clienteId: string) => Promise<Tratativa[]>;
+    };
     respostasRapidas: {
       listar: () => Promise<{ id: string; atalho: string; texto: string }[]>;
       criar: (payload: { atalho: string; texto: string }) => Promise<{ id: string; atalho: string; texto: string }>;
@@ -411,6 +439,9 @@ declare module "@/api" {
          *  cliente que por acaso tiver um, igual ao modo padrão). Ignorado
          *  se `enviar_pix` também vier true. */
         livre?: boolean | undefined;
+        /** [2026-09] ATIVAÇÃO CHIP -- default 'cobranca' quando omitido.
+         *  Lote de chip nunca exige PDF/Pix (não existem nessa campanha). */
+        campanha?: Campanha | undefined;
       }) => Promise<Envio & { ignorados_sem_pdf: number; ignorados_por_tag: number }>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       pausar: (id: string) => Promise<{ ok: boolean; status: string }>;
@@ -424,6 +455,7 @@ declare module "@/api" {
         ate?: string | undefined;
         status?: EnvioStatus | "todos" | undefined;
         busca?: string | undefined;
+        campanha?: Campanha | undefined;
       } | undefined) => Promise<EnvioResumo[]>;
       itens: (id: string, params?: { filtro?: string | undefined; busca?: string | undefined } | undefined) => Promise<EnvioItem[]>;
       progresso: (id: string) => Promise<EnvioProgresso>;
