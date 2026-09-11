@@ -4,12 +4,14 @@ import {
   ClipboardList,
   Cpu,
   History,
+  ImagePlus,
   Loader2,
   Send,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -36,7 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api } from "@/api";
+import { api, buscarBlobUrlProtegida } from "@/api";
 import { paraBr } from "@/lib/dataBr";
 import type { Cliente, StatusChip } from "@/lib/types";
 
@@ -294,6 +296,40 @@ function RegistrarStatusDialog({
   );
 }
 
+// [2026-09] Miniatura da foto recém-anexada ao lote -- `url` é um path do
+// proxy de arquivos (bucket privado chat-midia, ver
+// backend/migration-26-disparo-foto.sql), não uma URL pública: precisa de
+// fetch autenticado + Blob antes de virar `src` de `<img>` (mesmo padrão de
+// MidiaProtegida em routes/chat.tsx, versão local aqui pra não acoplar as
+// duas telas).
+function PreviaFoto({ url }: { url: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    let urlCriada: string | null = null;
+    buscarBlobUrlProtegida(url)
+      .then((u) => {
+        if (cancelado) {
+          if (u) URL.revokeObjectURL(u);
+          return;
+        }
+        urlCriada = u;
+        setBlobUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+      if (urlCriada) URL.revokeObjectURL(urlCriada);
+    };
+  }, [url]);
+
+  if (!blobUrl) return <div className="bg-foreground/10 size-12 shrink-0 animate-pulse rounded-md" />;
+  return <img src={blobUrl} alt="Foto do disparo" className="size-12 shrink-0 rounded-md object-cover" />;
+}
+
+type FotoLote = { path: string; mimetype: string; nome: string; url: string };
+
 // [2026-09] Disparo simplificado, direto desta tela -- diferente da tela de
 // Disparos normal (que tem variações de mensagem, janela de tempo,
 // agendamento etc.), essa aqui manda 1 texto pra quem foi marcado na tabela e
@@ -303,6 +339,14 @@ function RegistrarStatusDialog({
 // mexer em estado usado em várias telas, risco maior do que o "por enquanto"
 // pedido. Server-side já filtra elegibilidade certa pra campanha de chip
 // (nunca exige PDF/Pix, ver backend/src/routes/envios.routes.js).
+//
+// [2026-09] FOTO ANEXADA: pedido explícito pra ficar AQUI (Ativação Chip) e
+// não na tela de Disparos normal (Safra/cobrança) -- cliente de chip nunca
+// tem fatura em PDF cadastrada, então uma imagem (print de instrução,
+// propaganda etc) junto do texto é o equivalente do PDF pra essa campanha.
+// Upload acontece na hora (antes do lote existir de verdade, ver
+// POST /envios/anexo-foto) -- o path só é gravado no envio quando
+// `api.envios.criar()` roda de fato, logo abaixo.
 function DispararDialog({
   aberto,
   quantidade,
@@ -317,8 +361,27 @@ function DispararDialog({
   onDisparado: () => void;
 }) {
   const [mensagem, setMensagem] = useState("");
+  const [foto, setFoto] = useState<FotoLote | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const inputFotoRef = useRef<HTMLInputElement>(null);
+
+  async function selecionarFoto(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois de remover
+    if (!arquivo) return;
+    setEnviandoFoto(true);
+    setErro(null);
+    try {
+      const r = await api.envios.enviarFoto(arquivo);
+      setFoto({ path: r.foto_path, mimetype: r.foto_mimetype, nome: r.foto_nome, url: r.foto_url });
+    } catch (e2) {
+      setErro((e2 as Error).message);
+    } finally {
+      setEnviandoFoto(false);
+    }
+  }
 
   async function disparar() {
     if (!mensagem.trim() || !clienteIds.length) return;
@@ -330,10 +393,12 @@ function DispararDialog({
         mensagem: mensagem.trim(),
         campanha: "chip_ativacao",
         livre: true,
+        ...(foto ? { foto_path: foto.path, foto_mimetype: foto.mimetype, foto_nome: foto.nome } : {}),
       });
       await api.envios.disparar(envio.id);
       toast.success(`Disparo iniciado para ${clienteIds.length} cliente(s).`);
       setMensagem("");
+      setFoto(null);
       onDisparado();
       onOpenChange(false);
     } catch (e) {
@@ -371,6 +436,34 @@ function DispararDialog({
             rows={4}
             className="bg-surface text-foreground border-border focus-ring w-full rounded-md border px-3 py-2 text-sm"
           />
+        </div>
+
+        <div>
+          <Rotulo>Foto (opcional)</Rotulo>
+          <input ref={inputFotoRef} type="file" accept="image/*" onChange={selecionarFoto} className="hidden" />
+          {foto ? (
+            <div className="border-border flex items-center gap-3 rounded-md border px-3 py-2">
+              <PreviaFoto url={foto.url} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{foto.nome}</p>
+                <p className="text-subtle text-xs">Anexada em todas as mensagens deste disparo.</p>
+              </div>
+              <Botao variante="ghost" tamanho="sm" onClick={() => setFoto(null)}>
+                <X className="size-3.5" />
+                Remover
+              </Botao>
+            </div>
+          ) : (
+            <Botao
+              variante="outline"
+              tamanho="sm"
+              onClick={() => inputFotoRef.current?.click()}
+              disabled={enviandoFoto}
+            >
+              {enviandoFoto ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
+              Escolher foto
+            </Botao>
+          )}
         </div>
 
         <DialogFooter>
