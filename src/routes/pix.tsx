@@ -629,6 +629,22 @@ function Pix() {
                       resumoEnvio.total > 0 &&
                       " — concluído."}
                   </p>
+                  {!enviando &&
+                    resumoEnvio.processados === resumoEnvio.total &&
+                    resumoEnvio.falha > 0 && (
+                      // [2026-09] Nem toda falha é um bug pra investigar: alguns
+                      // boletos vêm com a página inteira rasterizada numa imagem
+                      // de baixa resolução (confirmado com um da Claro) -- o QR
+                      // do Pix nesses casos fica pequeno/borrado demais pra
+                      // qualquer scanner ler, em qualquer resolução de render.
+                      // Colar manualmente na ficha do cliente é o caminho.
+                      <Aviso tone="info">
+                        Quem falhou pode ter a chave PIX colada manualmente na ficha do
+                        cliente (aba Clientes) -- alguns boletos vêm como imagem de baixa
+                        resolução e o QR fica ilegível pra qualquer scanner, não é
+                        necessariamente um problema no PDF em si.
+                      </Aviso>
+                    )}
                 </div>
               )}
 

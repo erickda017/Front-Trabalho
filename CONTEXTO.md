@@ -460,6 +460,33 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-09] Extração de PIX falhava (sem erro nenhum) em boletos cuja
+  página é uma imagem rasterizada de baixa resolução -- não tem fix de
+  scanner que resolva, só entrada manual.** Reportado: um boleto real
+  (Claro/NET) tinha o Pix visível a olho nu mas a extração automática
+  nunca achava. Investigado renderizando a página em várias resoluções/
+  regiões e testando o algoritmo real (`pixExtractor.ts`, incluindo a
+  varredura em blocos) contra o PDF -- a causa raiz NÃO é bug no código de
+  scan: `pagina.getOperatorList()` mostrou que a página 2 desse PDF é UMA
+  ÚNICA imagem embutida (`paintImageXObject`, ~1190x1682px cobrindo a
+  página inteira -- a fatura inteira é uma "foto", sem texto/vetor real),
+  e dentro dela o QR do Pix ocupa uns ~150x150px nativos -- menos de 3px
+  por módulo pra um QR denso (payload Pix tem 140+ caracteres). Testado
+  exaustivamente: renderizar em resolução mais alta (até 9000px de alvo),
+  desligar suavização (`imageSmoothingEnabled=false`) e até binarização
+  Otsu manual antes do jsQR -- nada recupera, porque a informação já não
+  existe nos pixels de origem (é upscale do mesmo raster de baixa
+  resolução, não tem detalhe novo pra "descobrir"). Improvável ser bug
+  isolado desse boleto -- é decisão do gerador de fatura desse operador
+  (rasterizar a página inteira), deve se repetir em outras faturas do
+  mesmo template. Não dá pra "corrigir" a extração automática nesse caso
+  (o dado realmente não é recuperável do PDF), então em vez disso:
+  adicionado um jeito de colar a chave PIX manualmente na ficha do cliente
+  (`ChavePix` em `src/routes/clientes.tsx`, reusa o `PATCH /clientes/:id/pix`
+  que já existia pra "rodar verificação" -- não precisou de rota nova) e um
+  aviso explicando o motivo quando um lote de extração termina com falhas
+  (`src/routes/pix.tsx`), pra não parecer bug toda vez que isso se repetir.
+
 - **[2026-09] "Chat" da Ativação Chip abria e mostrava a lista de clientes
   em vez do chat dedicado.** Causa raiz: `src/routes/ativacao-chip.tsx` e
   `src/routes/ativacao-chip.chat.tsx` compartilham o prefixo

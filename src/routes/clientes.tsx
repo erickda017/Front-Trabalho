@@ -437,6 +437,118 @@ function VincularNumero({ cliente, onMudou }: { cliente: Cliente; onMudou: () =>
   );
 }
 
+// [2026-09] Chave PIX editável manualmente. Antes só existia leitura +
+// extração automática (QR do PDF, ver pixExtractor.ts) -- sem forma de
+// colar o código na mão quando a extração falha. Isso acontece de verdade
+// e não é um bug do scanner: alguns boletos (confirmado com um da Claro)
+// vêm com a página INTEIRA como uma única imagem rasterizada de baixa
+// resolução (a fatura toda é uma foto/print, não texto+vetores) -- o QR do
+// Pix nessa imagem pode ficar com poucos pixels por módulo (testado: ~2,7px/
+// módulo neste caso), o que nenhuma técnica de re-render em resolução mais
+// alta, nitidez ou binarização recupera (a informação já não existe nos
+// pixels de origem, ver CONTEXTO.md). Reusa `PATCH /clientes/:id/pix` (mesmo
+// endpoint que "rodar verificação" já usa) -- não precisou de rota nova.
+// Mantém estado próprio (como VincularNumero acima) em vez de depender do
+// prop `cliente` ser re-buscado após salvar.
+function ChavePix({ cliente, onMudou }: { cliente: Cliente; onMudou: () => void }) {
+  const [pixAtual, setPixAtual] = useState(cliente.pix_code);
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(cliente.pix_code ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPixAtual(cliente.pix_code);
+    setValor(cliente.pix_code ?? "");
+    setEditando(false);
+    setErro(null);
+  }, [cliente.id, cliente.pix_code]);
+
+  async function salvar() {
+    const codigo = valor.trim();
+    if (!codigo) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await api.clientes.atualizarPix(cliente.id, codigo);
+      setPixAtual(codigo);
+      setEditando(false);
+      toast.success("Chave PIX salva.");
+      onMudou();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (editando) {
+    return (
+      <div>
+        <p className="label-eyebrow mb-1">Chave PIX</p>
+        <textarea
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="Cole aqui o Pix copia-e-cola (ex.: escaneie o QR com o app do banco e copie o código, ou peça pro cliente encaminhar)"
+          rows={3}
+          autoFocus
+          className="bg-surface text-foreground border-border focus-ring w-full rounded-md border px-3 py-2 font-mono text-xs"
+        />
+        {erro && <p className="text-destructive mt-1 text-xs">{erro}</p>}
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Botao variante="primary" tamanho="sm" onClick={salvar} disabled={!valor.trim() || salvando}>
+            {salvando ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+            Salvar
+          </Botao>
+          <Botao
+            variante="outline"
+            tamanho="sm"
+            onClick={() => {
+              setEditando(false);
+              setValor(pixAtual ?? "");
+              setErro(null);
+            }}
+            disabled={salvando}
+          >
+            Cancelar
+          </Botao>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="label-eyebrow mb-1">Chave PIX</p>
+      {pixAtual ? (
+        <div className="bg-surface-sunken border-border flex items-center gap-2 rounded-md border px-3 py-2">
+          <KeyRound className="text-muted-foreground size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate font-mono text-xs">{pixAtual}</span>
+          <BotaoCopiar texto={pixAtual} />
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            aria-label="Editar chave PIX"
+            title="Editar chave PIX"
+            className="text-subtle hover:text-foreground focus-ring shrink-0 rounded"
+          >
+            <Pencil className="size-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditando(true)}
+          className="text-primary-strong inline-flex items-center gap-1.5 text-xs hover:underline"
+        >
+          <Pencil className="size-3.5" />
+          Colar chave PIX manualmente
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FichaCliente({
   cliente,
   onClose,
@@ -466,18 +578,7 @@ function FichaCliente({
               <Campo1 label="Valor" valor={formatarValor(cliente.valor)} />
               <Campo1 label="Prazo" valor={formatarData(cliente.data_prazo ?? null)} />
               <Campo1 label="Vencimento" valor={formatarData(cliente.vencimento)} />
-              <div>
-                <p className="label-eyebrow mb-1">Chave PIX</p>
-                {cliente.pix_code ? (
-                  <div className="bg-surface-sunken border-border flex items-center gap-2 rounded-md border px-3 py-2">
-                    <KeyRound className="text-muted-foreground size-3.5 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{cliente.pix_code}</span>
-                    <BotaoCopiar texto={cliente.pix_code} />
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">—</p>
-                )}
-              </div>
+              <ChavePix cliente={cliente} onMudou={onMudou} />
               <div>
                 <p className="label-eyebrow mb-1">Tags</p>
                 {cliente.tags.length > 0 ? (
