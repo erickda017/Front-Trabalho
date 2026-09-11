@@ -251,6 +251,12 @@ declare module "@/api" {
         ambiguos: { nome_colado: string; candidatos: number }[];
         sugestoes_spd: SugestaoSpd[];
       }>;
+      identificarLista: (texto: string) => Promise<{
+        total_colados: number;
+        encontrados: { nome_colado: string; cliente_id: string; cliente_nome: string; cliente_telefone: string | null }[];
+        nao_encontrados: string[];
+        ambiguos: { nome_colado: string; candidatos: number }[];
+      }>;
       promoverSpd: (id: string, dataPrazo?: string | undefined) => Promise<Cliente>;
       verificarVencimentos: (apenasPendentes?: boolean) => Promise<StatusVerificacaoVencimentos>;
       statusVerificarVencimentos: () => Promise<StatusVerificacaoVencimentos>;

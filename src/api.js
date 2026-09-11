@@ -294,6 +294,11 @@ export const api = {
     // todos com a tag "Pago" (criada automaticamente, já como "não
     // dispara" -- ver backend/src/routes/clientes.routes.js).
     importarPagos: (texto) => request('/clientes/importar-pagos', { method: 'POST', body: JSON.stringify({ texto }) }),
+    // [2026-09] Mesma lista crua colada de sempre, só que pra IDENTIFICAR
+    // quem já está cadastrado (sem aplicar tag nem cancelar nada) -- usado
+    // pra montar um grupo de disparo a partir de uma lista (ver
+    // routes/disparos.tsx, ColarListaDialog).
+    identificarLista: (texto) => request('/clientes/identificar-lista', { method: 'POST', body: JSON.stringify({ texto }) }),
     // Confirma a promoção FPD -> SPD sugerida (ver sugestoes_spd acima) --
     // `dataPrazo` opcional sobrescreve a data sugerida (formato YYYY-MM-DD).
     promoverSpd: (id, dataPrazo) => request(`/clientes/${id}/promover-spd`, { method: 'POST', body: JSON.stringify({ data_prazo: dataPrazo || undefined }) }),

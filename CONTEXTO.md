@@ -456,6 +456,38 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   na lista, os dois levando ao mesmo fluxo de preview → digitar "APAGAR" →
   confirmar.
 
+### Selecionar destinatários de disparo por lista colada — 2026-09
+
+- **O que é**: na aba Disparo (Etapa 1, Destinatários), botão "Colar lista"
+  além do fluxo normal de selecionar clientes na tela Clientes. Pedido
+  explícito: usar a MESMA lista crua já usada em "Converter lista crua"
+  (Importar) e "Importar clientes pagos" (Clientes), mas aqui pra identificar
+  quem já está cadastrado e montar o lote de disparo direto, sem precisar
+  caçar cliente por cliente.
+- **Backend**: `POST /api/clientes/identificar-lista` (`clientes.routes.js`).
+  Reusa o parser (`extrairNomesEContratosDeListaCrua`, ver
+  `lib/parseListaClientes.js`) e o casamento por contrato/nome (`casarCliente`,
+  ver `lib/nomeMatch.js`) — **sem nenhum efeito colateral**: não cria cliente,
+  não aplica tag, não cancela item pendente, não sugere promoção de safra
+  (é isso que diferencia de `/importar-pagos`, que faz a mesma
+  extração+casamento só que serve pra marcar como "Pago"). Devolve
+  `encontrados`/`nao_encontrados`/`ambiguos`, escopado a
+  `campanha = 'cobranca'` (mesma carteira que a aba Disparo sempre usa —
+  sem esse filtro um cliente de Ativação Chip podia "casar" aqui e depois
+  sumir silenciosamente do lote, já que o envio da aba Disparo é sempre da
+  campanha cobrança). O loop de casamento em si (`casarParesComClientes`) foi
+  extraído pra `lib/nomeMatch.js` e reusado por `/importar-pagos` também —
+  mesmo comportamento de antes, só sem duplicar o código do loop.
+- **Frontend**: `ColarListaDialog` em `routes/disparos.tsx`. Cola o texto →
+  identifica → mostra os encontrados (com telefone, pra conferir) + avisos
+  de ambíguos (nome bateu com 2+ clientes, precisa contrato pra desempatar)
+  e não encontrados → "Adicionar ao lote" mescla os `cliente_id`
+  encontrados no `selecionados` global (`useAppState`, o mesmo estado que a
+  seleção manual da tela Clientes usa) sem apagar quem já estava
+  selecionado. Depois disso o operador segue o fluxo normal de Disparo
+  (mensagem/variações/agendamento/modo PDF-Pix-Livre) exatamente como se
+  tivesse selecionado manualmente.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).

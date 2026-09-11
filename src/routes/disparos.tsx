@@ -4,6 +4,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ClipboardPaste,
   Download,
   FlaskConical,
   Loader2,
@@ -11,6 +12,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Search,
   Send,
   StopCircle,
   Users,
@@ -67,9 +69,153 @@ export const Route = createFileRoute("/disparos")({
 /* 1. Destinatários                                                           */
 /* -------------------------------------------------------------------------- */
 
+// [2026-09] Reusa o mesmo parser/casamento de "lista crua" já usado em
+// Converter lista crua (Importar) e Importar clientes PAGOS (Clientes) --
+// aqui só pra IDENTIFICAR quem já está cadastrado e jogar pro lote de
+// disparo (ver POST /clientes/identificar-lista, sem efeito colateral
+// nenhum: não cria cliente, não aplica tag). Pensado pra colar um relatório
+// de inadimplência/cobrança direto, sem precisar caçar cliente por cliente
+// na tela de Clientes.
+function ColarListaDialog({
+  aberto,
+  onOpenChange,
+}: {
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { selecionados, setSelecionados } = useAppState();
+  const [texto, setTexto] = useState("");
+  const [identificando, setIdentificando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<Awaited<
+    ReturnType<typeof api.clientes.identificarLista>
+  > | null>(null);
+
+  function fechar() {
+    setTexto("");
+    setResultado(null);
+    setErro(null);
+    onOpenChange(false);
+  }
+
+  async function identificar() {
+    if (!texto.trim()) return;
+    setIdentificando(true);
+    setErro(null);
+    try {
+      const r = await api.clientes.identificarLista(texto);
+      setResultado(r);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setIdentificando(false);
+    }
+  }
+
+  function adicionarAoLote() {
+    if (!resultado || !resultado.encontrados.length) return;
+    const mesclado = new Set([...selecionados, ...resultado.encontrados.map((e) => e.cliente_id)]);
+    setSelecionados([...mesclado]);
+    toast.success(`${resultado.encontrados.length} cliente(s) adicionado(s) ao lote.`);
+    fechar();
+  }
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && fechar()}>
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Selecionar destinatários por lista colada</DialogTitle>
+          <DialogDescription>
+            Cole a mesma lista crua de sempre (nome, contrato, telefone etc. -- 1 cliente por
+            bloco, como em &quot;Converter lista&quot; ou &quot;Importar clientes pagos&quot;). O
+            sistema identifica quem já está cadastrado e adiciona ao lote -- não cria cliente novo,
+            não aplica tag nenhuma.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!resultado ? (
+          <>
+            <textarea
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder="Cole aqui a lista crua…"
+              rows={12}
+              autoFocus
+              className="bg-surface text-foreground border-border focus-ring min-h-0 w-full flex-1 rounded-md border px-3 py-2 font-mono text-xs"
+            />
+            {erro && <Aviso tone="danger">{erro}</Aviso>}
+            <DialogFooter>
+              <Botao variante="outline" onClick={fechar}>
+                Cancelar
+              </Botao>
+              <Botao
+                variante="primary"
+                onClick={identificar}
+                disabled={!texto.trim() || identificando}
+              >
+                {identificando ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" />
+                )}
+                Identificar
+              </Botao>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
+              <p className="text-success text-sm font-medium">
+                {resultado.encontrados.length} de {resultado.total_colados} identificado(s)
+              </p>
+              {resultado.encontrados.length > 0 && (
+                <ul className="border-border max-h-40 space-y-1 overflow-y-auto rounded-md border p-2 text-xs">
+                  {resultado.encontrados.map((e) => (
+                    <li key={e.cliente_id} className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 flex-1 truncate">{e.cliente_nome}</span>
+                      <span className="text-subtle shrink-0 font-mono">{e.cliente_telefone}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {resultado.ambiguos.length > 0 && (
+                <Aviso tone="warning">
+                  {resultado.ambiguos.length} nome(s) bateram com mais de um cliente cadastrado e
+                  não foram incluídos -- cole o bloco com o número do contrato pra desempatar:{" "}
+                  {resultado.ambiguos.map((a) => a.nome_colado).join(", ")}
+                </Aviso>
+              )}
+              {resultado.nao_encontrados.length > 0 && (
+                <Aviso tone="info">
+                  {resultado.nao_encontrados.length} não encontrado(s), sem cadastro que bata:{" "}
+                  {resultado.nao_encontrados.join(", ")}
+                </Aviso>
+              )}
+            </div>
+            <DialogFooter>
+              <Botao variante="outline" onClick={() => setResultado(null)}>
+                Colar outra lista
+              </Botao>
+              <Botao
+                variante="primary"
+                onClick={adicionarAoLote}
+                disabled={!resultado.encontrados.length}
+              >
+                <CheckCircle2 className="size-4" />
+                Adicionar {resultado.encontrados.length} ao lote
+              </Botao>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EtapaDestinatarios() {
   const { selecionados, toggleSelecionado, limparSelecionados, clientes } = useAppState();
   const clientesSelecionados = clientes.filter((c) => selecionados.includes(c.id));
+  const [colarListaAberto, setColarListaAberto] = useState(false);
 
   return (
     <SectionCard
@@ -81,24 +227,36 @@ function EtapaDestinatarios() {
           : undefined
       }
       acoes={
-        selecionados.length > 0 ? (
-          <Botao variante="ghost" tamanho="sm" onClick={limparSelecionados}>
-            Limpar seleção
+        <div className="flex items-center gap-1.5">
+          <Botao variante="ghost" tamanho="sm" onClick={() => setColarListaAberto(true)}>
+            <ClipboardPaste className="size-3.5" />
+            Colar lista
           </Botao>
-        ) : undefined
+          {selecionados.length > 0 && (
+            <Botao variante="ghost" tamanho="sm" onClick={limparSelecionados}>
+              Limpar seleção
+            </Botao>
+          )}
+        </div>
       }
     >
       {selecionados.length === 0 ? (
         <EmptyState
           icon={Users}
           titulo="Nenhum cliente selecionado"
-          descricao="Selecione clientes na aba Clientes para montar o lote de disparo."
+          descricao="Selecione clientes na aba Clientes, ou cole uma lista crua (relatório de cobrança) pra identificar e adicionar de uma vez."
           acao={
-            <Link to="/clientes">
-              <Botao variante="primary" tamanho="sm">
-                Ir para Clientes
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Link to="/clientes">
+                <Botao variante="primary" tamanho="sm">
+                  Ir para Clientes
+                </Botao>
+              </Link>
+              <Botao variante="outline" tamanho="sm" onClick={() => setColarListaAberto(true)}>
+                <ClipboardPaste className="size-3.5" />
+                Colar lista
               </Botao>
-            </Link>
+            </div>
           }
         />
       ) : (
@@ -120,6 +278,8 @@ function EtapaDestinatarios() {
           ))}
         </ul>
       )}
+
+      <ColarListaDialog aberto={colarListaAberto} onOpenChange={setColarListaAberto} />
     </SectionCard>
   );
 }
