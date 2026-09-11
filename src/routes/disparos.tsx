@@ -171,8 +171,15 @@ function ColarListaDialog({
               {resultado.encontrados.length > 0 && (
                 <ul className="border-border max-h-40 space-y-1 overflow-y-auto rounded-md border p-2 text-xs">
                   {resultado.encontrados.map((e) => (
-                    <li key={e.cliente_id} className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 flex-1 truncate">{e.cliente_nome}</span>
+                    <li
+                      key={e.cliente_id}
+                      className="flex items-center justify-between gap-2"
+                      title={e.ambiguo ? `Nome "${e.nome_colado}" bateu com mais de um cadastro -- todos foram incluídos` : undefined}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {e.cliente_nome}
+                        {e.ambiguo && <span className="text-warning ml-1.5 text-[10px]">(nome ambíguo)</span>}
+                      </span>
                       <span className="text-subtle shrink-0 font-mono">{e.cliente_telefone}</span>
                     </li>
                   ))}
@@ -180,8 +187,9 @@ function ColarListaDialog({
               )}
               {resultado.ambiguos.length > 0 && (
                 <Aviso tone="warning">
-                  {resultado.ambiguos.length} nome(s) bateram com mais de um cliente cadastrado e
-                  não foram incluídos -- cole o bloco com o número do contrato pra desempatar:{" "}
+                  {resultado.ambiguos.length} nome(s) bateram com mais de um cliente cadastrado --
+                  como não tinha contrato pra desempatar, TODOS os cadastros com esse nome foram
+                  incluídos no lote (marcados acima):{" "}
                   {resultado.ambiguos.map((a) => a.nome_colado).join(", ")}
                 </Aviso>
               )}

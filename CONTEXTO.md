@@ -478,10 +478,24 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   campanha cobrança). O loop de casamento em si (`casarParesComClientes`) foi
   extraído pra `lib/nomeMatch.js` e reusado por `/importar-pagos` também —
   mesmo comportamento de antes, só sem duplicar o código do loop.
+- **[2026-09] Ambíguo aqui inclui todos, não exclui** — feedback do operador
+  logo após o primeiro deploy: "alguns nomes bateram com mais de um
+  cliente... só preciso do disparo batendo com nome" — diferente de
+  `/importar-pagos` (nunca adivinha, porque marcar o cliente ERRADO como
+  pago é caro), aqui o risco de mandar mensagem de cobrança pra alguém a
+  mais é bem mais barato, então o pedido foi inverter o padrão. Adicionado
+  `casarParesComClientes(pares, clientes, { incluirTodosOsAmbiguos: true })`
+  (opt-in, `/importar-pagos` continua sem passar a flag, comportamento
+  intocado): quando um nome bate com 2+ clientes e não tem contrato pra
+  desempatar, TODOS os candidatos entram em `encontrados` (marcados
+  `ambiguo: true`), em vez de ficar de fora esperando o operador colar o
+  contrato. `ambiguos` no response deixou de significar "excluído" e passou
+  a ser só um resumo informativo (os candidatos já estão em `encontrados`).
 - **Frontend**: `ColarListaDialog` em `routes/disparos.tsx`. Cola o texto →
-  identifica → mostra os encontrados (com telefone, pra conferir) + avisos
-  de ambíguos (nome bateu com 2+ clientes, precisa contrato pra desempatar)
-  e não encontrados → "Adicionar ao lote" mescla os `cliente_id`
+  identifica → mostra os encontrados (com telefone, pra conferir — os
+  resolvidos por nome ambíguo aparecem marcados "(nome ambíguo)") + aviso
+  informativo de quais nomes bateram com 2+ clientes (todos incluídos) e
+  quais não foram encontrados → "Adicionar ao lote" mescla os `cliente_id`
   encontrados no `selecionados` global (`useAppState`, o mesmo estado que a
   seleção manual da tela Clientes usa) sem apagar quem já estava
   selecionado. Depois disso o operador segue o fluxo normal de Disparo

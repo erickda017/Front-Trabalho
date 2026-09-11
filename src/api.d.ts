@@ -253,8 +253,22 @@ declare module "@/api" {
       }>;
       identificarLista: (texto: string) => Promise<{
         total_colados: number;
-        encontrados: { nome_colado: string; cliente_id: string; cliente_nome: string; cliente_telefone: string | null }[];
+        encontrados: {
+          nome_colado: string;
+          cliente_id: string;
+          cliente_nome: string;
+          cliente_telefone: string | null;
+          /** [2026-09] Nome bateu com 2+ clientes cadastrados -- diferente de
+           *  /importar-pagos, aqui TODOS os candidatos entram em `encontrados`
+           *  (pedido explícito: errar o alvo de uma msg de cobrança é barato
+           *  perto de marcar o cliente errado como pago). Este campo só marca
+           *  quais entradas vieram desse jeito, pra UI poder avisar. */
+          ambiguo?: boolean;
+        }[];
         nao_encontrados: string[];
+        /** Resumo informativo de quais nomes bateram com 2+ cadastros -- os
+         *  candidatos já estão todos em `encontrados` (ver `ambiguo` acima),
+         *  isto aqui não é mais uma exclusão. */
         ambiguos: { nome_colado: string; candidatos: number }[];
       }>;
       promoverSpd: (id: string, dataPrazo?: string | undefined) => Promise<Cliente>;
