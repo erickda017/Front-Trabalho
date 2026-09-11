@@ -460,6 +460,25 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-09] "Chat" da Ativação Chip abria e mostrava a lista de clientes
+  em vez do chat dedicado.** Causa raiz: `src/routes/ativacao-chip.tsx` e
+  `src/routes/ativacao-chip.chat.tsx` compartilham o prefixo
+  `ativacao-chip` no nome do arquivo, e no roteamento por arquivos do
+  TanStack Router isso automaticamente torna `/ativacao-chip/chat` uma rota
+  FILHA de `/ativacao-chip` (nesting implícito por convenção de nome, não
+  precisa configurar nada explicitamente). `ativacao-chip.tsx`, porém,
+  continha a página inteira da lista de clientes e nunca renderizava um
+  `<Outlet/>` -- e sem `<Outlet/>` no componente pai, o Router nunca chega a
+  montar o componente da rota filha, pra NENHUM caminho abaixo de
+  `/ativacao-chip`. Resultado: clicar em "Chat" no menu sempre mostrava a
+  mesma lista de clientes, porque o componente do chat dedicado
+  (`ChatAtivacaoChip`) nunca era renderizado. Corrigido separando em dois
+  arquivos: `ativacao-chip.tsx` virou um layout puro (só
+  `component: () => <Outlet/>`), e a página da lista de clientes (conteúdo
+  antigo) foi movida pra `ativacao-chip.index.tsx` (rota índice
+  `/ativacao-chip/`) -- `ativacao-chip.chat.tsx` não mudou, só passou a
+  renderizar de verdade agora que o pai tem `<Outlet/>`.
+
 - **[2026-09] Painel de Exclusão podia deixar PDF órfão no Storage sem
   avisar (relatado: Storage size não caía depois de apagar).** Se a chamada
   ao Storage pra remover o arquivo falhasse por qualquer motivo (rede,
