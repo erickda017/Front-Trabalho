@@ -453,6 +453,16 @@ export const api = {
   },
   envios: {
     criar: (payload) => request('/envios', { method: 'POST', body: JSON.stringify(payload) }),
+    // [2026-09] Sobe a FOTO que vai anexada em todas as mensagens do lote
+    // (ver migration-26-disparo-foto.sql) -- upload acontece ANTES de criar
+    // o envio (a tela monta o lote localmente primeiro); o path devolvido
+    // aqui é o que `criar()` acima manda em `foto_path` na hora de fato
+    // criar o lote.
+    enviarFoto: (arquivo) => {
+      const formData = new FormData();
+      formData.append('foto', arquivo);
+      return request('/envios/anexo-foto', { method: 'POST', body: formData });
+    },
     disparar: (id) => request(`/envios/${id}/disparar`, { method: 'POST' }),
     pausar: (id) => request(`/envios/${id}/pausar`, { method: 'POST' }),
     cancelar: (id) => request(`/envios/${id}/cancelar`, { method: 'POST' }),

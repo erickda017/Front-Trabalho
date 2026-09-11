@@ -36,6 +36,10 @@ declare module "@/api" {
     template_mensagem: string;
     janela_ms?: number | null | undefined;
     enviar_pix?: boolean | undefined;
+    /** [2026-09] Foto anexada ao lote inteiro (ver migration-26-disparo-foto.sql) --
+     *  path do proxy de arquivos (bucket chat-midia), null quando o lote não tem foto. */
+    foto_url?: string | null | undefined;
+    foto_nome?: string | null | undefined;
     itens: EnvioItem[];
   };
 
@@ -481,7 +485,22 @@ declare module "@/api" {
         /** [2026-09] ATIVAÇÃO CHIP -- default 'cobranca' quando omitido.
          *  Lote de chip nunca exige PDF/Pix (não existem nessa campanha). */
         campanha?: Campanha | undefined;
+        /** [2026-09] path devolvido por `enviarFoto()` abaixo -- anexa essa
+         *  foto em TODAS as mensagens do lote (tem prioridade sobre o PDF
+         *  de cada cliente). Essencial pra Ativação Chip. */
+        foto_path?: string | undefined;
+        foto_mimetype?: string | undefined;
+        foto_nome?: string | undefined;
       }) => Promise<Envio & { ignorados_sem_pdf: number; ignorados_por_tag: number }>;
+      /** [2026-09] Sobe a foto do lote (ver migration-26-disparo-foto.sql) --
+       *  chamar ANTES de `criar()`, e passar o `foto_path` devolvido aqui
+       *  pro payload de `criar()`. */
+      enviarFoto: (arquivo: File) => Promise<{
+        foto_path: string;
+        foto_mimetype: string;
+        foto_nome: string;
+        foto_url: string;
+      }>;
       disparar: (id: string) => Promise<{ ok: boolean; mensagem: string }>;
       pausar: (id: string) => Promise<{ ok: boolean; status: string }>;
       cancelar: (id: string) => Promise<{ ok: boolean; status: string }>;

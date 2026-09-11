@@ -269,6 +269,9 @@ export type EnvioResumo = {
   numeros_invalidos: number;
   pendentes: number;
   cancelados: number;
+  /** [2026-09] Foto anexada ao lote inteiro (ver migration-26-disparo-foto.sql). */
+  foto_url?: string | null;
+  foto_nome?: string | null;
 };
 
 /* -------------------------------------------------------------------------- */

@@ -7,6 +7,7 @@ import {
   ClipboardPaste,
   Download,
   FlaskConical,
+  ImagePlus,
   Loader2,
   Paperclip,
   Pause,
@@ -19,7 +20,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -39,7 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAppState } from "@/lib/app-state";
-import { api } from "@/api";
+import { api, buscarBlobUrlProtegida } from "@/api";
 import { cn } from "@/lib/utils";
 import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo } from "@/lib/types";
 
@@ -436,8 +437,110 @@ function EtapaMensagem({
 }
 
 /* -------------------------------------------------------------------------- */
-/* 3. Anexo                                                                   */
+/* 3. Anexo (foto do lote)                                                    */
 /* -------------------------------------------------------------------------- */
+
+export type FotoLote = { path: string; mimetype: string; nome: string; url: string };
+
+// [2026-09] Miniatura da foto recém-anexada -- `foto.url` é um path do proxy
+// de arquivos (bucket privado chat-midia, ver migration-26), não uma URL
+// pública: precisa de fetch autenticado + Blob antes de virar `src` de
+// `<img>` (mesmo padrão de MidiaProtegida em routes/chat.tsx, mas essa não é
+// exportada de lá -- versão local aqui pra não acoplar as duas telas).
+function PreviaFoto({ url }: { url: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    let urlCriada: string | null = null;
+    buscarBlobUrlProtegida(url)
+      .then((u) => {
+        if (cancelado) {
+          if (u) URL.revokeObjectURL(u);
+          return;
+        }
+        urlCriada = u;
+        setBlobUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+      if (urlCriada) URL.revokeObjectURL(urlCriada);
+    };
+  }, [url]);
+
+  if (!blobUrl) return <div className="bg-foreground/10 size-14 shrink-0 animate-pulse rounded-md" />;
+  return <img src={blobUrl} alt="Foto do disparo" className="size-14 shrink-0 rounded-md object-cover" />;
+}
+
+// [2026-09] Foto ÚNICA anexada ao LOTE inteiro (não por cliente, diferente
+// do PDF) -- sai em toda mensagem deste disparo, com prioridade sobre o PDF
+// do cliente (ver dispatchQueue.js). Pedido explícito: essencial pra
+// Ativação Chip, campanha em que o cliente nunca tem fatura cadastrada, mas
+// o operador quer mandar uma imagem (print de instrução, propaganda etc)
+// junto do texto mesmo assim. Upload acontece aqui (antes do lote existir de
+// verdade) -- ver POST /envios/anexo-foto; o path devolvido só é gravado no
+// envio quando o lote é criado de fato (EtapaConfirmacao/criarEIniciar).
+function EtapaFoto({
+  foto,
+  setFoto,
+}: {
+  foto: FotoLote | null;
+  setFoto: (v: FotoLote | null) => void;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function selecionarArquivo(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois de remover
+    if (!arquivo) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const r = await api.envios.enviarFoto(arquivo);
+      setFoto({ path: r.foto_path, mimetype: r.foto_mimetype, nome: r.foto_nome, url: r.foto_url });
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <SectionCard
+      eyebrow="Etapa 3"
+      titulo="Foto (opcional)"
+      descricao="Uma imagem anexada em TODAS as mensagens deste lote -- essencial pra Ativação Chip, onde o cliente não tem fatura em PDF."
+    >
+      <input ref={inputRef} type="file" accept="image/*" onChange={selecionarArquivo} className="hidden" />
+      {erro && (
+        <Aviso tone="danger" className="mb-3">
+          {erro}
+        </Aviso>
+      )}
+      {foto ? (
+        <div className="flex items-center gap-3">
+          <PreviaFoto url={foto.url} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{foto.nome}</p>
+            <p className="text-subtle text-xs">Anexada em todas as mensagens deste lote.</p>
+          </div>
+          <Botao variante="ghost" tamanho="sm" onClick={() => setFoto(null)}>
+            <X className="size-3.5" />
+            Remover
+          </Botao>
+        </div>
+      ) : (
+        <Botao variante="outline" tamanho="sm" onClick={() => inputRef.current?.click()} disabled={enviando}>
+          {enviando ? <Loader2 className="size-3.5 animate-spin" /> : <ImagePlus className="size-3.5" />}
+          Escolher foto
+        </Botao>
+      )}
+    </SectionCard>
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* 4. WhatsApp                                                                */
@@ -702,6 +805,7 @@ function ConfirmarDisparo({
   onOpenChange,
   totalClientes,
   modo,
+  temFoto,
   agendarPara,
   onConfirmar,
   confirmando,
@@ -710,6 +814,7 @@ function ConfirmarDisparo({
   onOpenChange: (v: boolean) => void;
   totalClientes: number;
   modo: ModoDisparo;
+  temFoto: boolean;
   agendarPara: string;
   onConfirmar: () => void;
   confirmando: boolean;
@@ -719,6 +824,10 @@ function ConfirmarDisparo({
     pix: "somente mensagem de texto, com o Pix",
     livre: "somente mensagem de texto (sem exigir PDF nem Pix)",
   }[modo];
+  // [2026-09] O modo "só Pix" nunca manda anexo nenhum (nem PDF, nem foto --
+  // ver dispatchQueue.js) -- a foto só é usada de verdade nos modos "pdf" e
+  // "livre", por isso a confirmação não pode dizer "foto anexada" nesse caso.
+  const fotoSeraUsada = temFoto && modo !== "pix";
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -730,7 +839,14 @@ function ConfirmarDisparo({
           <p>
             Você está prestes a enviar para <strong>{totalClientes}</strong> cliente(s).
           </p>
-          <p className="text-muted-foreground">Anexo: {anexoLabel}</p>
+          <p className="text-muted-foreground">
+            Anexo: {fotoSeraUsada ? "foto anexada a todas as mensagens (tem prioridade sobre o PDF do cliente)" : anexoLabel}
+          </p>
+          {temFoto && !fotoSeraUsada && (
+            <p className="text-warning text-xs">
+              A foto anexada será ignorada -- o modo &quot;só Pix&quot; nunca manda anexo nenhum.
+            </p>
+          )}
           <p className="text-muted-foreground">
             {agendarPara
               ? `Agendado para ${new Date(agendarPara).toLocaleString("pt-BR")}`
@@ -940,6 +1056,14 @@ function ProgressoDisparo({
         <EmptyState titulo="Sem dados de progresso" descricao="Ainda não há informações de progresso para este lote." compacto />
       ) : (
         <>
+          {envio?.foto_url && (
+            <div className="border-border mb-4 flex items-center gap-3 rounded-md border px-3 py-2">
+              <PreviaFoto url={envio.foto_url} />
+              <p className="text-subtle text-xs">
+                Foto anexada a todas as mensagens deste lote{envio.foto_nome ? `: ${envio.foto_nome}` : ""}.
+              </p>
+            </div>
+          )}
           <div className="mb-4 flex items-baseline gap-2">
             <span className="font-display text-2xl font-semibold tabular">
               {progresso.enviados} / {progresso.total}
@@ -1178,6 +1302,7 @@ function Disparo() {
     "Olá {{nome}}, tudo bem? Segue em anexo sua fatura no valor de {{valor}}, com vencimento em {{vencimento}}. Qualquer dúvida estou à disposição!",
   ]);
   const [modo, setModo] = useState<ModoDisparo>("pdf");
+  const [foto, setFoto] = useState<FotoLote | null>(null);
   const [janelaHoras, setJanelaHoras] = useState("");
   const [janelaMinutos, setJanelaMinutos] = useState("");
   const [agendarPara, setAgendarPara] = useState("");
@@ -1239,6 +1364,9 @@ function Disparo() {
         // acaso tiver um vinculado, exceto em "pix" (força texto puro).
         enviar_pix: modo === "pix",
         livre: modo === "livre",
+        // [2026-09] Foto do lote inteiro (ver EtapaFoto acima) -- só manda
+        // os campos quando o operador de fato anexou uma.
+        ...(foto ? { foto_path: foto.path, foto_mimetype: foto.mimetype, foto_nome: foto.nome } : {}),
       });
       const ignoradosSemPdf = (envio as { ignorados_sem_pdf?: number }).ignorados_sem_pdf ?? 0;
       const ignoradosPorTag = (envio as { ignorados_por_tag?: number }).ignorados_por_tag ?? 0;
@@ -1254,6 +1382,7 @@ function Disparo() {
       }
 
       limparSelecionados();
+      setFoto(null);
       setEnvioAtivoId(envio.id);
       setConfirmarAberto(false);
       if (!agendarPara) {
@@ -1293,6 +1422,7 @@ function Disparo() {
           <>
             <EtapaDestinatarios />
             <EtapaMensagem templates={templates} setTemplates={setTemplates} />
+            <EtapaFoto foto={foto} setFoto={setFoto} />
             <EtapaConexao />
             <ConfiguracoesAvancadas
               modo={modo}
@@ -1324,6 +1454,7 @@ function Disparo() {
               onOpenChange={setConfirmarAberto}
               totalClientes={selecionados.length}
               modo={modo}
+              temFoto={foto !== null}
               agendarPara={agendarPara}
               onConfirmar={criarEIniciar}
               confirmando={criando}

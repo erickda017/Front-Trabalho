@@ -502,6 +502,60 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   (mensagem/variações/agendamento/modo PDF-Pix-Livre) exatamente como se
   tivesse selecionado manualmente.
 
+### Disparo com FOTO anexada (nível do lote) — 2026-09
+
+- **O que é**: nova Etapa 3 ("Foto", opcional) na tela de Disparo, entre
+  Mensagem e WhatsApp — anexa UMA imagem que sai junto do texto em **todas**
+  as mensagens do lote inteiro. Diferente do PDF (por cliente, em
+  `clientes.pdf_path`), pedido explícito pra viabilizar a Ativação Chip: essa
+  campanha nunca tem fatura cadastrada (o conceito nem existe ali), mas o
+  operador precisa poder mandar uma imagem (print de instrução, propaganda
+  etc) junto da mensagem mesmo assim.
+- **Banco**: `migration-26-disparo-foto.sql` — `envios.foto_path`,
+  `envios.foto_mimetype`, `envios.foto_nome` (todas nullable).
+- **Backend**: dois pontos em `routes/envios.routes.js`:
+  - `POST /envios/anexo-foto` (multipart, campo `foto`, só imagem, limite
+    10MB) — sobe o arquivo pro bucket `CHAT_BUCKET` (`chat-midia`, path
+    `<usuarioId>/disparo/...`, mesma convenção de segurança do restante do
+    chat) e devolve `{ foto_path, foto_mimetype, foto_nome, foto_url }`.
+    Existe separada de `POST /envios` porque a tela monta o lote localmente
+    ANTES de criar o envio de verdade (sem `envio.id` ainda pra vincular um
+    upload) — o path devolvido aqui só é persistido quando o lote é
+    efetivamente criado.
+  - `POST /envios` (criação do lote) passa a aceitar `foto_path`/
+    `foto_mimetype`/`foto_nome` no corpo — só aceita um `foto_path` que
+    comece com `${usuarioId}/` (confirma que foi o próprio operador logado
+    quem fez esse upload, não um path de outro operador colado no corpo).
+  - `montarEnvioResumo` devolve `foto_url` (path do proxy, nunca a signed
+    URL crua — mesmo padrão de `pdf_url`/`anexo_url`) e `foto_nome` em todo
+    GET de envio (criação, busca, listagem, progresso).
+- **Disparo de verdade**: `services/dispatchQueue.js` (`enviarItem`) — quando
+  o envio tem `foto_path`, assina uma URL do Storage e manda via
+  `enviarMensagemComAnexo` (a mesma função que o Chat já usa pra anexo de
+  imagem/áudio/documento, ver `services/whatsapp.js`) com a mensagem como
+  legenda. **A foto do lote tem prioridade sobre o PDF do cliente** — o
+  WhatsApp só aceita 1 anexo por mensagem, e o operador escolheu a foto de
+  propósito pra esse lote inteiro. `envio.enviar_pix` (modo "só Pix")
+  continua forçando texto puro sem anexo nenhum, foto incluída — se o
+  operador anexar foto E marcar "só Pix" ao mesmo tempo, a foto é ignorada
+  (a tela avisa isso na confirmação, ver abaixo). O envio também é
+  registrado no histórico do Chat (`registrarMensagemSaida`, `tipo:
+  'imagem'`) igual ao PDF já era, pra o histórico ficar completo.
+- **Frontend**: `EtapaFoto` em `routes/disparos.tsx` — botão "Escolher foto"
+  chama `api.envios.enviarFoto(arquivo)` na hora (upload imediato, antes do
+  lote existir), mostra miniatura (`PreviaFoto`, mesmo padrão de
+  `MidiaProtegida` do Chat: busca o Blob autenticado, nunca usa o path do
+  proxy direto como `src`) e nome do arquivo, com botão remover. O diálogo de
+  confirmação (`ConfirmarDisparo`) mostra "foto anexada" quando aplicável, ou
+  o aviso de que ela será ignorada se o modo for "só Pix". `ProgressoDisparo`
+  também mostra a miniatura da foto do lote em andamento, pra o operador
+  conferir que é a imagem certa.
+- **Limitação aceita conscientemente**: se o operador subir uma foto e
+  desistir de criar o lote (fechar a aba, trocar de tela), o arquivo já
+  enviado ao Storage fica órfão — sem custo prático (imagem pequena, mesmo
+  risco de qualquer upload abandonado) e sem rotina de limpeza dedicada por
+  enquanto.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
