@@ -23,6 +23,7 @@ import {
   Aviso,
   Botao,
   Busca,
+  Campo,
   LinhasEsqueleto,
   Paginacao,
   Rotulo,
@@ -482,6 +483,14 @@ function DispararDialog({
 
 function AtivacaoChip() {
   const [busca, setBusca] = useState("");
+  // [2026-09] Filtro por DATA DE CADASTRO (quando o cliente foi adicionado a
+  // esta campanha) -- mesmo pedido/critério do filtro equivalente na tela de
+  // Clientes normal (routes/clientes.tsx), só que aqui é filtro DE SERVIDOR
+  // (`GET /clientes?cadastrado_de=...&cadastrado_ate=...`), não em memória --
+  // esta lista é paginada no backend, diferente da de cobrança que já traz
+  // tudo de uma vez. Escolher o mesmo dia nos dois campos filtra só aquele dia.
+  const [cadastradoDe, setCadastradoDe] = useState("");
+  const [cadastradoAte, setCadastradoAte] = useState("");
   const [pagina, setPagina] = useState(1);
   const [importarAberto, setImportarAberto] = useState(false);
   const [clienteEmStatus, setClienteEmStatus] = useState<Cliente | null>(null);
@@ -500,10 +509,12 @@ function AtivacaoChip() {
     refetch: recarregar,
     isLoading: carregando,
   } = useQuery({
-    queryKey: ["ativacao-chip-clientes", busca, pagina],
+    queryKey: ["ativacao-chip-clientes", busca, cadastradoDe, cadastradoAte, pagina],
     queryFn: () =>
       api.clientes.listar({
         busca: busca.trim() || undefined,
+        cadastrado_de: cadastradoDe || undefined,
+        cadastrado_ate: cadastradoAte || undefined,
         campanha: "chip_ativacao",
         page: pagina,
         per_page: TAMANHO_PAGINA,
@@ -582,14 +593,55 @@ function AtivacaoChip() {
           titulo="Clientes"
           descricao="Carteira exclusiva desta campanha -- não aparece na tela de Clientes normal (cobrança) e vice-versa."
           acoes={
-            <Busca
-              placeholder="Buscar por nome ou telefone…"
-              value={busca}
-              onChange={(e) => {
-                setBusca(e.target.value);
-                setPagina(1);
-              }}
-            />
+            <>
+              <Busca
+                placeholder="Buscar por nome ou telefone…"
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value);
+                  setPagina(1);
+                }}
+              />
+              <div className="flex items-end gap-2">
+                <div>
+                  <Rotulo>Adicionado de</Rotulo>
+                  <Campo
+                    type="date"
+                    value={cadastradoDe}
+                    onChange={(e) => {
+                      setCadastradoDe(e.target.value);
+                      setPagina(1);
+                    }}
+                    className="w-auto"
+                  />
+                </div>
+                <div>
+                  <Rotulo>até</Rotulo>
+                  <Campo
+                    type="date"
+                    value={cadastradoAte}
+                    onChange={(e) => {
+                      setCadastradoAte(e.target.value);
+                      setPagina(1);
+                    }}
+                    className="w-auto"
+                  />
+                </div>
+                {(cadastradoDe || cadastradoAte) && (
+                  <Botao
+                    variante="ghost"
+                    tamanho="sm"
+                    onClick={() => {
+                      setCadastradoDe("");
+                      setCadastradoAte("");
+                      setPagina(1);
+                    }}
+                  >
+                    Limpar
+                  </Botao>
+                )}
+              </div>
+            </>
           }
           flush
         >

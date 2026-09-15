@@ -595,9 +595,25 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   em vez de ser excluído por engano). Entra também no botão "Limpar" dos
   filtros avançados e nas dependências dos `useMemo`/`useEffect` de
   paginação, mesmo padrão dos filtros de data já existentes.
-- **Escopo**: só a tela de Clientes (cobrança) — a aba Ativação Chip tem uma
-  arquitetura de lista diferente (paginação server-side, sem o painel "Mais
-  filtros"), não foi tocada.
+- **[2026-09] Estendido pra Ativação Chip também** — pedido de seguida:
+  "faz o de chip ter também esse filtro de seleção". Como a lista dessa
+  campanha é paginada NO SERVIDOR (`GET /clientes?campanha=chip_ativacao`,
+  ver `routes/ativacao-chip.index.tsx`), diferente da tela de cobrança que
+  carrega tudo e filtra em memória, aqui o filtro teve que virar de verdade
+  um parâmetro de query no backend, não só lógica client-side:
+  - `GET /clientes` (`clientes.routes.js`) ganhou `cadastrado_de`/
+    `cadastrado_ate` (regex valida `YYYY-MM-DD`, ignora silenciosamente se
+    vier mal-formado) — monta `created_at >= '<data>T00:00:00-03:00'` /
+    `<= '<data>T23:59:59.999-03:00'` direto (Brasil não observa horário de
+    verão desde 2019, mesma premissa fixa de `-03:00` que
+    `dispatchQueue.js` já usa) — mais simples que fazer o front converter
+    fuso feito em `paraIsoDataHora`, já que aqui é o Postgres quem compara,
+    não o `Date` do navegador. Filtro é genérico por campanha (funciona
+    igual pra cobrança também, se algum dia precisar).
+  - Frontend: mesmo par "Adicionado de"/"até" ao lado da busca em
+    `AtivacaoChip` (`routes/ativacao-chip.index.tsx`), reseta a página pra 1
+    ao mudar (mesmo comportamento da busca por nome ali), entra na
+    `queryKey` do React Query pra recarregar a lista.
 
 ## Bugs corrigidos (histórico)
 

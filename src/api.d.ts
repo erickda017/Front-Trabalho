@@ -208,6 +208,11 @@ declare module "@/api" {
         recebeu_disparo?: boolean | undefined;
         safra?: string | undefined;
         tipo_fatura?: TipoFatura | undefined;
+        /** [2026-09] Filtro por DATA DE CADASTRO ("YYYY-MM-DD", igual ao
+         *  `<input type="date">"), comparado contra `clientes.created_at`
+         *  (dia inteiro no fuso do Brasil) -- ver backend/src/routes/clientes.routes.js. */
+        cadastrado_de?: string | undefined;
+        cadastrado_ate?: string | undefined;
         /** [2026-09] ATIVAÇÃO CHIP -- default 'cobranca' quando omitido. */
         campanha?: Campanha | undefined;
         page?: number | undefined;
