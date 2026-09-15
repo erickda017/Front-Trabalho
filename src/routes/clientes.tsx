@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { paraIso, paraBr } from "@/lib/dataBr";
+import { paraIso, paraBr, paraIsoDataHora } from "@/lib/dataBr";
 import {
   Check,
   Copy,
@@ -1212,11 +1212,20 @@ function Clientes() {
   const [ate, setAte] = useState("");
   const [valorMin, setValorMin] = useState("");
   const [valorMax, setValorMax] = useState("");
+  // [2026-09] Faixa de DATA DE CADASTRO (quando o cliente foi adicionado ao
+  // sistema, não a data de vencimento da fatura) -- pedido explícito:
+  // "se eu adicionei 20 dia X eu posso filtrar por esse dia". Mesmo padrão
+  // de/até do vencimento acima; escolhendo o mesmo dia nos dois campos filtra
+  // só aquele dia específico.
+  const [cadastradoDe, setCadastradoDe] = useState("");
+  const [cadastradoAte, setCadastradoAte] = useState("");
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("nenhuma");
   // [layout] Faixa de data/valor + ordenação ficam atrás de "Mais filtros" em
   // vez de soltas na toolbar principal -- são usadas bem menos que
   // tag/safra/pix/disparo, e a barra já tinha 4 controles antes destes.
-  const filtrosAvancadosAtivos = Boolean(de || ate || valorMin || valorMax || ordenacao !== "nenhuma");
+  const filtrosAvancadosAtivos = Boolean(
+    de || ate || valorMin || valorMax || cadastradoDe || cadastradoAte || ordenacao !== "nenhuma",
+  );
   const [filtrosAvancadosAbertos, setFiltrosAvancadosAbertos] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [importarPagosAberto, setImportarPagosAberto] = useState(false);
@@ -1274,6 +1283,16 @@ function Clientes() {
         if (de && vencIso && vencIso < de) return false;
         if (ate && vencIso && vencIso > ate) return false;
       }
+      // [2026-09] Faixa de DATA DE CADASTRO -- mesmo critério do vencimento
+      // acima (cliente sem `created_at`, caso raríssimo de dado antigo,
+      // continua aparecendo em vez de sumir do filtro). `paraIsoDataHora`
+      // (não `paraIso`) porque `created_at` tem hora+fuso (timestamptz),
+      // diferente de `vencimento` (date puro) -- ver comentário em dataBr.ts.
+      if (cadastradoDe || cadastradoAte) {
+        const cadastroIso = paraIsoDataHora(c.created_at);
+        if (cadastradoDe && cadastroIso && cadastroIso < cadastradoDe) return false;
+        if (cadastradoAte && cadastroIso && cadastroIso > cadastradoAte) return false;
+      }
       if (min !== null || max !== null) {
         const v = valorNumero(c.valor);
         if (v === null) return false; // sem valor não entra num filtro de faixa
@@ -1294,7 +1313,21 @@ function Clientes() {
       vencimento_desc: (a, b) => compararComNuloNoFim(paraIso(a.vencimento) || null, paraIso(b.vencimento) || null, -1),
     };
     return [...resultado].sort(comparadores[ordenacao]);
-  }, [clientesAgrupados, busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
+  }, [
+    clientesAgrupados,
+    busca,
+    filtroTag,
+    filtroPix,
+    filtroDisparo,
+    filtroSafra,
+    de,
+    ate,
+    cadastradoDe,
+    cadastradoAte,
+    valorMin,
+    valorMax,
+    ordenacao,
+  ]);
 
   // [paginação] Lista em memória inteira já vem filtrada/ordenada acima --
   // aqui só fatia pra exibição, 50 por página, pra não renderizar a carteira
@@ -1305,7 +1338,20 @@ function Clientes() {
   const [pagina, setPagina] = useState(1);
   useEffect(() => {
     setPagina(1);
-  }, [busca, filtroTag, filtroPix, filtroDisparo, filtroSafra, de, ate, valorMin, valorMax, ordenacao]);
+  }, [
+    busca,
+    filtroTag,
+    filtroPix,
+    filtroDisparo,
+    filtroSafra,
+    de,
+    ate,
+    cadastradoDe,
+    cadastradoAte,
+    valorMin,
+    valorMax,
+    ordenacao,
+  ]);
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / TAMANHO_PAGINA));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const paginados = useMemo(
@@ -1514,6 +1560,24 @@ function Clientes() {
               />
             </div>
             <div>
+              <Rotulo>Adicionado de</Rotulo>
+              <Campo
+                type="date"
+                value={cadastradoDe}
+                onChange={(e) => setCadastradoDe(e.target.value)}
+                className="w-auto"
+              />
+            </div>
+            <div>
+              <Rotulo>até</Rotulo>
+              <Campo
+                type="date"
+                value={cadastradoAte}
+                onChange={(e) => setCadastradoAte(e.target.value)}
+                className="w-auto"
+              />
+            </div>
+            <div>
               <Rotulo>Ordenar por</Rotulo>
               <Seletor value={ordenacao} onChange={(e) => setOrdenacao(e.target.value as Ordenacao)} className="w-auto">
                 <option value="nenhuma">Nome (padrão)</option>
@@ -1527,7 +1591,15 @@ function Clientes() {
               <Botao
                 variante="ghost"
                 tamanho="sm"
-                onClick={() => { setDe(""); setAte(""); setValorMin(""); setValorMax(""); setOrdenacao("nenhuma"); }}
+                onClick={() => {
+                  setDe("");
+                  setAte("");
+                  setValorMin("");
+                  setValorMax("");
+                  setCadastradoDe("");
+                  setCadastradoAte("");
+                  setOrdenacao("nenhuma");
+                }}
               >
                 Limpar
               </Botao>

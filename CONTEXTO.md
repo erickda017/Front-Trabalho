@@ -563,6 +563,42 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   — sem custo prático (imagem pequena, mesmo risco de qualquer upload
   abandonado) e sem rotina de limpeza dedicada por enquanto.
 
+### Filtro por DATA DE CADASTRO na tela de Clientes — 2026-09
+
+- **O que é**: em "Mais filtros" (aba Clientes, carteira de cobrança), novo
+  par "Adicionado de" / "até" (`<input type="date">`, mesmo padrão do
+  filtro de vencimento existente) — filtra pelo dia em que o cliente foi
+  cadastrado no sistema, não pela data de vencimento da fatura. Pedido
+  explícito: "se eu adicionei 20 dia X eu posso filtrar por esse dia";
+  escolher o mesmo dia nos dois campos filtra só aquele dia específico.
+- **Não precisou de mudança nenhuma no backend** — `clientes.created_at`
+  (coluna `timestamptz`, existe desde o schema base) já vinha em toda
+  resposta de `GET /clientes` (`select('*')`), só nunca tinha sido exposto
+  no tipo `Cliente` do frontend nem usado em filtro nenhum.
+- **[2026-09] Cuidado de fuso horário que quase virou bug** — diferente de
+  `vencimento`/`data_prazo` (colunas `date` puras, sem hora), `created_at`
+  é `timestamptz` e sempre vem em UTC (ex: `"2026-09-15T01:30:00.000Z"`).
+  Um cliente cadastrado às 22h30 em São Paulo (UTC-3) gera um timestamp com
+  o dia SEGUINTE em UTC — se o filtro só lesse os dígitos do texto (como
+  `paraIso`/`parseDataFlexivel` fazem, correto pra `date` puro), um cliente
+  adicionado à noite apareceria filtrado no dia errado. Corrigido com uma
+  função nova, `paraIsoDataHora` (`lib/dataBr.ts`), que usa o `Date` nativo
+  pra converter o instante UTC pro fuso do NAVEGADOR antes de ler ano/mês/dia
+  (assume operador no fuso do Brasil, mesma premissa que o resto do sistema
+  já assume — ver `lib/telefone.js`) — `paraIso` continua reservada pra
+  colunas `date` puras, as duas funções não devem ser usadas uma no lugar da
+  outra.
+- **Frontend**: `Cliente.created_at?: string | null` novo em `lib/types.ts`;
+  estado `cadastradoDe`/`cadastradoAte` em `routes/clientes.tsx`, mesmo
+  critério de "cliente sem essa data não some do filtro" que o filtro de
+  vencimento já usa (dado antigo raro sem `created_at` continua aparecendo
+  em vez de ser excluído por engano). Entra também no botão "Limpar" dos
+  filtros avançados e nas dependências dos `useMemo`/`useEffect` de
+  paginação, mesmo padrão dos filtros de data já existentes.
+- **Escopo**: só a tela de Clientes (cobrança) — a aba Ativação Chip tem uma
+  arquitetura de lista diferente (paginação server-side, sem o painel "Mais
+  filtros"), não foi tocada.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).

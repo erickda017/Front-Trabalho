@@ -110,6 +110,13 @@ export type Cliente = {
   vendedor?: string | null;
   telefone_2?: string | null;
   telefone_3?: string | null;
+  /** [2026-09] Data/hora em que o cliente foi cadastrado (timestamptz do
+   *  Postgres, sempre em UTC) -- já vinha em toda resposta de `GET /clientes`
+   *  (select('*') no backend), só nunca tinha sido exposto no tipo nem
+   *  usado em filtro. Ver `paraIsoDataHora` em `lib/dataBr.ts` pra converter
+   *  pro dia local antes de comparar/filtrar (não usar `paraIso`, que é só
+   *  pra colunas `date` puras como `vencimento`/`data_prazo`). */
+  created_at?: string | null;
 };
 
 /** As duas campanhas que rodam em paralelo no sistema (ver CONTEXTO.md,

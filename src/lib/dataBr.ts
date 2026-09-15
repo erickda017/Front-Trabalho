@@ -73,3 +73,29 @@ export function paraBr(texto: string | null | undefined): string {
   const ano = String(d.getFullYear()).padStart(4, "0");
   return `${dia}/${mes}/${ano}`;
 }
+
+/** [2026-09] Converte um TIMESTAMP com hora+fuso (ex: `clientes.created_at`,
+ *  `timestamptz` do Postgres, sempre em UTC) pro DIA LOCAL do navegador, em
+ *  ISO ("2026-08-10") -- usado pra filtrar "cliente adicionado no dia X".
+ *
+ *  Não é o mesmo caso de `paraIso`/`parseDataFlexivel` acima: aquelas
+ *  funções tratam de colunas `date` PURAS (`vencimento`/`data_prazo`), sem
+ *  hora nem fuso -- lendo os dígitos do texto direto já dá o dia certo, não
+ *  há conversão de fuso a fazer. Um `timestamptz` é diferente: o texto vem
+ *  sempre em UTC (ex: "2026-09-15T01:30:00.000Z"), e um cliente cadastrado
+ *  às 22h30 em São Paulo (UTC-3) vira essa string com o dia SEGUINTE em UTC
+ *  -- se a gente só lesse os dígitos como `paraIso` faz, o filtro por dia
+ *  erraria perto da meia-noite. Por isso aqui deixamos o `Date` nativo (que
+ *  entende fuso de verdade) converter o instante pro fuso do navegador antes
+ *  de ler ano/mês/dia -- assume-se o navegador do operador configurado no
+ *  fuso do Brasil, igual o resto do sistema já assume (ver telefone.js).
+ */
+export function paraIsoDataHora(isoComHora: string | null | undefined): string {
+  if (!isoComHora) return "";
+  const d = new Date(isoComHora);
+  if (Number.isNaN(d.getTime())) return "";
+  const ano = String(d.getFullYear()).padStart(4, "0");
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
