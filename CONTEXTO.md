@@ -187,6 +187,28 @@ Duas formas de gerar um disparo:
   "Configurações avançadas" → Anexo), o checkbox único "Enviar PDF da
   fatura" virou 3 opções (rádio): PDF / Só Pix / Livre.
 
+- **[2026-09] Lista quem ficou fora do disparo, por nome** — pedido do operador:
+  "colei uma lista crua de clientes pra disparo, mesmo achando cliente
+  cadastrado, se tiver UM ÚNICO cliente sem PDF fica barrando o disparo. (...)
+  quero fazer o disparo independente de ter outro cliente inelegível, se não
+  tiver fatura em um, me lista quem não tem que eu verifico depois, e deixa em
+  um grupo FORA do disparo". Investigando: `resolverClienteIds`
+  (`backend/src/routes/envios.routes.js`) **já não bloqueava** o lote inteiro
+  por 1 cliente sem PDF/PIX -- só quando NINGUÉM sobrava elegível (`if
+  (!clienteIdsFinal.length)`) é que retornava erro. O que realmente faltava:
+  o front só recebia uma CONTAGEM (`ignorados_sem_pdf`/`ignorados_por_tag`),
+  nunca o nome de quem ficou de fora -- o operador não tinha como saber quem
+  verificar sem caçar cliente por cliente na tela de Clientes. Agora
+  `resolverClienteIds` também devolve `semPdfDetalhe`/`bloqueadosPorTagDetalhe`
+  (`{ id, nome, telefone, motivo }` de cada um), propagados por `POST /envios`
+  como `ignorados_sem_pdf_detalhe`/`ignorados_por_tag_detalhe` (inclusive no
+  erro 400 de "nenhum cliente elegível", pro front poder listar quem mesmo
+  quando o lote inteiro não sai). No front (`routes/disparos.tsx`), o aviso
+  que só mostrava "3 sem PDF vinculado ficaram de fora do lote" virou um card
+  próprio (`AvisoForaDoDisparo`) listando nome + motivo de cada um, separado
+  da lista de destinatários do lote em andamento -- o "grupo fora do disparo"
+  pedido. Fica visível até o operador fechar (X) ou até criar outro lote.
+
 - **[2026-09] [branch `feature/identificacao-por-contrato`, ainda não
   mergeada] Contrato como identificador principal nos "casamentos" por
   nome.** Todo fluxo que acha um cliente já cadastrado a partir de um texto/

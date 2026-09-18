@@ -43,6 +43,17 @@ declare module "@/api" {
     itens: EnvioItem[];
   };
 
+  /** [2026-09] Um cliente que ficou de fora de um lote de disparo por não
+   *  ser elegível ainda (sem PDF/PIX cadastrado, ou bloqueado por tag/status)
+   *  -- ver `ignorados_sem_pdf_detalhe`/`ignorados_por_tag_detalhe` em
+   *  `envios.criar()` abaixo e `resolverClienteIds` no backend. */
+  type ClienteIgnoradoDisparo = {
+    id: string;
+    nome: string;
+    telefone: string;
+    motivo: "sem_pdf" | "sem_pix" | "tag_ou_status";
+  };
+
   type SugestaoSpd = {
     cliente_id: string;
     cliente_nome: string;
@@ -496,7 +507,17 @@ declare module "@/api" {
         foto_path?: string | undefined;
         foto_mimetype?: string | undefined;
         foto_nome?: string | undefined;
-      }) => Promise<Envio & { ignorados_sem_pdf: number; ignorados_por_tag: number }>;
+      }) => Promise<
+        Envio & {
+          ignorados_sem_pdf: number;
+          /** [2026-09] Quem exatamente ficou de fora por falta de PDF/PIX --
+           *  antes só vinha a contagem; a UI usa isto pra listar por nome,
+           *  não só um número solto (ver EtapaDestinatarios em disparos.tsx). */
+          ignorados_sem_pdf_detalhe: ClienteIgnoradoDisparo[];
+          ignorados_por_tag: number;
+          ignorados_por_tag_detalhe: ClienteIgnoradoDisparo[];
+        }
+      >;
       /** [2026-09] Sobe a foto do lote (ver migration-26-disparo-foto.sql) --
        *  chamar ANTES de `criar()`, e passar o `foto_path` devolvido aqui
        *  pro payload de `criar()`. */

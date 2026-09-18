@@ -62,6 +62,61 @@ export const Route = createFileRoute("/disparos")({
   component: Disparo,
 });
 
+// [2026-09] Espelha o tipo interno de `envios.criar()` em api.d.ts (não dá
+// pra importar direto -- é um `type` sem `export` dentro de `declare module
+// "@/api"`, mesmo padrão já usado por `SugestaoSpd` em routes/clientes.tsx).
+// Um cliente que ficou de fora do lote por não ser elegível ainda.
+type ClienteIgnoradoDisparo = {
+  id: string;
+  nome: string;
+  telefone: string;
+  motivo: "sem_pdf" | "sem_pix" | "tag_ou_status";
+};
+
+// [2026-09] Pedido do operador: "quero fazer o disparo independente de ter
+// outro cliente inelegível, se não tiver fatura em um, me lista quem não tem
+// que eu verifico depois, e deixa em um grupo FORA do disparo". O backend já
+// não bloqueava o lote inteiro por causa de 1 cliente sem PDF/PIX (só quando
+// NINGUÉM sobra elegível) -- o que faltava era mostrar QUEM ficou de fora,
+// não só uma contagem solta ("3 sem PDF vinculado"). Este card fica separado
+// da lista de destinatários do lote em andamento, exatamente o "grupo fora
+// do disparo" pedido -- fica visível até o operador fechar ou até o próximo
+// lote ser criado (substitui a lista).
+function AvisoForaDoDisparo({
+  itens,
+  onFechar,
+}: {
+  itens: ClienteIgnoradoDisparo[];
+  onFechar: () => void;
+}) {
+  if (!itens.length) return null;
+  const rotuloMotivo: Record<ClienteIgnoradoDisparo["motivo"], string> = {
+    sem_pdf: "sem PDF vinculado",
+    sem_pix: "sem PIX cadastrado",
+    tag_ou_status: "bloqueado por tag/status (ex.: Pago, Cancelado, Fraude)",
+  };
+  return (
+    <Aviso tone="warning">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium">
+          {itens.length} cliente(s) ficaram de fora deste disparo -- verifique depois:
+        </p>
+        <button type="button" onClick={onFechar} className="text-subtle shrink-0 hover:text-foreground">
+          <X className="size-3.5" />
+        </button>
+      </div>
+      <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs">
+        {itens.map((c) => (
+          <li key={c.id} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 flex-1 truncate">{c.nome}</span>
+            <span className="text-subtle shrink-0">{rotuloMotivo[c.motivo]}</span>
+          </li>
+        ))}
+      </ul>
+    </Aviso>
+  );
+}
+
 /* [2026-08] MULTI-TENANT: ESTRATEGIAS removido -- não existe mais escolha de
    slot/round-robin, cada usuário tem 1 WhatsApp só (ver migration-13). */
 
@@ -1183,7 +1238,7 @@ function Disparo() {
   const [agendarPara, setAgendarPara] = useState("");
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [avisoIgnorados, setAvisoIgnorados] = useState<string | null>(null);
+  const [foraDoDisparo, setForaDoDisparo] = useState<ClienteIgnoradoDisparo[]>([]);
   const [confirmarAberto, setConfirmarAberto] = useState(false);
 
   // Se não há um lote "ativo" guardado nesta aba (sessionStorage perdido --
@@ -1240,18 +1295,10 @@ function Disparo() {
         enviar_pix: modo === "pix",
         livre: modo === "livre",
       });
-      const ignoradosSemPdf = (envio as { ignorados_sem_pdf?: number }).ignorados_sem_pdf ?? 0;
-      const ignoradosPorTag = (envio as { ignorados_por_tag?: number }).ignorados_por_tag ?? 0;
-      if (ignoradosSemPdf || ignoradosPorTag) {
-        const partes = [];
-        // ignoradosSemPdf nunca vem > 0 quando modo === "livre" (backend não
-        // exige PDF nem PIX nesse modo -- ver resolverClienteIds).
-        if (ignoradosSemPdf) partes.push(modo === "pix" ? `${ignoradosSemPdf} sem PIX cadastrado` : `${ignoradosSemPdf} sem PDF vinculado`);
-        if (ignoradosPorTag) partes.push(`${ignoradosPorTag} com tag ou status que bloqueia disparo (ex.: Pago/Cancelado/Fraude)`);
-        setAvisoIgnorados(`${partes.join(" e ")} ficaram de fora do lote.`);
-      } else {
-        setAvisoIgnorados(null);
-      }
+      // [2026-09] Lista quem ficou de fora por nome (não só a contagem) --
+      // fica num "grupo fora do disparo" separado (ver AvisoForaDoDisparo),
+      // pro operador verificar depois sem bloquear quem já é elegível.
+      setForaDoDisparo([...(envio.ignorados_sem_pdf_detalhe ?? []), ...(envio.ignorados_por_tag_detalhe ?? [])]);
 
       limparSelecionados();
       setEnvioAtivoId(envio.id);
@@ -1285,7 +1332,7 @@ function Disparo() {
     >
       <div className="space-y-6">
         {erro && <Aviso tone="danger">{erro}</Aviso>}
-        {avisoIgnorados && <Aviso tone="warning">{avisoIgnorados}</Aviso>}
+        <AvisoForaDoDisparo itens={foraDoDisparo} onFechar={() => setForaDoDisparo([])} />
 
         {envioAtivoId ? (
           <ProgressoDisparo envioAtivoId={envioAtivoId} setEnvioAtivoId={setEnvioAtivoId} />
