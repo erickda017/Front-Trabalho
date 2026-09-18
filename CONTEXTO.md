@@ -433,6 +433,34 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   `campanha=eq.cobranca` -- sem isso, uma conversa de chip vazaria pra
   dentro da lista de chat de cobrança em tempo real. `ativacao-chip.chat.tsx`
   tem o filtro espelhado (`campanha=eq.chip_ativacao`).
+- **[CRÍTICO, 2026-09] PDF/Pix parava de casar por nome depois que a chip
+  passou a ter clientes de verdade** — relatado pelo usuário: "o sistema não
+  tá associando os PDFs aos clientes como devia, e RODAR VERIFICAÇÃO fala que
+  não funciona -- começou a acontecer depois de criar a aba de clientes que
+  separa os clientes de chip". Causa raiz: dois lugares que casam um PDF/Pix
+  pelo NOME do arquivo contra a tabela `clientes` nunca ganharam o filtro
+  `campanha` quando a coluna foi criada -- `resolverClientePix`
+  (`backend/src/lib/pixPersistencia.js`, usado por `POST /pix/extrair-servidor`
+  e `POST /boletos/salvar-pix`) e a busca de candidatos em `POST
+  /faturas/avulsas` (`backend/src/routes/faturasPendentes.routes.js`). Os dois
+  já tratavam "2+ clientes com nome parecido" como AMBÍGUO de propósito (nunca
+  chuta, ver comentário em `lib/nomeMatch.js`) -- só que antes da chip existir
+  isso só acontecia com duas pessoas reais de nome igual na mesma carteira
+  (raro). Depois que a chip ganhou clientes próprios, o MESMO cliente (nome
+  igual) frequentemente existe cadastrado nas duas campanhas -- e um cliente
+  de chip (que nunca tem PDF/Pix, ver acima) virava um segundo candidato
+  fantasma no ILIKE, tornando o casamento ambíguo pra sempre, mesmo com o
+  cliente de cobrança certo já cadastrado. "Rodar verificação" (aba Pix,
+  reextrai Pix de quem tem PDF mas ainda não tem Pix) não "quebrava" com erro
+  -- só não tinha o que processar, porque o PDF/Pix nunca tinha sido gravado
+  no cliente certo pra começar. Corrigido adicionando `.eq('campanha',
+  'cobranca')` nas duas queries (Pix/PDF é conceito exclusivo de cobrança).
+  De brinde, `POST /clientes` só chama
+  `associarPendentesAoCliente`/`associarPixPendenteAoCliente` (lib/faturasPendentes.js
+  e lib/pixPersistencia.js -- fecham pendência quando o cliente certo aparece
+  depois) quando o cliente criado é `campanha === 'cobranca'`, pra um cliente
+  de chip recém-criado nunca "roubar" um PDF/Pix pendente de um cliente de
+  cobrança de nome parecido que ainda nem existia.
 
 ### Painel de Exclusão em massa (só supervisor) — 2026-09
 
