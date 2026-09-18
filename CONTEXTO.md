@@ -990,6 +990,25 @@ libs novas.
   pendências com um botão de vínculo manual (`POST /faturas/avulsas/pendentes/:id/
   associar`) e de descarte.
 
+- **[2026-09] Mesmo fechamento de ciclo pro Pix** — pedido do usuário: "Importei Pix,
+  e depois os clientes. Mas o sistema não tá associando um ao outro sozinho. Ele DEVE
+  associar assim que identificar que tem Pix sem cliente associado". O gap: quando o
+  Pix é extraído (`POST /pix/extrair-servidor` ou `POST /boletos/salvar-pix`) antes do
+  cliente existir, `resolverClientePix` (lib/pixPersistencia.js) não acha ninguém pelo
+  nome do arquivo e a extração fica salva em `pix_extracoes` com `cliente_id` nulo —
+  e nada nunca voltava pra tentar de novo. Agora existe `associarPixPendenteAoCliente`
+  (lib/pixPersistencia.js), espelhando exatamente `associarPendentesAoCliente` acima:
+  chamada logo após criar um cliente (`POST /clientes` e `POST
+  /clientes/importar-lista`), busca entre as extrações do usuário com `cliente_id`
+  nulo alguma cujo nome de arquivo bata (mesmo critério de sempre — exato, senão
+  "contém", mínimo 3 caracteres) e, achando, propaga pix/valor/vencimento/linha
+  digitável pro cliente e grava o `cliente_id` na extração. Só a primeira que bater;
+  havendo mais de uma pendente pro mesmo nome, as demais continuam sem cliente pra
+  vínculo manual na tela de Pix. Mesma decisão de escopo de cima: **não** foi ligado
+  em `services/importLote.js` (import em lote com planilha+PDF) — nesse fluxo o Pix
+  de cada linha já vem casado inline no próprio upsert (extraído no navegador antes de
+  chegar aqui), não depende de `pix_extracoes` pendente.
+
 - **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
   só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente
   a extração no servidor num ambiente real do Render antes de confiar nela em
