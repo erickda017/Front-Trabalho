@@ -1181,6 +1181,17 @@ libs novas.
   caminhos que já existiam: seleção manual na tela Disparo, ou "Selecionar
   destinatários por lista colada" (`POST /clientes/identificar-lista`, ver
   seção própria acima).
+- **[2026-09] Rate limit de novo, mesmo sintoma de antes**: "erro de
+  requisição demais" + "failed to load resource" no F12 ao subir vários PDFs
+  de uma vez. Causa: `POST /faturas/avulsas` (usada por `UploadAvulsoFaturas`,
+  1 requisição por arquivo) continuava em `limiteSensivel` (30 req/5min) --
+  ela nunca precisou de um teto mais alto ANTES desta mudança (era só uma
+  conveniência pra 1-2 PDFs soltos), mas virou o único caminho de bulk
+  upload de PDF depois que planilha+zip foi removido, e ficou de fora do
+  fix anterior (ver seção "Rate limit bloqueava importação legítima de
+  muitos clientes" acima), que na época só cobriu as 3 rotas que já eram
+  bulk. Trocada pra `limiteImportacaoArquivo` (1000 req/10min), mesmo
+  limitador das outras três.
 
 - **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
   só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente
