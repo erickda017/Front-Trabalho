@@ -159,6 +159,23 @@ export type ItemLotePronto = {
 // erro de upload no mesmo balde de "sem nome/telefone".
 export type LinhaComErro = LinhaPlanilha & { motivoErro: string };
 
+// [2026-09] Sanitiza a PARTE do nome do arquivo que vai virar object key no
+// Storage -- espelha `nomeArquivoSeguro` do backend (lib/nomeArquivoSeguro.js).
+// Nome de cliente com espaço/acento/parênteses/apóstrofo é normal (ex.:
+// "LUCIANA DE JESUS RIBEIRO BORGES.pdf") mas o backend valida `caminho` com
+// uma regex restrita pra impedir path traversal (CAMINHO_VALIDO, só
+// `[a-zA-Z0-9_-./]`, ver routes/importacao.routes.js) e REJEITA a requisição
+// inteira se não bater, em vez de sanitizar -- sem isso, a importação falhava
+// (400) pra praticamente todo nome real. Sanitiza AQUI, antes de montar
+// `caminho`, e não no backend: o front usa esse MESMO `caminho` local (não o
+// que o backend devolve) como `pdf_path` do cliente lá na frente (ver
+// `pdf_path: caminho` abaixo) -- sanitizar só do lado do backend deixaria o
+// arquivo salvo sob uma chave e o `pdf_path` gravado no cliente apontando
+// pra outra (quebrado).
+function nomeArquivoParaCaminho(nome: string): string {
+  return nome.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 // Sobe o PDF com retry -- só faz sentido re-tentar erro TRANSITÓRIO (rate
 // limit, timeout, 5xx). Erro 4xx é permanente: bater 3x sem chance de dar
 // certo só deixa a importação mais lenta.
@@ -334,7 +351,7 @@ export async function processarImportacaoNoBrowser(
     // ver pixExtractor.ts) ANTES do upload -- não depende do resultado do
     // upload, então rodam em paralelo (Promise.all) pra não somar os dois
     // tempos à toa.
-    const caminho = `${telefoneNormalizado}/${Date.now()}-${pdfEncontrado.nomeOriginal}`;
+    const caminho = `${telefoneNormalizado}/${Date.now()}-${nomeArquivoParaCaminho(pdfEncontrado.nomeOriginal)}`;
     const [dadosPix, uploadResultado] = await Promise.all([
       extrairDadosPix(pdfEncontrado.blob, pdfEncontrado.nomeOriginal),
       uploadComRetry(caminho, pdfEncontrado.blob, pdfEncontrado.nomeOriginal),

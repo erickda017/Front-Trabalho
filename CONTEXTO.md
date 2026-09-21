@@ -1082,6 +1082,27 @@ libs novas.
   rotas de ação única (disparar lote, teste, importar-lista/importar-pagos/
   identificar-lista — que recebem a lista inteira numa chamada só, não 1 por
   arquivo).
+- **[2026-09] Segundo bug, exposto pelo primeiro fix**: destravado o rate
+  limit, apareceu "campo 'caminho' é obrigatório e não pode conter '..' ou
+  caracteres inválidos" pra PDFs com nome real (ex.: "...-LUCIANA DE JESUS
+  RIBEIRO BORGES.pdf") — provavelmente já existia antes, só nunca dava tempo
+  de aparecer (o rate limit cortava a importação antes de chegar num nome
+  "problemático"). Causa: `CAMINHO_VALIDO` (`backend/src/routes/importacao.routes.js`,
+  regra anti path-traversal de `POST /upload-pdf`) só aceita
+  `[a-zA-Z0-9_-./]` — sem espaço. O `caminho` que o front monta é
+  `${telefone}/${timestamp}-${nomeOriginalDoPdf}`, e nome de cliente de
+  verdade quase sempre tem espaço (às vezes acento, parênteses, apóstrofo).
+  O resto do sistema resolve isso SANITIZANDO o nome (ver
+  `lib/nomeArquivoSeguro.js`, usada em `clientes.routes.js`/
+  `faturasPendentes.routes.js`/`chat.routes.js`) em vez de rejeitar a
+  requisição inteira -- só esta rota ficou de fora desse padrão. Corrigido
+  no FRONT, não no back: nova `nomeArquivoParaCaminho()` (mesmo critério de
+  `nomeArquivoSeguro`) sanitiza só a parte do nome que vira `caminho`, antes
+  do upload (`importacaoBrowser.ts`). Não dava pra sanitizar só no backend
+  (mais "correto" à primeira vista) porque o front usa o `caminho` LOCAL
+  (não o `path` que o backend devolve) como `pdf_path` do cliente lá na
+  frente — sanitizar só do lado do backend deixaria o arquivo salvo sob uma
+  chave e o `pdf_path` gravado no cliente apontando pra outra, quebrado.
 
 - **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
   só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente
