@@ -320,35 +320,49 @@ function Pix() {
     await processarEmLotes(arquivos, TAMANHO_LOTE_EXTRACAO, async (arquivo) => {
       try {
         const dados = await extrairDadosPix(arquivo, arquivo.name);
-        if (!dados) {
+
+        // Casa o arquivo com um cliente já cadastrado pelo nome (100% no
+        // navegador, contra a lista de clientes já carregada -- ver
+        // clienteMatch.ts). [2026-09] Isso NÃO depende mais de ter achado o
+        // Pix -- antes, `dados === null` (Worker sem achar Pix: boleto
+        // grande demais pro limite de 1MB por página do OCR, layout raro,
+        // Worker fora do ar) fazia a função retornar ANTES de sequer tentar
+        // casar/subir o PDF, mesmo o casamento por nome nada tendo a ver com
+        // o resultado do Worker. Relatado: "o worker tá impedindo o
+        // casamento dos PDFs com clientes por causa do limite de 1mb" --
+        // agora sobe/associa o PDF de qualquer forma; só o código Pix é que
+        // fica ausente nesse caso (`dados` pode ser `null` aqui -- passado
+        // como está pro terceiro parâmetro de `uploadPdf`, que só reextrai
+        // via Worker se receber `undefined`, nunca `null`).
+        const clienteCasado = casarClientePorArquivo(arquivo.name, clientes);
+        if (clienteCasado) {
+          await api.clientes.uploadPdf(clienteCasado.id, arquivo, dados);
+        }
+
+        if (!dados && !clienteCasado) {
+          // Nem achou Pix nem achou cliente pra esse arquivo -- nada foi
+          // feito com ele de verdade, conta como falha (igual antes).
           setResumoEnvio((prev) =>
             prev ? { ...prev, processados: prev.processados + 1, falha: prev.falha + 1 } : prev,
           );
           return;
         }
 
-        // Casa o arquivo com um cliente já cadastrado pelo nome (100% no
-        // navegador, contra a lista de clientes já carregada -- ver
-        // clienteMatch.ts). Achou: sobe o PDF pro Storage E grava
-        // pix/valor/vencimento direto no cliente, num único passo (reusa
-        // `dados`, não roda o Worker de novo pro mesmo arquivo).
-        const clienteCasado = casarClientePorArquivo(arquivo.name, clientes);
-        if (clienteCasado) {
-          await api.clientes.uploadPdf(clienteCasado.id, arquivo, dados);
+        // Mantém o histórico na tela "Extrações" abaixo -- só quando achou
+        // Pix (é isso que a tabela `pix_extracoes` registra); se já achamos
+        // o cliente aqui, manda o id direto (evita o backend ter que
+        // adivinhar de novo); sem casamento, a pessoa ainda pode vincular
+        // manualmente na lista (botão "Vincular").
+        if (dados) {
+          await api.boletos.salvarPix({
+            pixCopiaCola: dados.pixCopiaCola,
+            valor: dados.valor,
+            vencimento: dados.vencimento,
+            linhaDigitavel: dados.linhaDigitavel,
+            arquivo: arquivo.name,
+            clienteId: clienteCasado?.id,
+          });
         }
-
-        // Mantém o histórico na tela "Extrações" abaixo -- se já achamos o
-        // cliente aqui, manda o id direto (evita o backend ter que adivinhar
-        // de novo); sem casamento, a pessoa ainda pode vincular manualmente
-        // na lista (botão "Vincular").
-        await api.boletos.salvarPix({
-          pixCopiaCola: dados.pixCopiaCola,
-          valor: dados.valor,
-          vencimento: dados.vencimento,
-          linhaDigitavel: dados.linhaDigitavel,
-          arquivo: arquivo.name,
-          clienteId: clienteCasado?.id,
-        });
 
         setResumoEnvio((prev) =>
           prev ? { ...prev, processados: prev.processados + 1, sucesso: prev.sucesso + 1 } : prev,

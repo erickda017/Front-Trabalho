@@ -1103,6 +1103,84 @@ libs novas.
   (não o `path` que o backend devolve) como `pdf_path` do cliente lá na
   frente — sanitizar só do lado do backend deixaria o arquivo salvo sob uma
   chave e o `pdf_path` gravado no cliente apontando pra outra, quebrado.
+  **[2026-09] `importacaoBrowser.ts` foi removido logo depois** (ver seção
+  "PDF sem planilha obrigatória" abaixo) -- este bug ficou resolvido só por
+  um tempo curto antes do fluxo inteiro sumir.
+
+### PDF sem planilha obrigatória — importação em dois passos independentes — 2026-09
+
+- Pedido direto do operador, depois de bater 2x seguidas no mesmo sintoma (rate
+  limit, depois nome de arquivo com espaço) tentando usar a tela Importar:
+  "DELETA essa opção maldita de ser obrigatório subir um zip com planilha de
+  cliente. Deixa uma opção no lugar de subir SO OS PDFS pro banco, e eles
+  ficam em estado de aguardando cliente se não tiver cliente, mas a partir do
+  momento que um cliente for identificado ele será associado
+  automaticamente. O worker tá IMPEDINDO o casamento dos PDFS com clientes
+  por causa do limite de 1mb. O PDF não precisa mais passar pelo worker, as
+  informações já são tiradas da importação de clientes da lista crua."
+- **O que existia**: a tela Importar (`routes/importar.tsx`) exigia planilha
+  (.xlsx/.csv) **e** zip de PDFs juntos, obrigatórios os dois
+  (`disabled={!planilha || !zip}`). O processamento (`lib/importacaoBrowser.ts`,
+  `processarImportacaoNoBrowser`) rodava no navegador: parse dos dois
+  arquivos, casamento PDF↔linha por nome, e pra CADA PDF casado, extração de
+  Pix/valor/vencimento via `extrairDadosPix` (`lib/pixWorkerClient.ts` --
+  fatia o PDF e manda página por página pro Cloudflare Worker de OCR, limite
+  de 1MB por página nesse Worker). Só depois de tudo pronto, um `POST
+  /importacao/lote` criava os clientes E um lote de disparo pronto, de uma
+  vez.
+- **O bug real**: embora o casamento PDF↔cliente em si fosse só por NOME
+  (independente do resultado do Worker), a mesma ideia tinha vazado pra
+  OUTRO lugar -- a tela Pix (`routes/pix.tsx`, extração "opção 1" no
+  navegador, `extrair()`): se `extrairDadosPix` voltasse `null` (Worker sem
+  achar Pix -- boleto grande demais pro limite de 1MB, layout raro, Worker
+  fora do ar), a função retornava **antes** de sequer chamar
+  `casarClientePorArquivo`/`uploadPdf` -- o PDF nunca era associado ao
+  cliente só porque o Pix não foi achado, mesmo o casamento por nome nada
+  tendo a ver com isso. Corrigido: `casarClientePorArquivo`/`uploadPdf`
+  agora rodam sempre, com `dados` (pode ser `null`) passado direto pro
+  terceiro parâmetro de `api.clientes.uploadPdf` -- passar `null`
+  explicitamente (nunca `undefined`) é o que evita que `uploadPdf` reextraia
+  via Worker de novo por conta própria (ver assinatura em `api.js`:
+  `dadosPixPrecalculado !== undefined ? dadosPixPrecalculado : ...`). Só
+  falha de verdade quando NEM Pix NEM cliente foram achados.
+- **A decisão**: em vez de só ajustar o limite do Worker (que ia continuar
+  existindo como ponto único de falha), removida a obrigatoriedade de
+  planilha+zip por completo. Cadastro de cliente em massa e upload de PDF
+  viraram dois passos INDEPENDENTES:
+  1. **Colar lista de clientes** (`ConversorLista`, já existia como "0.
+     Converter lista crua" -- virou "1." na tela) -- cria os clientes só com
+     nome/telefone/valor/prazo, sem PDF nenhum, sem passar perto do Worker.
+  2. **Subir PDFs soltos** -- reaproveita **sem nenhuma mudança de
+     comportamento** o componente `UploadAvulsoFaturas`, que já existia (ver
+     seção "Upload de faturas avulsas" no histórico deste arquivo) e já
+     fazia EXATAMENTE o que foi pedido: casa cada PDF pelo nome do arquivo
+     contra os clientes já cadastrados (nunca lê o conteúdo do PDF, nunca
+     chama o Worker); não achando, o PDF fica pendente
+     (`faturas_pendentes`) e é associado sozinho assim que um cliente de
+     nome compatível for criado depois (`associarPendentesAoCliente`, ver
+     `lib/faturasPendentes.js`). Extraído de `routes/clientes.tsx` pra
+     `components/shared/UploadAvulsoFaturas.tsx`, reusado nas duas telas
+     (Clientes E Importar) -- única fonte, nenhuma duplicação.
+- **O que foi apagado** (ficou 100% morto depois da troca, nada mais
+  referenciava): `frontend/src/lib/importacaoBrowser.ts` inteiro;
+  `backend/src/services/importLote.js` inteiro
+  (`processarImportacaoLotePronto`); as rotas `POST /importacao/upload-pdf` e
+  `POST /importacao/lote` (viraram stubs 410, mesmo padrão já usado pro
+  fluxo ainda mais antigo removido em 2026-08, pra front antigo em cache não
+  falhar silenciosamente); `api.importacao.enviarLote`/`uploadPdf` no front.
+  **O que ficou**: `GET /importacao/modelo` (`api.importacao.baixarModelo`)
+  -- só serve um .xlsx de referência de colunas, não dependia do Worker nem
+  do fluxo removido, e o botão "Baixar planilha exemplo" na tela Disparo
+  também usa. `lib/pixWorkerClient.ts` e a extração da tela Pix continuam
+  existindo normalmente -- o Worker não foi removido do sistema, só deixou
+  de ser um pré-requisito pra ASSOCIAR um PDF a um cliente (continua sendo
+  usado por quem quer extrair Pix/valor/vencimento automaticamente).
+- **Efeito colateral aceito**: a tela Importar não cria mais um lote de
+  disparo pronto automaticamente a partir da planilha+zip (isso dependia do
+  fluxo removido). Montar um lote de disparo continua possível pelos
+  caminhos que já existiam: seleção manual na tela Disparo, ou "Selecionar
+  destinatários por lista colada" (`POST /clientes/identificar-lista`, ver
+  seção própria acima).
 
 - **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
   só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente

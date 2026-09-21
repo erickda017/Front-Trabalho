@@ -359,28 +359,15 @@ export const api = {
     diagnosticoStorage: () => request('/supervisor/exclusao/diagnostico-storage'),
   },
   importacao: {
-    // [2026-08] Único fluxo suportado: recebe o resultado já processado no
-    // navegador (parse de planilha/zip, fatiamento do PDF + extração de Pix
-    // via Cloudflare Worker, upload dos PDFs pro Storage -- tudo em
-    // src/lib/importacaoBrowser.ts). Manda só texto (nome, telefone, URLs,
-    // código Pix, valor, vencimento, linha digitável), nunca PDF -- por isso
-    // não pesa no servidor mesmo com 100+ clientes de uma vez. O antigo
-    // POST /importacao (zip+PDF binário direto pro servidor) foi removido
-    // (backend responde 410 Gone).
-    enviarLote: ({ itens, mensagem, lote }) =>
-      request('/importacao/lote', {
-        method: 'POST',
-        body: JSON.stringify({ itens, mensagem: mensagem || undefined, lote: lote || undefined }),
-      }),
-    // Repasse de 1 PDF já pronto pro Storage via backend (service_role, ignora
-    // RLS) -- ver comentário na rota no backend pro motivo. O navegador ainda
-    // faz o trabalho pesado (fatiar + Worker de OCR) antes de chamar isso.
-    uploadPdf: ({ caminho, blob, nomeArquivo }) => {
-      const formData = new FormData();
-      formData.append('caminho', caminho);
-      formData.append('pdf', blob, nomeArquivo);
-      return request('/importacao/upload-pdf', { method: 'POST', body: formData });
-    },
+    // [2026-09] O fluxo de "planilha + zip" (parse no navegador, fatiamento
+    // do PDF + extração de Pix via Cloudflare Worker, upload em massa) foi
+    // REMOVIDO -- ver CONTEXTO.md ("PDF sem planilha obrigatória"). Pedido
+    // explícito do operador: o Worker tinha um limite de 1MB por página que
+    // travava o casamento de PDF com cliente em boletos maiores, e ele já
+    // não precisava desse fluxo (cadastra clientes colando a lista crua,
+    // sem PDF nenhum, e sobe os PDFs depois soltos -- ver
+    // api.faturas.uploadAvulso). Só sobra `baixarModelo`, que continua útil
+    // como referência de colunas (usada também no botão da tela de Disparo).
     baixarModelo: () => download('/importacao/modelo', 'modelo-importacao.xlsx'),
   },
   chat: {
