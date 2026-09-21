@@ -1059,6 +1059,30 @@ libs novas.
   de cada linha já vem casado inline no próprio upsert (extraído no navegador antes de
   chegar aqui), não depende de `pix_extracoes` pendente.
 
+### Rate limit bloqueava importação legítima de muitos clientes — 2026-09
+
+- Relatado: "Tô tentando importar um bocado de clientes mas dá esse erro antes
+  de funcionar 'Muitas requisições em pouco tempo nesta operação...'". Causa:
+  `limiteSensivel` (`backend/src/lib/rateLimit.js`, criado pro item "Rate
+  limiting na API" acima) tem um teto de 30 requisições/5min, pensado pra
+  ações OCASIONAIS e pesadas (disparar um lote, mensagem de teste, exclusão em
+  massa). Só que três rotas usavam esse MESMO limitador sendo chamadas 1 VEZ
+  POR ARQUIVO dentro de um fluxo em lote, não 1 ação isolada:
+  `POST /importacao/upload-pdf` (tela Importar, planilha+zip -- ver
+  `frontend/src/lib/importacaoBrowser.ts`), `POST /clientes/:id/pdf` (tela
+  Pix, extração "opção 1" no navegador -- ver `routes/pix.tsx`, `extrair()`) e
+  `POST /pix/extrair-servidor` (mesma tela, "opção 2" no servidor). Os três
+  processam em lotes de 10 (3 em paralelo) — uma importação de mais de ~30-40
+  PDFs batia no teto de 30/5min bem no meio do processo, sem o operador ter
+  feito nada de errado (só importar um volume normal de clientes). Corrigido
+  com um segundo limitador, `limiteImportacaoArquivo` (mesmo arquivo), 1000
+  requisições/10min — generoso o bastante pra qualquer importação realista,
+  ainda finito (não remove a proteção contra abuso, só ajusta o teto pro
+  volume real desse tipo de operação). `limiteSensivel` continua igual pras
+  rotas de ação única (disparar lote, teste, importar-lista/importar-pagos/
+  identificar-lista — que recebem a lista inteira numa chamada só, não 1 por
+  arquivo).
+
 - **Não testado end-to-end** (sem ambiente com `npm install`/rede neste trabalho) —
   só `node --check` (sintaxe) nos arquivos de backend tocados. Testar particularmente
   a extração no servidor num ambiente real do Render antes de confiar nela em
