@@ -10,6 +10,7 @@ import {
   Loader2,
   Paperclip,
   Pause,
+  Phone,
   Play,
   RotateCcw,
   Search,
@@ -42,6 +43,7 @@ import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo } from "@/lib/types";
+import { formatarTelefone, normalizarListaTelefones } from "@/lib/telefonesAvulsos";
 
 export const Route = createFileRoute("/disparos")({
   head: () => ({
@@ -131,6 +133,78 @@ function AvisoForaDoDisparo({
 // nenhum: não cria cliente, não aplica tag). Pensado pra colar um relatório
 // de inadimplência/cobrança direto, sem precisar caçar cliente por cliente
 // na tela de Clientes.
+// [2026-10] "Colar números": só a lista de telefones, sem nome nem cadastro.
+// Os números vão direto pro lote (backend: POST /envios com `telefones`,
+// ver backend/src/lib/telefonesAvulsos.js) -- não cria cliente nenhum.
+function ColarNumerosDialog({
+  aberto,
+  onOpenChange,
+  onConfirmar,
+}: {
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConfirmar: (telefones: string[]) => void;
+}) {
+  const [texto, setTexto] = useState("");
+  const previa = normalizarListaTelefones(texto);
+
+  function fechar() {
+    setTexto("");
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && fechar()}>
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Colar números</DialogTitle>
+          <DialogDescription>
+            Um número por linha (ou separados por vírgula). Pode colar com ou sem formatação:
+            &quot;(11) 99999-9999&quot;, &quot;11999999999&quot;, &quot;+55 11 99999-9999&quot;. Não
+            precisa de nome e não cria cadastro.
+          </DialogDescription>
+        </DialogHeader>
+        <textarea
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder={"11999999999\n21988887777\n..."}
+          rows={12}
+          autoFocus
+          className="bg-surface text-foreground border-border focus-ring min-h-0 w-full flex-1 rounded-md border px-3 py-2 font-mono text-xs"
+        />
+        {texto.trim() && (
+          <div className="space-y-2 text-sm">
+            <p className="text-success font-medium">{previa.validos.length} número(s) válido(s)</p>
+            {previa.repetidos > 0 && <p className="text-subtle text-xs">{previa.repetidos} repetido(s) ignorado(s).</p>}
+            {previa.invalidos.length > 0 && (
+              <Aviso tone="warning">
+                {previa.invalidos.length} inválido(s), ficam de fora: {previa.invalidos.slice(0, 10).join(", ")}
+                {previa.invalidos.length > 10 && "…"}
+              </Aviso>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Botao variante="outline" onClick={fechar}>
+            Cancelar
+          </Botao>
+          <Botao
+            variante="primary"
+            disabled={!previa.validos.length}
+            onClick={() => {
+              onConfirmar(previa.validos);
+              fechar();
+            }}
+          >
+            <CheckCircle2 className="size-4" />
+            Usar {previa.validos.length} número(s)
+          </Botao>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ColarListaDialog({
   aberto,
   onOpenChange,
@@ -275,39 +349,85 @@ function ColarListaDialog({
   );
 }
 
-function EtapaDestinatarios() {
+function EtapaDestinatarios({
+  telefonesAvulsos,
+  setTelefonesAvulsos,
+}: {
+  telefonesAvulsos: string[];
+  setTelefonesAvulsos: (t: string[]) => void;
+}) {
   const { selecionados, toggleSelecionado, limparSelecionados, clientes } = useAppState();
   const clientesSelecionados = clientes.filter((c) => selecionados.includes(c.id));
   const [colarListaAberto, setColarListaAberto] = useState(false);
+  const [colarNumerosAberto, setColarNumerosAberto] = useState(false);
+  const modoNumeros = telefonesAvulsos.length > 0;
+
+  function usarNumeros(telefones: string[]) {
+    setTelefonesAvulsos(telefones);
+    // Lote é OU de clientes OU de números -- não mistura (o backend também não).
+    if (selecionados.length) {
+      limparSelecionados();
+      toast.info("Seleção de clientes limpa: este lote vai só para os números colados.");
+    }
+  }
 
   return (
     <SectionCard
       eyebrow="Etapa 1"
       titulo="Destinatários"
       descricao={
-        selecionados.length > 0
-          ? `${selecionados.length} cliente(s) selecionado(s) para este lote.`
-          : undefined
+        modoNumeros
+          ? `${telefonesAvulsos.length} número(s) colado(s) para este lote (sem cadastro).`
+          : selecionados.length > 0
+            ? `${selecionados.length} cliente(s) selecionado(s) para este lote.`
+            : undefined
       }
       acoes={
         <div className="flex items-center gap-1.5">
-          <Botao variante="ghost" tamanho="sm" onClick={() => setColarListaAberto(true)}>
-            <ClipboardPaste className="size-3.5" />
-            Colar lista
+          <Botao variante="ghost" tamanho="sm" onClick={() => setColarNumerosAberto(true)}>
+            <Phone className="size-3.5" />
+            Colar números
           </Botao>
-          {selecionados.length > 0 && (
-            <Botao variante="ghost" tamanho="sm" onClick={limparSelecionados}>
-              Limpar seleção
+          {!modoNumeros && (
+            <Botao variante="ghost" tamanho="sm" onClick={() => setColarListaAberto(true)}>
+              <ClipboardPaste className="size-3.5" />
+              Colar lista
             </Botao>
+          )}
+          {modoNumeros ? (
+            <Botao variante="ghost" tamanho="sm" onClick={() => setTelefonesAvulsos([])}>
+              Limpar números
+            </Botao>
+          ) : (
+            selecionados.length > 0 && (
+              <Botao variante="ghost" tamanho="sm" onClick={limparSelecionados}>
+                Limpar seleção
+              </Botao>
+            )
           )}
         </div>
       }
     >
-      {selecionados.length === 0 ? (
+      {modoNumeros ? (
+        <ul className="divide-border max-h-72 divide-y overflow-y-auto rounded-md border border-border">
+          {telefonesAvulsos.map((t) => (
+            <li key={t} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span className="font-mono text-xs">{formatarTelefone(t)}</span>
+              <button
+                onClick={() => setTelefonesAvulsos(telefonesAvulsos.filter((x) => x !== t))}
+                aria-label={`Remover ${t}`}
+                className="text-subtle hover:text-destructive shrink-0 p-1"
+              >
+                <X className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : selecionados.length === 0 ? (
         <EmptyState
           icon={Users}
-          titulo="Nenhum cliente selecionado"
-          descricao="Selecione clientes na aba Clientes, ou cole uma lista crua (relatório de cobrança) pra identificar e adicionar de uma vez."
+          titulo="Nenhum destinatário"
+          descricao="Selecione clientes na aba Clientes, cole uma lista crua (relatório de cobrança), ou cole só os números de WhatsApp."
           acao={
             <div className="flex flex-wrap items-center justify-center gap-2">
               <Link to="/clientes">
@@ -318,6 +438,10 @@ function EtapaDestinatarios() {
               <Botao variante="outline" tamanho="sm" onClick={() => setColarListaAberto(true)}>
                 <ClipboardPaste className="size-3.5" />
                 Colar lista
+              </Botao>
+              <Botao variante="outline" tamanho="sm" onClick={() => setColarNumerosAberto(true)}>
+                <Phone className="size-3.5" />
+                Colar números
               </Botao>
             </div>
           }
@@ -343,6 +467,7 @@ function EtapaDestinatarios() {
       )}
 
       <ColarListaDialog aberto={colarListaAberto} onOpenChange={setColarListaAberto} />
+      <ColarNumerosDialog aberto={colarNumerosAberto} onOpenChange={setColarNumerosAberto} onConfirmar={usarNumeros} />
     </SectionCard>
   );
 }
@@ -756,6 +881,7 @@ function ConfirmarDisparo({
   aberto,
   onOpenChange,
   totalClientes,
+  modoNumeros = false,
   modo,
   agendarPara,
   onConfirmar,
@@ -764,6 +890,7 @@ function ConfirmarDisparo({
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
   totalClientes: number;
+  modoNumeros?: boolean;
   modo: ModoDisparo;
   agendarPara: string;
   onConfirmar: () => void;
@@ -783,9 +910,12 @@ function ConfirmarDisparo({
         </DialogHeader>
         <div className="space-y-2 text-sm">
           <p>
-            Você está prestes a enviar para <strong>{totalClientes}</strong> cliente(s).
+            Você está prestes a enviar para <strong>{totalClientes}</strong>{" "}
+            {modoNumeros ? "número(s) colado(s)" : "cliente(s)"}.
           </p>
-          <p className="text-muted-foreground">Anexo: {anexoLabel}</p>
+          <p className="text-muted-foreground">
+            Anexo: {modoNumeros ? "somente mensagem de texto (números sem cadastro não têm PDF)" : anexoLabel}
+          </p>
           <p className="text-muted-foreground">
             {agendarPara
               ? `Agendado para ${new Date(agendarPara).toLocaleString("pt-BR")}`
@@ -1040,8 +1170,8 @@ function ProgressoDisparo({
                 <tbody>
                   {itens.map((item) => (
                     <tr key={item.id} className="border-border border-t">
-                      <td className="td-cell">{item.clientes?.nome ?? "—"}</td>
-                      <td className="td-cell font-mono text-xs">{item.clientes?.telefone ?? item.erro ?? "—"}</td>
+                      <td className="td-cell">{item.clientes?.nome ?? (item.telefone_usado ? "Número avulso" : "—")}</td>
+                      <td className="td-cell font-mono text-xs">{item.clientes?.telefone ?? item.telefone_usado ?? item.erro ?? "—"}</td>
                       <td className="td-cell">
                         <StatusBadge status={statusDoItem(item)} />
                       </td>
@@ -1240,6 +1370,9 @@ function Disparo() {
   const [erro, setErro] = useState<string | null>(null);
   const [foraDoDisparo, setForaDoDisparo] = useState<ClienteIgnoradoDisparo[]>([]);
   const [confirmarAberto, setConfirmarAberto] = useState(false);
+  // [2026-10] "Colar números": lote só com telefones, sem cliente cadastrado.
+  const [telefonesAvulsos, setTelefonesAvulsos] = useState<string[]>([]);
+  const modoNumeros = telefonesAvulsos.length > 0;
 
   // Se não há um lote "ativo" guardado nesta aba (sessionStorage perdido --
   // aba nova, outro navegador, ou o servidor caiu e voltou), pergunta pro
@@ -1275,8 +1408,12 @@ function Disparo() {
 
       const variacoesPreenchidas = templates.map((t) => t.trim()).filter(Boolean);
 
+      if (modoNumeros && modo === "pix") {
+        throw new Error('Números colados não têm Pix cadastrado -- troque o modo "só Pix" por outro antes de disparar.');
+      }
       const envio = await api.envios.criar({
-        cliente_ids: selecionados,
+        cliente_ids: modoNumeros ? [] : selecionados,
+        ...(modoNumeros ? { telefones: telefonesAvulsos } : {}),
         // NOTA: o backend (POST /envios) espera "mensagem", não "template_mensagem"
         // -- estava divergente aqui, o que fazia a criação sempre falhar com
         // "mensagem é obrigatória" quando disparada direto por essa tela (fora
@@ -1299,8 +1436,10 @@ function Disparo() {
       // fica num "grupo fora do disparo" separado (ver AvisoForaDoDisparo),
       // pro operador verificar depois sem bloquear quem já é elegível.
       setForaDoDisparo([...(envio.ignorados_sem_pdf_detalhe ?? []), ...(envio.ignorados_por_tag_detalhe ?? [])]);
+      if (envio.ignorados_invalidos) toast.warning(`${envio.ignorados_invalidos} número(s) inválido(s) ficaram de fora.`);
 
       limparSelecionados();
+      setTelefonesAvulsos([]);
       setEnvioAtivoId(envio.id);
       setConfirmarAberto(false);
       if (!agendarPara) {
@@ -1313,7 +1452,12 @@ function Disparo() {
     }
   }
 
-  const podeConfirmar = selecionados.length > 0 && templates.some((t) => t.trim().length > 0);
+  const totalDestinatarios = modoNumeros ? telefonesAvulsos.length : selecionados.length;
+  const podeConfirmar = totalDestinatarios > 0 && templates.some((t) => t.trim().length > 0);
+  // Número colado não tem nome/valor/vencimento/Pix: essas variáveis saem vazias.
+  const variaveisVazias = modoNumeros
+    ? ["{{nome}}", "{{valor}}", "{{vencimento}}", "{{pix}}"].filter((v) => templates.some((t) => t.includes(v)))
+    : [];
 
   return (
     <AppShell
@@ -1338,7 +1482,7 @@ function Disparo() {
           <ProgressoDisparo envioAtivoId={envioAtivoId} setEnvioAtivoId={setEnvioAtivoId} />
         ) : (
           <>
-            <EtapaDestinatarios />
+            <EtapaDestinatarios telefonesAvulsos={telefonesAvulsos} setTelefonesAvulsos={setTelefonesAvulsos} />
             <EtapaMensagem templates={templates} setTemplates={setTemplates} />
             <EtapaConexao />
             <ConfiguracoesAvancadas
@@ -1361,15 +1505,28 @@ function Disparo() {
                 <Send className="size-4" />
                 Revisar e disparar
               </Botao>
-              {selecionados.length === 0 && (
-                <p className="text-subtle mt-2 text-xs">Selecione ao menos um cliente para continuar.</p>
+              {totalDestinatarios === 0 && (
+                <p className="text-subtle mt-2 text-xs">Selecione ao menos um cliente ou cole números para continuar.</p>
+              )}
+              {variaveisVazias.length > 0 && (
+                <Aviso tone="warning" className="mt-3">
+                  A mensagem usa {variaveisVazias.join(", ")}, mas números colados não têm esses dados -- vão sair
+                  em branco. Ex.: &quot;Olá {"{{nome}}"}, tudo bem?&quot; vira &quot;Olá , tudo bem?&quot;.
+                </Aviso>
+              )}
+              {modoNumeros && modo === "pix" && (
+                <Aviso tone="danger" className="mt-3">
+                  O modo &quot;só Pix&quot; não funciona com números colados (eles não têm Pix). Troque o modo nas
+                  configurações avançadas.
+                </Aviso>
               )}
             </SectionCard>
 
             <ConfirmarDisparo
               aberto={confirmarAberto}
               onOpenChange={setConfirmarAberto}
-              totalClientes={selecionados.length}
+              totalClientes={totalDestinatarios}
+              modoNumeros={modoNumeros}
               modo={modo}
               agendarPara={agendarPara}
               onConfirmar={criarEIniciar}

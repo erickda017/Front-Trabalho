@@ -314,13 +314,13 @@ function DetalhesLote({
                 return (
                   <tr key={item.id} className="border-border border-t align-top">
                     <td className="td-cell truncate" title={item.clientes?.nome ?? undefined}>
-                      {item.clientes?.nome ?? "—"}
+                      {item.clientes?.nome ?? (item.telefone_usado ? "Número avulso" : "—")}
                     </td>
                     <td
                       className="td-cell truncate font-mono text-xs"
-                      title={item.clientes?.telefone ?? undefined}
+                      title={item.clientes?.telefone ?? item.telefone_usado ?? undefined}
                     >
-                      {item.clientes?.telefone ?? "—"}
+                      {item.clientes?.telefone ?? item.telefone_usado ?? "—"}
                     </td>
                     <td className="td-cell truncate">{item.clientes?.valor ?? "—"}</td>
                     <td className="td-cell">

@@ -508,8 +508,15 @@ declare module "@/api" {
         foto_path?: string | undefined;
         foto_mimetype?: string | undefined;
         foto_nome?: string | undefined;
+        /** [2026-10] "Colar números": lote só com telefones, SEM cliente
+         *  cadastrado (cliente_ids/tag_ids ignorados quando presente). */
+        telefones?: string[] | undefined;
       }) => Promise<
         Envio & {
+          /** Só no lote de números colados. */
+          ignorados_invalidos?: number;
+          ignorados_invalidos_detalhe?: string[];
+          ignorados_repetidos?: number;
           ignorados_sem_pdf: number;
           /** [2026-09] Quem exatamente ficou de fora por falta de PDF/PIX --
            *  antes só vinha a contagem; a UI usa isto pra listar por nome,

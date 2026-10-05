@@ -665,6 +665,22 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
     ao mudar (mesmo comportamento da busca por nome ali), entra na
     `queryKey` do React Query pra recarregar a lista.
 
+### Disparo para números colados, sem cadastro — 2026-10
+
+- Tela Disparos → Etapa 1 → **"Colar números"**: só a lista de WhatsApp (1 por linha
+  ou separados por vírgula, qualquer formatação), sem nome e sem criar cliente. Prévia na
+  tela (válidos / inválidos / repetidos) com `src/lib/telefonesAvulsos.ts`.
+- Backend: `POST /api/envios` com `telefones: string[]` (`lib/telefonesAvulsos.js`
+  revalida/normaliza/deduplica; limite 5000). Cada número vira um `envio_itens` com
+  **`cliente_id = null`** e o número em **`telefone_usado`** (coluna já existente desde a
+  migration-25 — **sem migration nova**). `dispatchQueue.enviarItem` trata item sem cliente
+  como contato mínimo `{ nome: '', telefone }`.
+- **Decisão:** não cria cliente "fantasma" (poluiria carteira, dashboard, safras). Lote é
+  OU de clientes OU de números (não mistura). Modo "só Pix" é recusado pra números (não
+  têm Pix); `{{nome}}`/`{{valor}}`/`{{vencimento}}`/`{{pix}}` saem vazios (a tela avisa).
+  Foto do lote funciona; PDF não (não há cliente). Histórico/progresso mostram "Número
+  avulso" + o número; busca nos itens acha pelo número.
+
 ### Planilha de PIX do supervisor por OS + nome + vencimento — 2026-10
 
 - Operador sobe PDFs **ou .zip** em `/pix`. Pix vem do QR lido no navegador; pro Worker

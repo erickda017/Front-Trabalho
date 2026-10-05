@@ -407,6 +407,9 @@ export type EnvioItem = {
   status_entrega: "entregue" | "lido" | null;
   erro: string | null;
   enviado_em: string | null;
+  /** Número que recebeu. Em item de "Colar números" (sem cliente, `clientes`
+   *  null) é o próprio destinatário. */
+  telefone_usado?: string | null;
   clientes: {
     nome: string;
     telefone: string;
