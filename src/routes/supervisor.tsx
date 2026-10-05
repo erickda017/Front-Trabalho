@@ -40,8 +40,9 @@ import { PainelExclusao } from "@/components/supervisor/PainelExclusao";
 import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
-import { preencherPixNoWorkbook, type ResumoPlanilhaPix } from "@/lib/casarPlanilhaPix";
+import { preencherPixNoWorkbook, type ResumoPlanilhaPix, type StatusLinha } from "@/lib/casarPlanilhaPix";
 import { aplicarEscritasNoXlsx } from "@/lib/xlsxPatch";
+import { paraBr } from "@/lib/dataBr";
 import {
   adicionarExtracaoPessoal,
   expiraEmMs,
@@ -884,6 +885,31 @@ function preencherPixNaMatriz(
   return resultado;
 }
 
+const ROTULO_STATUS: Record<StatusLinha, string> = {
+  preenchida: "preenchida",
+  ja_tinha_pix: "já tinha Pix",
+  ocupada: "célula com outro texto",
+  sem_extracao: "sem PDF extraído",
+  divergente: "OS bate, nome/vencimento não",
+};
+
+// Relatório "por que cada linha recebeu (ou não) Pix". `;` + BOM pro Excel
+// BR abrir com acento e colunas certas.
+function baixarRelatorioPlanilhaPix(resumo: ResumoPlanilhaPix, nomeOriginal: string | undefined) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const linhas = [
+    ["Aba", "Linha", "OS", "Cliente", "Vencimento", "Status", "Detalhe"],
+    ...resumo.detalhes.map((d) => [d.aba, d.linha, d.os, d.cliente, paraBr(d.vencimento), ROTULO_STATUS[d.status], d.motivo]),
+  ];
+  const csv = "\uFEFF" + linhas.map((l) => l.map(esc).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (nomeOriginal ?? "planilha").replace(/\.(xlsx|xlsm|xls|csv)$/i, "") + "-relatorio-pix.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function baixarBytes(bytes: Uint8Array, nomeArquivo: string) {
   const url = URL.createObjectURL(
     new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
@@ -986,14 +1012,73 @@ function AbaPlanilha() {
         </Botao>
 
         {resultado && (
-          <Aviso tone={resultado.divergentes > 0 ? "warning" : "info"}>
-            {resultado.linhas} linha(s) em {resultado.abas.length} aba(s) — {resultado.preenchidas} preenchida(s),{" "}
-            {resultado.jaTinhamPix} já tinham PIX, {resultado.semExtracao} sem PDF extraído,{" "}
-            {resultado.divergentes} com OS igual mas nome/vencimento diferente (deixadas vazias).
-            {resultado.puladas.length > 0 && (
-              <> Abas ignoradas: {resultado.puladas.map((p) => `${p.aba} (${p.motivo})`).join(", ")}.</>
+          <div className="space-y-3">
+            <Aviso tone={resultado.preenchidas === 0 ? "warning" : "info"}>
+              <div className="space-y-1">
+                <p>
+                  <strong>{resultado.preenchidas}</strong> de {resultado.linhas} linha(s) receberam Pix ({resultado.abas.length} aba(s)).
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>
+                    Pix disponíveis no sistema: {resultado.extracoesRecebidas} extração(ões), {resultado.extracoesComOs} com OS
+                    lida no PDF (só essas podem casar).
+                  </li>
+                  {resultado.semExtracao > 0 && <li>{resultado.semExtracao} sem nenhum PDF extraído com aquela OS.</li>}
+                  {resultado.divergentes > 0 && (
+                    <li>{resultado.divergentes} com a OS encontrada, mas nome ou vencimento diferente (ver abaixo).</li>
+                  )}
+                  {resultado.jaTinhamPix > 0 && <li>{resultado.jaTinhamPix} já tinham um código Pix na célula.</li>}
+                  {resultado.ocupadas > 0 && (
+                    <li>{resultado.ocupadas} com outro texto na célula de Pix (não foi sobrescrito).</li>
+                  )}
+                  {resultado.colunasRedirecionadas.map((c) => (
+                    <li key={c.aba}>
+                      {c.aba}: a coluna {c.de} tem nome de Pix mas guarda outra coisa (ex.: "PAGO…") -- Pix foi pra
+                      coluna nova {c.para} ("COD PIX").
+                    </li>
+                  ))}
+                  {resultado.puladas.length > 0 && (
+                    <li>Abas ignoradas: {resultado.puladas.map((p) => `${p.aba} (${p.motivo})`).join(", ")}.</li>
+                  )}
+                </ul>
+              </div>
+            </Aviso>
+            <Botao tamanho="sm" variante="outline" onClick={() => baixarRelatorioPlanilhaPix(resultado, arquivo?.name)}>
+              <Download className="size-3.5" />
+              Baixar relatório linha a linha (CSV)
+            </Botao>
+            {resultado.detalhes.some((d) => d.status === "divergente") && (
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead className="bg-surface-sunken text-left">
+                    <tr>
+                      <th className="px-2 py-1">Aba</th>
+                      <th className="px-2 py-1">Linha</th>
+                      <th className="px-2 py-1">OS</th>
+                      <th className="px-2 py-1">Cliente</th>
+                      <th className="px-2 py-1">Vencimento</th>
+                      <th className="px-2 py-1">Por que não preencheu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resultado.detalhes
+                      .filter((d) => d.status === "divergente")
+                      .slice(0, 100)
+                      .map((d) => (
+                        <tr key={`${d.aba}-${d.linha}`} className="border-t">
+                          <td className="px-2 py-1">{d.aba}</td>
+                          <td className="px-2 py-1">{d.linha}</td>
+                          <td className="px-2 py-1">{d.os}</td>
+                          <td className="px-2 py-1">{d.cliente}</td>
+                          <td className="px-2 py-1">{paraBr(d.vencimento) || "-"}</td>
+                          <td className="px-2 py-1">{d.motivo}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </Aviso>
+          </div>
         )}
         {erro && <Aviso tone="danger">{erro}</Aviso>}
       </div>

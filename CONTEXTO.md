@@ -718,6 +718,19 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Planilha de PIX do supervisor: "289 já tinham PIX" com nada
+  preenchido, e resumo sem explicação.** Na planilha real, a aba Agosto tem
+  cabeçalho "COD PIX" mas a coluna guarda "PAGO 14-08" (é a OBS
+  renomeada). O casamento confiava só no nome do cabeçalho, então essas
+  289 linhas contavam como "já tem Pix" e nunca eram preenchidas. Fix
+  (`src/lib/casarPlanilhaPix.ts`): só conta como Pix um texto começando com
+  `000201` (BR Code). Se a coluna "de Pix" tem outro texto, ela não é
+  sobrescrita e o Pix vai pra uma "COD PIX" nova na primeira coluna vazia
+  à direita. Resumo agora tem `detalhes` (1 entrada por linha: aba, linha,
+  OS, cliente, vencimento, status e motivo), `extracoesRecebidas` e
+  `extracoesComOs`. A tela mostra as divergências (o que exatamente não
+  bateu) e tem botão "Baixar relatório linha a linha (CSV)".
+
 - **[2026-10] Planilha do supervisor voltava "-com-pix.xlsx" sem NENHUMA
   formatação.** Relatado com as planilhas reais ("com coluna pix PARA
   PAGAR.xlsx" e o resultado): cores de fundo, bordas e negrito sumiam de
