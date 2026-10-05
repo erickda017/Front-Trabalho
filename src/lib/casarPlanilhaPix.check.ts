@@ -31,7 +31,15 @@ assert.equal(col("1"), "PIX-MARIA");
 assert.equal(col("2"), "");
 assert.equal(col("3"), "");
 assert.equal(col("4"), "PIX-PEDRO");
-assert.deepEqual(r, { abas: ["Setembro"], puladas: [], linhas: 4, preenchidas: 2, jaTinhamPix: 0, semExtracao: 1, divergentes: 1 });
+const { escritas, ...contagens } = r;
+assert.deepEqual(contagens, { abas: ["Setembro"], puladas: [], linhas: 4, preenchidas: 2, jaTinhamPix: 0, semExtracao: 1, divergentes: 1 });
+// Mesmas células que foram pro workbook vão pra lista aplicada no arquivo
+// original (lib/xlsxPatch.ts); coluna nova herda estilo da vizinha.
+assert.deepEqual(escritas, [
+  { aba: "Setembro", r: 0, c: 4, valor: "COD PIX", estiloDe: { r: 0, c: 3 } },
+  { aba: "Setembro", r: 1, c: 4, valor: "PIX-MARIA", estiloDe: { r: 1, c: 3 } },
+  { aba: "Setembro", r: 4, c: 4, valor: "PIX-PEDRO", estiloDe: { r: 4, c: 3 } },
+]);
 
 // Cabeçalho na linha 3 (título em cima), apelidos ("Nº OS", "Nome do Cliente",
 // "Dt. Venc.") e aba sem OS (tipo a PROC da planilha real) -> pulada com motivo.
@@ -47,6 +55,8 @@ const r2 = preencherPixNoWorkbook(wb2, [
   { arquivo: "x.pdf", nome: "MARIA SOUZA", codigo: "22067040", vencimento: "10/08/2026", pix_code: "PIX-MARIA" },
 ]);
 assert.equal(wb2.Sheets["Com titulo"]!["D4"]?.v, "PIX-MARIA");
+// Coluna Pix já existia: escreve sem copiar estilo (mantém o da própria célula).
+assert.deepEqual(r2.escritas, [{ aba: "Com titulo", r: 3, c: 3, valor: "PIX-MARIA" }]);
 assert.deepEqual(r2.abas, ["Com titulo"]);
 assert.deepEqual(r2.puladas, [{ aba: "PROC", motivo: "sem coluna OS, CLIENTE, VENCIMENTO" }]);
 console.log("casarPlanilhaPix: ok");

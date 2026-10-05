@@ -9,9 +9,12 @@
 // outro vencimento é cobrança errada. Na dúvida, deixa vazio.
 //
 // Mexe direto nas células do workbook (não remonta via aoa) pra preservar
-// todas as abas, colunas extras e valores originais.
+// todas as abas, colunas extras e valores originais. Pra .xlsx, o arquivo
+// final NÃO sai do workbook do SheetJS (perde estilo) -- sai do arquivo
+// original com `resumo.escritas` aplicadas (lib/xlsxPatch.ts).
 import * as XLSX from "xlsx";
 import { paraIso } from "./dataBr.ts";
+import type { EscritaCelula } from "./xlsxPatch.ts";
 
 export type ExtracaoPix = {
   arquivo: string | null;
@@ -29,6 +32,9 @@ export type ResumoPlanilhaPix = {
   jaTinhamPix: number;
   semExtracao: number; // nenhuma extração com essa OS
   divergentes: number; // OS bateu, mas nome ou vencimento não
+  // [2026-10] Células escritas, pra aplicar no ARQUIVO ORIGINAL via
+  // lib/xlsxPatch.ts sem perder formatação (ver comentário lá).
+  escritas: EscritaCelula[];
 };
 
 function normalizar(v: unknown): string {
@@ -87,7 +93,7 @@ function acharColuna(cabecalho: string[], regexes: RegExp[]): number {
 }
 
 export function preencherPixNoWorkbook(wb: XLSX.WorkBook, extracoes: ExtracaoPix[]): ResumoPlanilhaPix {
-  const resumo: ResumoPlanilhaPix = { abas: [], puladas: [], linhas: 0, preenchidas: 0, jaTinhamPix: 0, semExtracao: 0, divergentes: 0 };
+  const resumo: ResumoPlanilhaPix = { abas: [], puladas: [], linhas: 0, preenchidas: 0, jaTinhamPix: 0, semExtracao: 0, divergentes: 0, escritas: [] };
 
   // OS -> extrações (na ordem recebida: mais recente primeiro).
   const porOs = new Map<string, ExtracaoPix[]>();
@@ -125,11 +131,13 @@ export function preencherPixNoWorkbook(wb: XLSX.WorkBook, extracoes: ExtracaoPix
     }
 
     let colPix = acharColuna(cabecalho, COL_PIX);
-    if (colPix === -1) {
+    const colunaNova = colPix === -1;
+    if (colunaNova) {
       // Logo depois do último cabeçalho preenchido (o !ref pode incluir
       // colunas vazias só formatadas).
       colPix = cabecalho.reduce((ultimo, c, i) => (c ? i : ultimo), range.s.c) + 1;
       XLSX.utils.sheet_add_aoa(ws, [["COD PIX"]], { origin: { r: r0, c: colPix } });
+      resumo.escritas.push({ aba: nomeAba, r: r0, c: colPix, valor: "COD PIX", estiloDe: { r: r0, c: colPix - 1 } });
     }
     resumo.abas.push(nomeAba);
 
@@ -159,6 +167,8 @@ export function preencherPixNoWorkbook(wb: XLSX.WorkBook, extracoes: ExtracaoPix
       }
 
       XLSX.utils.sheet_add_aoa(ws, [[certa.pix_code]], { origin: { r, c: colPix } });
+      // Coluna criada agora: herda o estilo (borda/cor da linha) da vizinha.
+      resumo.escritas.push({ aba: nomeAba, r, c: colPix, valor: certa.pix_code, ...(colunaNova ? { estiloDe: { r, c: colPix - 1 } } : {}) });
       resumo.preenchidas++;
     }
   }

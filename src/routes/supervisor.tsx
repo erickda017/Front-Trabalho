@@ -41,6 +41,7 @@ import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
 import { preencherPixNoWorkbook, type ResumoPlanilhaPix } from "@/lib/casarPlanilhaPix";
+import { aplicarEscritasNoXlsx } from "@/lib/xlsxPatch";
 import {
   adicionarExtracaoPessoal,
   expiraEmMs,
@@ -883,6 +884,17 @@ function preencherPixNaMatriz(
   return resultado;
 }
 
+function baixarBytes(bytes: Uint8Array, nomeArquivo: string) {
+  const url = URL.createObjectURL(
+    new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeArquivo;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function baixarMatrizComoXlsx(matriz: unknown[][], nomeArquivo: string) {
   const aba = XLSX.utils.aoa_to_sheet(matriz);
   const livro = XLSX.utils.book_new();
@@ -908,7 +920,8 @@ function AbaPlanilha() {
     setResultado(null);
     try {
       const extracoes = await api.supervisor.extracoesPix();
-      const workbook = XLSX.read(await arquivo.arrayBuffer(), {
+      const original = await arquivo.arrayBuffer();
+      const workbook = XLSX.read(original, {
         type: "array",
         cellNF: true,
         cellStyles: true,
@@ -919,7 +932,19 @@ function AbaPlanilha() {
         throw new Error('Nenhuma aba com as colunas "OS", "CLIENTE" e "VENCIMENTO" no cabeçalho.');
       }
       setResultado(res);
-      XLSX.writeFile(workbook, arquivo.name.replace(/\.(xlsx|xls|csv)$/i, "") + "-com-pix.xlsx");
+      const ehXlsx = /\.(xlsx|xlsm)$/i.test(arquivo.name);
+      const extensao = /\.xlsm$/i.test(arquivo.name) ? ".xlsm" : ".xlsx";
+      const nomeSaida = arquivo.name.replace(/\.(xlsx|xlsm|xls|csv)$/i, "") + "-com-pix" + extensao;
+      if (ehXlsx) {
+        // [2026-10] .xlsx/.xlsm: aplica só as células novas no ARQUIVO
+        // ORIGINAL -- `XLSX.writeFile` jogava fora toda a formatação (ver
+        // lib/xlsxPatch.ts). CSV/.xls antigo não têm esse caminho (CSV não
+        // tem formatação; .xls é binário) e seguem pelo SheetJS.
+        const bytes = await aplicarEscritasNoXlsx(original, res.escritas);
+        baixarBytes(bytes, nomeSaida);
+      } else {
+        XLSX.writeFile(workbook, nomeSaida);
+      }
     } catch (e) {
       setErro((e as Error).message);
     } finally {

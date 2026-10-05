@@ -718,6 +718,23 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Planilha do supervisor voltava "-com-pix.xlsx" sem NENHUMA
+  formatação.** Relatado com as planilhas reais ("com coluna pix PARA
+  PAGAR.xlsx" e o resultado): cores de fundo, bordas e negrito sumiam de
+  todas as abas (Setembro: 864 células com cor e 1519 com borda → zero). A
+  cor da linha é o status do cliente, então parecia que os clientes tinham
+  sido apagados. Os VALORES estavam todos lá: a comparação célula a célula
+  achou 0 perdidas. A Julho "perder 88 linhas" eram linhas vazias só com
+  formatação. Causa: `xlsx` (SheetJS community 0.18) não grava estilo, e o
+  arquivo era reescrito inteiro com `XLSX.writeFile`. Fix:
+  `Front-Trabalho/src/lib/xlsxPatch.ts` abre o .xlsx ORIGINAL (zip) e
+  insere só as células de Pix/cabeçalho no XML da aba. Todo o resto
+  (styles.xml, abas ocultas, filtros, fórmulas, larguras) fica intacto.
+  `preencherPixNoWorkbook` agora devolve `escritas`. A coluna "COD PIX"
+  criada herda o estilo da vizinha. CSV/.xls seguem pelo SheetJS (CSV não
+  tem formatação). Testes: `src/lib/xlsxPatch.check.ts`.
+  **Não usar `XLSX.writeFile` pra devolver planilha do usuário**.
+
 - **[2026-10] Volume de log no Render.** Maior fonte: `messages.upsert` em
   `services/whatsapp.js` logava 1 linha por mensagem, inclusive lotes de
   sincronização. Outras: erros repetidos por evento/request (status de
