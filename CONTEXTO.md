@@ -718,6 +718,18 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Volume de log no Render.** Maior fonte: `messages.upsert` em
+  `services/whatsapp.js` logava 1 linha por mensagem, inclusive lotes de
+  sincronização. Outras: erros repetidos por evento/request (status de
+  entrega, auth/perfil, URL assinada, webhook, falha por item de disparo,
+  associação em import em massa) e loop de reconexão/pausa sem conexão.
+  Fix: `Backend-Trabalho/src/lib/log.js` -- `logDev` (só fora de produção,
+  ou com `LOG_VERBOSE=true`) e `logLimitado(chave, nivel, ...)` (1ª
+  ocorrência sai, repetidas em 60s são contadas e saem como "+N
+  suprimidas"). Nenhum erro foi removido, só agrupado. Erro por item de
+  disparo continua completo em `envio_itens.erro`. Log novo usa ids, não
+  nome do cliente.
+
 - **[2026-10] Planilha do supervisor / casamento de PDF incompletos acima de
   1000 linhas.** `.limit(20000)` NÃO passa por cima do "Max rows" do
   PostgREST (1000 por padrão no Supabase) -- pede 20000 e recebe 1000, sem
