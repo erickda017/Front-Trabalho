@@ -31,5 +31,22 @@ assert.equal(col("1"), "PIX-MARIA");
 assert.equal(col("2"), "");
 assert.equal(col("3"), "");
 assert.equal(col("4"), "PIX-PEDRO");
-assert.deepEqual(r, { abas: ["Setembro"], linhas: 4, preenchidas: 2, jaTinhamPix: 0, semExtracao: 1, divergentes: 1 });
+assert.deepEqual(r, { abas: ["Setembro"], puladas: [], linhas: 4, preenchidas: 2, jaTinhamPix: 0, semExtracao: 1, divergentes: 1 });
+
+// Cabeçalho na linha 3 (título em cima), apelidos ("Nº OS", "Nome do Cliente",
+// "Dt. Venc.") e aba sem OS (tipo a PROC da planilha real) -> pulada com motivo.
+const wb2 = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet([
+  ["RELATÓRIO DE PAGOS"],
+  [],
+  ["Nº OS", "Nome do Cliente", "Dt. Venc.", "Chave Pix"],
+  ["010/022067040", "Maria Souza", "10/08/2026", ""],
+]), "Com titulo");
+XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet([["VENDEDOR", "SUPERVISOR"], ["A", "B"]]), "PROC");
+const r2 = preencherPixNoWorkbook(wb2, [
+  { arquivo: "x.pdf", nome: "MARIA SOUZA", codigo: "22067040", vencimento: "10/08/2026", pix_code: "PIX-MARIA" },
+]);
+assert.equal(wb2.Sheets["Com titulo"]!["D4"]?.v, "PIX-MARIA");
+assert.deepEqual(r2.abas, ["Com titulo"]);
+assert.deepEqual(r2.puladas, [{ aba: "PROC", motivo: "sem coluna OS, CLIENTE, VENCIMENTO" }]);
 console.log("casarPlanilhaPix: ok");

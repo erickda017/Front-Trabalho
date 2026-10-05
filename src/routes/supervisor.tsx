@@ -965,6 +965,9 @@ function AbaPlanilha() {
             {resultado.linhas} linha(s) em {resultado.abas.length} aba(s) — {resultado.preenchidas} preenchida(s),{" "}
             {resultado.jaTinhamPix} já tinham PIX, {resultado.semExtracao} sem PDF extraído,{" "}
             {resultado.divergentes} com OS igual mas nome/vencimento diferente (deixadas vazias).
+            {resultado.puladas.length > 0 && (
+              <> Abas ignoradas: {resultado.puladas.map((p) => `${p.aba} (${p.motivo})`).join(", ")}.</>
+            )}
           </Aviso>
         )}
         {erro && <Aviso tone="danger">{erro}</Aviso>}

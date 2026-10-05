@@ -23,6 +23,7 @@ export type ExtracaoPix = {
 
 export type ResumoPlanilhaPix = {
   abas: string[]; // abas processadas (tinham OS + CLIENTE + VENCIMENTO)
+  puladas: { aba: string; motivo: string }[]; // abas ignoradas e por quê
   linhas: number;
   preenchidas: number;
   jaTinhamPix: number;
@@ -68,6 +69,15 @@ function vencimentoDaCelula(cel: XLSX.CellObject | undefined): string {
   return paraIso(String(cel.v));
 }
 
+// Apelidos aceitos (cabeçalho já normalizado: minúsculo, sem acento,
+// pontuação vira espaço -- "Nº OS" vira "n os", "DT. VENC." vira "dt venc").
+const COL_OS = [/^os$/, /^o s$/, /^n os$/, /^num(ero)? (da )?os$/, /^cod(igo)? os$/, /ordem( de)? servico/];
+const COL_NOME = [/^cliente$/, /^nome$/, /^nome (do )?cliente$/, /^titular$/, /razao social/];
+const COL_VENC = [/^vencimento$/, /^venc$/, /^dt venc/, /^data (de )?venc/, /^vencto$/];
+const COL_PIX = [/^cod pix$/, /^pix$/, /codigo.*pix/, /chave.*pix/, /pix.*copia/];
+// Cabeçalho nem sempre está na 1ª linha (planilha com título em cima).
+const LINHAS_PROCURA_CABECALHO = 15;
+
 function acharColuna(cabecalho: string[], regexes: RegExp[]): number {
   for (const r of regexes) {
     const i = cabecalho.findIndex((c) => r.test(c));
@@ -77,7 +87,7 @@ function acharColuna(cabecalho: string[], regexes: RegExp[]): number {
 }
 
 export function preencherPixNoWorkbook(wb: XLSX.WorkBook, extracoes: ExtracaoPix[]): ResumoPlanilhaPix {
-  const resumo: ResumoPlanilhaPix = { abas: [], linhas: 0, preenchidas: 0, jaTinhamPix: 0, semExtracao: 0, divergentes: 0 };
+  const resumo: ResumoPlanilhaPix = { abas: [], puladas: [], linhas: 0, preenchidas: 0, jaTinhamPix: 0, semExtracao: 0, divergentes: 0 };
 
   // OS -> extrações (na ordem recebida: mais recente primeiro).
   const porOs = new Map<string, ExtracaoPix[]>();
@@ -89,20 +99,32 @@ export function preencherPixNoWorkbook(wb: XLSX.WorkBook, extracoes: ExtracaoPix
 
   for (const nomeAba of wb.SheetNames) {
     const ws = wb.Sheets[nomeAba];
-    if (!ws?.["!ref"]) continue;
+    if (!ws?.["!ref"]) {
+      resumo.puladas.push({ aba: nomeAba, motivo: "aba vazia" });
+      continue;
+    }
     const range = XLSX.utils.decode_range(ws["!ref"]);
-    const r0 = range.s.r;
-    const cabecalho: string[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      cabecalho[c] = normalizar(ws[XLSX.utils.encode_cell({ r: r0, c })]?.v);
+
+    // Primeira linha (entre as 15 de cima) que tenha OS + CLIENTE + VENCIMENTO.
+    let r0 = -1, cabecalho: string[] = [], colOs = -1, colNome = -1, colVenc = -1;
+    let faltando: string[] = ["OS", "CLIENTE", "VENCIMENTO"];
+    for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + LINHAS_PROCURA_CABECALHO - 1); r++) {
+      const linha: string[] = [];
+      for (let c = range.s.c; c <= range.e.c; c++) linha[c] = normalizar(ws[XLSX.utils.encode_cell({ r, c })]?.v);
+      const [o, n, v] = [acharColuna(linha, COL_OS), acharColuna(linha, COL_NOME), acharColuna(linha, COL_VENC)];
+      const falta = [o === -1 && "OS", n === -1 && "CLIENTE", v === -1 && "VENCIMENTO"].filter(Boolean) as string[];
+      if (!falta.length) {
+        [r0, cabecalho, colOs, colNome, colVenc] = [r, linha, o, n, v];
+        break;
+      }
+      if (falta.length < faltando.length) faltando = falta; // melhor palpite pro aviso
+    }
+    if (r0 === -1) {
+      resumo.puladas.push({ aba: nomeAba, motivo: `sem coluna ${faltando.join(", ")}` });
+      continue;
     }
 
-    const colOs = acharColuna(cabecalho, [/^os$/, /^o s$/, /ordem.*servico/]);
-    const colNome = acharColuna(cabecalho, [/^cliente$/, /^nome$/, /nome.*cliente/]);
-    const colVenc = acharColuna(cabecalho, [/^vencimento$/, /^venc/]);
-    if (colOs === -1 || colNome === -1 || colVenc === -1) continue;
-
-    let colPix = acharColuna(cabecalho, [/^cod pix$/, /^pix$/, /codigo.*pix/, /chave.*pix/, /pix.*copia/]);
+    let colPix = acharColuna(cabecalho, COL_PIX);
     if (colPix === -1) {
       // Logo depois do último cabeçalho preenchido (o !ref pode incluir
       // colunas vazias só formatadas).
