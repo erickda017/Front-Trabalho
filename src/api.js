@@ -206,10 +206,10 @@ export const api = {
     // `arquivo` é opcional (usado pra casar com um cliente pelo nome quando
     // `clienteId` não é informado). Retorna a extração salva (ver
     // backend/src/routes/boletos.routes.js).
-    salvarPix: ({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId }) =>
+    salvarPix: ({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId, codigo, nome }) =>
       request('/boletos/salvar-pix', {
         method: 'POST',
-        body: JSON.stringify({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId }),
+        body: JSON.stringify({ pixCopiaCola, valor, vencimento, linhaDigitavel, arquivo, clienteId, codigo, nome }),
       }),
     // Processa 1 PDF inteiramente no navegador (fatia + chama o Worker) e
     // devolve o resultado, sem persistir nada -- quem chama decide o que
@@ -338,6 +338,8 @@ export const api = {
     // cadastrado -- matéria-prima pro casamento por nome feito no navegador
     // (planilha de PIX e extrator pessoal, ver routes/supervisor.tsx).
     indicePix: () => request('/supervisor/indice-pix'),
+    // Pix extraído por qualquer operador com "Código" (OS) lido -- planilha do supervisor.
+    extracoesPix: () => request('/supervisor/extracoes-pix'),
   },
   // [2026-09] PAINEL DE EXCLUSÃO -- exclusão em massa por critério, só
   // supervisor (ver backend/src/routes/exclusao.routes.js). `preview` nunca

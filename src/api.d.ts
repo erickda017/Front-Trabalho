@@ -164,6 +164,8 @@ declare module "@/api" {
         linhaDigitavel?: string | null | undefined;
         arquivo?: string | undefined;
         clienteId?: string | undefined;
+        codigo?: string | null | undefined;
+        nome?: string | null | undefined;
       }) => Promise<PixExtracao>;
       extrairDoPdf: (file: File) => Promise<DadosPix | null>;
     };
@@ -402,6 +404,7 @@ declare module "@/api" {
         usuario_id: string;
         operador: OperadorResumo | null;
       }[]>;
+      extracoesPix: () => Promise<(import("@/lib/casarPlanilhaPix").ExtracaoPix & { criado_em: string })[]>;
     };
     // [2026-09] PAINEL DE EXCLUSÃO -- exclusão em massa por critério, só
     // supervisor. `preview` nunca apaga nada; `executar` exige

@@ -40,6 +40,7 @@ import { PainelExclusao } from "@/components/supervisor/PainelExclusao";
 import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { extrairPixLocal } from "@/lib/pixExtractor";
 import { casarClientePorNome } from "@/lib/clienteMatch";
+import { preencherPixNoWorkbook, type ResumoPlanilhaPix } from "@/lib/casarPlanilhaPix";
 import {
   adicionarExtracaoPessoal,
   expiraEmMs,
@@ -893,37 +894,32 @@ function AbaPlanilha() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [processando, setProcessando] = useState(false);
-  const [resultado, setResultado] = useState<ResultadoPlanilha | null>(null);
+  const [resultado, setResultado] = useState<ResumoPlanilhaPix | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
+  // Casa por OS + CLIENTE + VENCIMENTO contra TODO Pix extraído por qualquer
+  // operador (cliente cadastrado ou não, qualquer safra) -- ver
+  // lib/casarPlanilhaPix.ts. Processa todas as abas e devolve o mesmo
+  // arquivo com a coluna PIX preenchida (cria "COD PIX" se não existir).
   async function processar() {
     if (!arquivo) return;
     setProcessando(true);
     setErro(null);
     setResultado(null);
     try {
-      const indicePix = await api.supervisor.indicePix();
-      const clientesParaCasar = (Array.isArray(indicePix) ? indicePix : []).map(
-        (c: IndicePixItem) => ({
-          nome: c.nome,
-          pix: c.pix_code,
-        }),
-      );
-      const indice = new Map(clientesParaCasar.map((c) => [normalizarCabecalho(c.nome), c.pix]));
-
-      const buffer = await arquivo.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
-      const nomeAba = workbook.SheetNames[0];
-      const matriz = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[nomeAba], {
-        header: 1,
-        defval: "",
+      const extracoes = await api.supervisor.extracoesPix();
+      const workbook = XLSX.read(await arquivo.arrayBuffer(), {
+        type: "array",
+        cellNF: true,
+        cellStyles: true,
+        raw: /\.csv$/i.test(arquivo.name), // CSV: data fica texto BR, sem virar mês/dia
       });
-
-      const res = preencherPixNaMatriz(matriz, indice, clientesParaCasar);
+      const res = preencherPixNoWorkbook(workbook, Array.isArray(extracoes) ? extracoes : []);
+      if (!res.abas.length) {
+        throw new Error('Nenhuma aba com as colunas "OS", "CLIENTE" e "VENCIMENTO" no cabeçalho.');
+      }
       setResultado(res);
-
-      const nomeSaida = arquivo.name.replace(/\.(xlsx|xls|csv)$/i, "") + "-com-pix.xlsx";
-      baixarMatrizComoXlsx(matriz, nomeSaida);
+      XLSX.writeFile(workbook, arquivo.name.replace(/\.(xlsx|xls|csv)$/i, "") + "-com-pix.xlsx");
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -934,7 +930,7 @@ function AbaPlanilha() {
   return (
     <SectionCard
       titulo="Planilha de PIX"
-      descricao='Suba uma planilha com as colunas "CLIENTE" e "PIX" (a coluna PIX pode vir vazia) -- o sistema acha cada cliente pelo nome, cruza com o PIX já cadastrado no banco (de qualquer operador) e devolve a mesma planilha com a coluna PIX preenchida.'
+      descricao='Suba a planilha com as colunas "OS", "CLIENTE" e "VENCIMENTO". Cada linha recebe o Pix só quando a OS bate com o "Código" do PDF, o nome bate e o vencimento é o mesmo -- usando o Pix extraído por qualquer operador, mesmo de cliente não cadastrado. Volta a mesma planilha (todas as abas) com a coluna PIX preenchida.'
     >
       <div className="space-y-4">
         <label className="border-border-strong hover:border-primary flex h-10 max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 text-xs">
@@ -965,10 +961,10 @@ function AbaPlanilha() {
         </Botao>
 
         {resultado && (
-          <Aviso tone={resultado.semCorrespondencia > 0 ? "warning" : "info"}>
-            {resultado.linhasProcessadas} linha(s) processada(s) — {resultado.preenchidas}{" "}
-            preenchida(s) agora, {resultado.jaTinhamPix} já tinham PIX,{" "}
-            {resultado.semCorrespondencia} sem correspondência.
+          <Aviso tone={resultado.divergentes > 0 ? "warning" : "info"}>
+            {resultado.linhas} linha(s) em {resultado.abas.length} aba(s) — {resultado.preenchidas} preenchida(s),{" "}
+            {resultado.jaTinhamPix} já tinham PIX, {resultado.semExtracao} sem PDF extraído,{" "}
+            {resultado.divergentes} com OS igual mas nome/vencimento diferente (deixadas vazias).
           </Aviso>
         )}
         {erro && <Aviso tone="danger">{erro}</Aviso>}

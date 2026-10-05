@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, Copy, FileText, KeyRound, Link2, RefreshCcw, Upload, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -87,6 +88,26 @@ function CopiarChave({ valor }: { valor: string }) {
   );
 }
 
+// Operador pode soltar um .zip de faturas: abre no navegador (JSZip, já
+// usado na importação) e trata cada PDF de dentro como arquivo solto.
+async function expandirZips(files: File[]): Promise<File[]> {
+  const saida: File[] = [];
+  for (const f of files) {
+    if (!/\.zip$/i.test(f.name)) {
+      if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) saida.push(f);
+      continue;
+    }
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(f);
+    for (const entrada of Object.values(zip.files)) {
+      if (entrada.dir || !/\.pdf$/i.test(entrada.name) || entrada.name.startsWith("__MACOSX/")) continue;
+      const nome = entrada.name.split("/").pop() || entrada.name;
+      saida.push(new File([await entrada.async("blob")], nome, { type: "application/pdf" }));
+    }
+  }
+  return saida;
+}
+
 function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -101,10 +122,9 @@ function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
       onDrop={(e) => {
         e.preventDefault();
         setArrastando(false);
-        const files = Array.from(e.dataTransfer.files ?? []).filter(
-          (f) => f.type === "application/pdf",
-        );
-        if (files.length) onFiles(files);
+        expandirZips(Array.from(e.dataTransfer.files ?? []))
+          .then((files) => files.length && onFiles(files))
+          .catch((err) => toast.error(`Não consegui abrir o .zip: ${(err as Error).message}`));
       }}
       onClick={() => inputRef.current?.click()}
       role="button"
@@ -123,18 +143,19 @@ function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
         <Upload className="size-4.5" />
       </div>
       <div>
-        <p className="text-sm font-medium">Arraste as faturas em PDF aqui</p>
+        <p className="text-sm font-medium">Arraste as faturas em PDF (ou um .zip) aqui</p>
         <p className="text-subtle mt-0.5 text-xs">ou clique para selecionar um ou mais arquivos</p>
       </div>
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept="application/pdf,.zip"
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          if (files.length) onFiles(files);
+          expandirZips(Array.from(e.target.files ?? []))
+            .then((files) => files.length && onFiles(files))
+            .catch((err) => toast.error(`Não consegui abrir o .zip: ${(err as Error).message}`));
           e.target.value = "";
         }}
       />
@@ -301,9 +322,9 @@ function Pix() {
     }
   }
 
-  // Pipeline 100% client-side: fatia cada PDF (pdf-lib) e manda página por
-  // página pro Cloudflare Worker de OCR até achar o Pix, com fallback de
-  // renderização local só quando necessário (ver src/lib/pixWorkerClient.ts)
+  // Pipeline 100% client-side: Pix lido do QR no navegador e só um recorte
+  // do topo da página (código/nome/vencimento) vai pro Cloudflare Worker de
+  // OCR (ver src/lib/pixWorkerClient.ts)
   // -- o PDF em si NUNCA é enviado pro backend pra ser processado. O backend
   // só entra depois, pra: 1) guardar o PDF já pronto no Storage e associá-lo
   // ao cliente casado (POST /clientes/:id/pdf, repasse puro de bytes -- sem
@@ -361,6 +382,8 @@ function Pix() {
             linhaDigitavel: dados.linhaDigitavel,
             arquivo: arquivo.name,
             clienteId: clienteCasado?.id,
+            codigo: dados.codigo,
+            nome: dados.nome,
           });
         }
 
