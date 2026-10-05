@@ -3,3 +3,7 @@ dist/
 .vercel/
 .output/
 *.local
+
+# Planilhas de cliente (dados pessoais) não vão pro repositório
+*.xlsx
+*.xls
