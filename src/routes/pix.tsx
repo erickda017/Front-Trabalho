@@ -163,12 +163,11 @@ function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
   );
 }
 
-// Limites do lote de upload -- puramente de UX (evita selecionar centenas de
-// PDFs de uma vez e travar a aba, já que o fatiamento + chamadas ao Worker
-// rodam no navegador). Não é mais um limite HTTP do backend (ele nem recebe
-// o PDF nesse fluxo).
-const MAX_ARQUIVOS = 100;
-const MAX_TOTAL_MB = 300;
+// [2026-10] Sem teto de quantidade/tamanho total do lote (antes 100
+// arquivos / 300MB). O teto era só de UX, mas barrava lotes reais de 400+
+// faturas. Seguro tirar: `File` é só uma referência ao disco até ser lido,
+// e o processamento já é em ondas de CONCORRENCIA_REAL_DENTRO_DO_PACOTE
+// (só ~3 PDFs na memória por vez), independente do tamanho do lote.
 // Processa em PACOTES de 10 (checkpoint visual de progresso -- ver
 // `processarEmLotes` pro motivo de não processar os 10 de uma vez de
 // verdade). Nada de esteira contínua -- é pacote fechado mesmo, do jeito
@@ -258,7 +257,6 @@ function Pix() {
     () => arquivos.reduce((soma, f) => soma + f.size, 0) / (1024 * 1024),
     [arquivos],
   );
-  const loteExcedeLimite = arquivos.length > MAX_ARQUIVOS || tamanhoTotalMb > MAX_TOTAL_MB;
 
   function adicionarArquivos(novos: File[]) {
     setArquivos((prev) => [...prev, ...novos]);
@@ -332,7 +330,7 @@ function Pix() {
   // (POST /boletos/salvar-pix, só JSON). Processa em pacotes de 10 -- ver
   // TAMANHO_LOTE_EXTRACAO/processarEmLotes.
   async function extrair() {
-    if (!arquivos.length || loteExcedeLimite) return;
+    if (!arquivos.length) return;
     setEnviando(true);
     setErroEnvio(null);
     const total = arquivos.length;
@@ -421,7 +419,7 @@ function Pix() {
   // guardar o PDF anexado ao cliente, use "Upload de faturas avulsas" (aba
   // Faturas) depois, ou o modo navegador (que já faz os dois juntos).
   async function extrairNoServidor() {
-    if (!arquivos.length || loteExcedeLimite) return;
+    if (!arquivos.length) return;
     setEnviando(true);
     setErroEnvio(null);
     const total = arquivos.length;
@@ -541,12 +539,12 @@ function Pix() {
         <div className="space-y-6 lg:col-span-8">
           <SectionCard
             titulo="Enviar faturas"
-            descricao={`Selecione um ou mais PDFs de fatura para extrair a chave PIX. Até ${MAX_ARQUIVOS} arquivos (${MAX_TOTAL_MB}MB) por vez.`}
+            descricao={`Selecione um ou mais PDFs de fatura para extrair a chave PIX. Sem limite de quantidade -- os arquivos são processados em pacotes.`}
             acoes={
               <Botao
                 variante="primary"
                 onClick={modoExtracao === "servidor" ? extrairNoServidor : extrair}
-                disabled={enviando || arquivos.length === 0 || loteExcedeLimite}
+                disabled={enviando || arquivos.length === 0}
               >
                 {enviando ? "Enviando…" : "Extrair PIX"}
               </Botao>
@@ -627,14 +625,6 @@ function Pix() {
                     ))}
                   </ul>
                 </>
-              )}
-
-              {loteExcedeLimite && (
-                <Aviso tone="danger">
-                  Lote grande demais ({arquivos.length} arquivos, {tamanhoTotalMb.toFixed(0)}MB).
-                  Limite: {MAX_ARQUIVOS} arquivos ou {MAX_TOTAL_MB}MB no total. Remova alguns
-                  arquivos ou envie em partes.
-                </Aviso>
               )}
 
               {resumoEnvio && (

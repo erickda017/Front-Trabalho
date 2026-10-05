@@ -72,15 +72,33 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
     carregarPendencias();
   }, [carregarPendencias]);
 
+  // [2026-10] Lote de 400+ PDFs: uma queda de rede ou o rate limit no meio
+  // do caminho fazia aquele arquivo se perder (o loop só seguia pro
+  // próximo). Re-tenta só falha de rede ("Failed to fetch" = TypeError) e
+  // rate limit -- erro de validação (413, "Envie um arquivo PDF") não.
+  async function enviarComRetentativa(file: File) {
+    const esperas = [2000, 5000, 15000];
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        return await api.faturas.uploadAvulso(file);
+      } catch (e) {
+        const transitorio = e instanceof TypeError || /muitas requisi/i.test((e as Error).message);
+        if (!transitorio || tentativa >= esperas.length) throw e;
+        await new Promise((r) => setTimeout(r, esperas[tentativa]));
+      }
+    }
+  }
+
   async function enviarArquivos(files: File[]) {
-    const pdfs = files.filter((f) => f.type === "application/pdf");
+    // Alguns SOs/navegadores não preenchem `type` -- aceita pela extensão também.
+    const pdfs = files.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
     if (!pdfs.length) return;
     setEnviando(true);
     setErro(null);
     setResultados([]);
     for (const file of pdfs) {
       try {
-        const resp = await api.faturas.uploadAvulso(file);
+        const resp = await enviarComRetentativa(file);
         setResultados((prev) => [...prev, { arquivo: file.name, associado: !!resp.associado, cliente_nome: resp.cliente_nome }]);
       } catch (e) {
         setErro((e as Error).message);

@@ -718,6 +718,24 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Planilha do supervisor / casamento de PDF incompletos acima de
+  1000 linhas.** `.limit(20000)` NÃO passa por cima do "Max rows" do
+  PostgREST (1000 por padrão no Supabase) -- pede 20000 e recebe 1000, sem
+  erro. `GET /supervisor/extracoes-pix` e `/supervisor/indice-pix` entregavam
+  só os 1000 primeiros Pix (supervisor via linhas da planilha sem Pix mesmo
+  já extraídos); `POST /faturas/avulsas` só casava contra os 1000 primeiros
+  clientes; `associarPixPendenteAoCliente` só olhava 1000 pendências. Fix:
+  `Backend-Trabalho/src/lib/buscarTodos.js` (pagina com `.range()` até
+  esgotar). Os outros `.limit(20000)` (safras.js, supervisor dashboard)
+  têm o mesmo problema latente e ainda não foram migrados.
+- **[2026-10] Lote de 400+ PDFs barrado.** Extrator de Pix (`routes/pix.tsx`)
+  tinha teto de UX de 100 arquivos/300MB -- removido (processamento já é em
+  ondas de 3, sem pico de memória). `POST /faturas/avulsas`: teto por
+  arquivo de 20MB → `FATURA_AVULSA_MAX_MB` (padrão 100; Supabase Storage
+  free ainda recusa >50MB por objeto), aceita PDF sem mimetype pela
+  extensão, e o front re-tenta falha de rede/rate limit (antes o arquivo
+  se perdia no meio do lote).
+
 - **[2026-09] Extração de PIX falhava (sem erro nenhum) em boletos cuja
   página é uma imagem rasterizada de baixa resolução -- não tem fix de
   scanner que resolva, só entrada manual.** Reportado: um boleto real
