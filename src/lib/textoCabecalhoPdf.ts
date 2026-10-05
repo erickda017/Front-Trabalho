@@ -264,3 +264,54 @@ export async function extrairCamposPorTexto(
   }
   return { ...acumulado, semTexto: !algumaComTexto };
 }
+
+// [2026-10] Texto vindo de OCR (Tesseract, fallback quando o Worker falha
+// -- ver lib/ocrLocal.ts). Diferente do texto embutido no PDF: tudo vem
+// numa linha só por "faixa" ("ADRIANA LOPES Código Vencimento: Valor:" /
+// "013/041178293 10/10/2026"), com ruído e dígitos às vezes separados
+// ("1 0/1 0/2026"). Por isso a regra aqui é por FORMATO, validada nos 95
+// PDFs reais (Claro, novembro/2026) do REPO-DE-TESTES:
+//   - Código: "NNN/NNNNNNNNN" (2-4 dígitos, barra, 6-12 dígitos). Não
+//     confunde com data (dd/mm/aaaa tem 2 dígitos depois da barra) nem com
+//     "001/001" (paginação).
+//   - Vencimento: 1ª data depois do rótulo "Vencimento" (ou a 1ª data do
+//     cabeçalho, se o OCR comeu o rótulo).
+//   - Nome: o que vem antes de "Código" na 1ª linha.
+const RE_DATA_OCR = /(\d\s?\d)\s?[/.]\s?(\d\s?\d)\s?[/.]\s?(\d{4})/g;
+
+export function extrairCamposDoOcr(texto: string): CamposTexto {
+  const limpo = texto.replace(/[|]/g, " ");
+  const mCodigo = /(?<![\d/])(\d{2,4})\s?\/\s?(\d{6,12})(?![\d/])/.exec(limpo);
+  const codigo = mCodigo ? `${mCodigo[1]}/${mCodigo[2]}` : null;
+
+  let vencimento: string | null = null;
+  const posRotulo = limpo.search(/venc(?:imento|to)?/i);
+  const datas = [...limpo.matchAll(RE_DATA_OCR)]
+    .map((m) => ({
+      pos: m.index ?? 0,
+      data: dataValida(m[1]!.replace(/\s/g, ""), m[2]!.replace(/\s/g, ""), m[3]!),
+    }))
+    .filter((d): d is { pos: number; data: string } => Boolean(d.data));
+  vencimento =
+    (posRotulo >= 0 ? datas.find((d) => d.pos > posRotulo) : undefined)?.data ??
+    datas[0]?.data ??
+    null;
+
+  const primeiraLinha = limpo.split("\n").find((l) => /c[óo]d/i.test(l)) ?? "";
+  const antesDoCodigo = primeiraLinha.split(/c[óo]d(?:igo)?/i)[0]!.trim();
+  const nome =
+    /^[A-Za-zÀ-ÿ'. ]{5,}$/.test(antesDoCodigo) && antesDoCodigo.split(/\s+/).length >= 2
+      ? antesDoCodigo.replace(/\s+/g, " ")
+      : null;
+
+  const valorM = /valor\s*:?\s*[\s\S]{0,80}?(\d{1,3}(?:\.\d{3})*\s?,\s?\d{2})\b/i.exec(limpo);
+  const base = extrairCamposDoTexto(limpo.split("\n"));
+  return {
+    codigo,
+    vencimento,
+    nome,
+    valor: valorM ? valorM[1]!.replace(/\s/g, "") : base.valor,
+    linhaDigitavel: base.linhaDigitavel,
+    pixCopiaColaTexto: null,
+  };
+}

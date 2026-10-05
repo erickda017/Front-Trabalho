@@ -734,6 +734,36 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Extração do Código: Worker primeiro, OCR local de fallback
+  (corrige a entrada logo abaixo).** Relatado: "nenhum PDF achou o código,
+  no F12 o worker não tá sendo usado". Testado com os 95 PDFs reais (Claro,
+  nov/2026) do `erickda017/REPO-DE-TESTES`:
+  - Os 95 são **imagem pura** (0 com camada de texto): a leitura de texto
+    local nunca acha nada neles.
+  - O Worker real achou o Código em **95/95** quando chamado. O problema era
+    a versão anterior: leitura local PRIMEIRO + "pausa de 60s" do Worker
+    após 3 falhas/timeouts seguidos. Em lote grande, 3 demoras do OCR.space
+    desligavam o Worker e todos os PDFs seguintes ficavam sem Código.
+  - Fix: `src/lib/camposBoleto.ts` (orquestrador, testável em Node). Worker
+    SEMPRE primeiro (até 3 tentativas: espera 2s e 5s, em rede/429/5xx/
+    timeout de 30s, pág. 1 e 2), **sem pausa**. Só se falhar ou não achar o
+    Código: texto embutido (`textoCabecalhoPdf.ts`) → OCR local
+    (`src/lib/ocrLocal.ts`, Tesseract.js, carregado sob demanda do
+    jsDelivr, ~1,4MB de idioma). Campos do Worker têm prioridade.
+  - OCR local: acha o rótulo "Código" no topo, RE-RENDERIZA só a caixa
+    abaixo direto do PDF com a letra em ~45px, lê 3x só dígitos e "/" e
+    exige 2 leituras idênticas. Vencimento: 3/3 leituras, ou 2/3 + a mesma
+    data no OCR geral (2 de 3 leituras já deram "25/02/2026" num boleto de
+    25/09/2026). Um PDF por vez; páginas 1–3 (pág. 1 às vezes é propaganda
+    Globoplay).
+  - Resultado nos 95, com Worker desligado à força: Código **95/95 certos,
+    0 errados**; vencimento 92/95 certos, 0 errados (3 vazios). Com Worker
+    respondendo 429: 20/20. Com o Worker real: 95/95, todos via Worker.
+    ~4s por PDF no fallback (só quando o Worker falha).
+  - Achado nos dados: `VERA MOREIRA DA SILVA.pdf` contém a fatura do
+    WELBER SOUZA E SILVA (mesmo Código 577/129850901).
+  - Self-check: `src/lib/camposBoleto.check.ts` (ordem/retentativas).
+
 - **[2026-10] Worker de OCR parava depois de ~100 PDFs; casamento da planilha
   exigia nome.** O Worker `processo-de-pdf` (OCR.space grátis) falha em
   rajada (limite de taxa) e volta depois. Com ele fora, nenhum PDF ganhava
