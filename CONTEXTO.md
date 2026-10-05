@@ -718,6 +718,28 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Worker de OCR parava depois de ~100 PDFs; casamento da planilha
+  exigia nome.** O Worker `processo-de-pdf` (OCR.space grátis) falha em
+  rajada (limite de taxa) e volta depois. Com ele fora, nenhum PDF ganhava
+  "Código" e a planilha do supervisor não casava nada. Fix:
+  - `src/lib/textoCabecalhoPdf.ts` (NOVO): lê a camada de texto do PDF
+    (pdfjs `getTextContent`, sem OCR/rede), topo 25% → 50% → página
+    inteira, páginas 1–3, até achar Código + Vencimento. Entende fatura em
+    TABELA (rótulo numa linha, valor embaixo, associados pela posição x) e
+    só aceita Código/Vencimento vindos de RÓTULO (nunca "a 1ª data").
+    PDF escaneado (sem texto) → `semTexto`. Self-check:
+    `textoCabecalhoPdf.check.ts`. Validado com PDFs gerados (tabela,
+    propaganda na pág. 1, palavras soltas, escaneado), **não** com boletos
+    reais das operadoras.
+  - `pixWorkerClient.ts`: leitura local PRIMEIRO; Worker só se faltou
+    Código ou Vencimento, e só completa campos vazios (texto do PDF é exato,
+    OCR pode errar dígito). 1 nova tentativa em rede/429/5xx; 3 falhas
+    seguidas → Worker pausado 60s (lote segue só com leitura local).
+  - `casarPlanilhaPix.ts`: prioridade 1 = OS + vencimento + nome; prioridade
+    2 = OS + vencimento (nome diferente/não lido), exceto se houver PDFs
+    com mesma OS + vencimento e Pix diferentes (ambíguo). OS sozinha
+    continua não bastando.
+
 - **[2026-10] Planilha de PIX do supervisor: "289 já tinham PIX" com nada
   preenchido, e resumo sem explicação.** Na planilha real, a aba Agosto tem
   cabeçalho "COD PIX" mas a coluna guarda "PAGO 14-08" (é a OBS

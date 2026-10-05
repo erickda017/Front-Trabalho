@@ -146,4 +146,40 @@ assert.equal(ws3["E2"]?.v, "00020101PIX-MARIA");
 assert.deepEqual(r3.colunasRedirecionadas, [{ aba: "Agosto", de: "D", para: "E" }]);
 assert.equal(r3.jaTinhamPix, 0);
 assert.equal(r3.preenchidas, 1);
+// Prioridade 2: OS + vencimento batem, nome do PDF diferente/não lido -> preenche.
+// Mas com 2 PDFs de mesma OS + vencimento e Pix diferentes -> ambíguo, não preenche.
+const wb4 = XLSX.utils.book_new();
+const ws4 = XLSX.utils.aoa_to_sheet([
+  ["OS", "CLIENTE", "VENCIMENTO"],
+  ["500", "MARIA SOUZA", "10/08/2026"],
+  ["600", "JOAO LIMA", "10/08/2026"],
+]);
+XLSX.utils.book_append_sheet(wb4, ws4, "Set");
+const r4 = preencherPixNoWorkbook(wb4, [
+  {
+    arquivo: "boleto123.pdf",
+    nome: null,
+    codigo: "500",
+    vencimento: "10/08/2026",
+    pix_code: "00020101PIX-500",
+  },
+  {
+    arquivo: "a.pdf",
+    nome: "OUTRO",
+    codigo: "600",
+    vencimento: "10/08/2026",
+    pix_code: "00020101PIX-A",
+  },
+  {
+    arquivo: "b.pdf",
+    nome: "OUTRO2",
+    codigo: "600",
+    vencimento: "10/08/2026",
+    pix_code: "00020101PIX-B",
+  },
+]);
+assert.equal(ws4["D2"]?.v, "00020101PIX-500");
+assert.match(r4.detalhes[0]!.motivo, /^OS \+ vencimento --/);
+assert.equal(ws4["D3"]?.v, undefined);
+assert.match(r4.detalhes[1]!.motivo, /ambíguo/);
 console.log("casarPlanilhaPix: ok");

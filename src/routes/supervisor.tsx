@@ -890,7 +890,7 @@ const ROTULO_STATUS: Record<StatusLinha, string> = {
   ja_tinha_pix: "já tinha Pix",
   ocupada: "célula com outro texto",
   sem_extracao: "sem PDF extraído",
-  divergente: "OS bate, nome/vencimento não",
+  divergente: "OS bate, vencimento não (ou ambíguo)",
 };
 
 // Relatório "por que cada linha recebeu (ou não) Pix". `;` + BOM pro Excel
@@ -981,7 +981,7 @@ function AbaPlanilha() {
   return (
     <SectionCard
       titulo="Planilha de PIX"
-      descricao='Suba a planilha com as colunas "OS", "CLIENTE" e "VENCIMENTO". Cada linha recebe o Pix só quando a OS bate com o "Código" do PDF, o nome bate e o vencimento é o mesmo -- usando o Pix extraído por qualquer operador, mesmo de cliente não cadastrado. Volta a mesma planilha (todas as abas) com a coluna PIX preenchida.'
+      descricao='Suba a planilha com as colunas "OS", "CLIENTE" e "VENCIMENTO". Cada linha recebe o Pix quando a OS bate com o "Código" do PDF e o vencimento é o mesmo (o nome, quando bate, desempata) -- usando o Pix extraído por qualquer operador, mesmo de cliente não cadastrado. Volta a mesma planilha (todas as abas) com a coluna PIX preenchida.'
     >
       <div className="space-y-4">
         <label className="border-border-strong hover:border-primary flex h-10 max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 text-xs">
@@ -1025,7 +1025,7 @@ function AbaPlanilha() {
                   </li>
                   {resultado.semExtracao > 0 && <li>{resultado.semExtracao} sem nenhum PDF extraído com aquela OS.</li>}
                   {resultado.divergentes > 0 && (
-                    <li>{resultado.divergentes} com a OS encontrada, mas nome ou vencimento diferente (ver abaixo).</li>
+                    <li>{resultado.divergentes} com a OS encontrada, mas vencimento diferente ou ambíguo (ver abaixo).</li>
                   )}
                   {resultado.jaTinhamPix > 0 && <li>{resultado.jaTinhamPix} já tinham um código Pix na célula.</li>}
                   {resultado.ocupadas > 0 && (

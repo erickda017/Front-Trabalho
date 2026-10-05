@@ -1,10 +1,11 @@
 // Planilha do supervisor -> mesma planilha com o Pix preenchido.
 //
-// Uma linha só recebe Pix quando os TRÊS batem com uma extração
-// (pix_extracoes, de qualquer operador, com ou sem cliente cadastrado):
-//   1. OS da planilha  == "Código" do cabeçalho do PDF ("22067040" == "010/022067040")
-//   2. CLIENTE         ~= nome lido no PDF ou nome do arquivo
-//   3. VENCIMENTO      == vencimento lido no PDF
+// Uma linha recebe Pix quando bate com uma extração (pix_extracoes, de
+// qualquer operador, com ou sem cliente cadastrado), por prioridade:
+//   1. OS + VENCIMENTO + CLIENTE (nome do PDF ou do arquivo)
+//   2. OS + VENCIMENTO (nome diferente/não lido) -- desde que não haja 2
+//      PDFs com essa OS + vencimento e Pix diferentes.
+// OS = "Código" do cabeçalho do PDF ("22067040" == "010/022067040").
 // OS sozinha não basta: o mesmo cliente tem uma fatura por mês, e Pix de
 // outro vencimento é cobrança errada. Na dúvida, deixa vazio.
 //
@@ -284,9 +285,26 @@ export function preencherPixNoWorkbook(
         continue;
       }
 
-      const certa = candidatas.find(
-        (e) => venc && paraIso(e.vencimento) === venc && nomeBate(nome, e),
-      );
+      // [2026-10] Prioridades (pedido do supervisor):
+      //   1. OS + vencimento + nome batem -> preenche;
+      //   2. OS + vencimento batem (nome diferente ou não lido no PDF) ->
+      //      preenche também: OS + vencimento já identificam a fatura.
+      //      Só não preenche se houver PDFs com OS + vencimento iguais e Pix
+      //      DIFERENTES (aí não dá pra saber qual é o certo).
+      // OS sozinha continua não bastando (Pix de outro mês = cobrança errada).
+      const mesmoVenc = venc ? candidatas.filter((e) => paraIso(e.vencimento) === venc) : [];
+      const porNome = mesmoVenc.find((e) => nomeBate(nome, e));
+      const pixDistintos = new Set(mesmoVenc.map((e) => e.pix_code));
+      const certa = porNome ?? (pixDistintos.size === 1 ? mesmoVenc[0] : undefined);
+      const criterio = porNome ? "OS + vencimento + nome" : "OS + vencimento";
+      if (!certa && pixDistintos.size > 1) {
+        resumo.divergentes++;
+        detalhe(
+          "divergente",
+          `OS + vencimento batem com ${pixDistintos.size} PDFs de Pix diferentes e nenhum com o nome da planilha -- ambíguo`,
+        );
+        continue;
+      }
       if (!certa) {
         resumo.divergentes++;
         const porque = candidatas.slice(0, 3).map((e) => {
@@ -317,7 +335,7 @@ export function preencherPixNoWorkbook(
         ...(colunaNova ? { estiloDe: { r, c: colPix - 1 } } : {}),
       });
       resumo.preenchidas++;
-      detalhe("preenchida", `PDF "${certa.arquivo || certa.nome || "?"}"`);
+      detalhe("preenchida", `${criterio} -- PDF "${certa.arquivo || certa.nome || "?"}"`);
     }
   }
 

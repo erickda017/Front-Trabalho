@@ -22,6 +22,7 @@
 // de pixExtractor.ts porque este projeto roda com SSR (TanStack
 // Start/Nitro) -- ver comentário lá.
 import { extrairPixLocal, extrairPixEmLotes } from "@/lib/pixExtractor";
+import { extrairCamposPorTexto } from "@/lib/textoCabecalhoPdf";
 export { extrairPixEmLotes };
 
 const WORKER_URL =
@@ -125,56 +126,134 @@ async function recortarCabecalho(doc: any, numeroPagina: number): Promise<Blob |
   }
 }
 
-// Chama o Worker pra OCR do recorte. O `pixCopiaCola` que o Worker
-// eventualmente devolver é só fallback de texto impresso -- a fonte
-// principal do Pix é o QR lido localmente (pixExtractor.ts).
-async function consultarWorker(recorte: Blob, nome: string): Promise<CamposOcr | null> {
+// [2026-10] Worker (OCR.space, plano gratuito) falha em rajada depois de
+// ~100 PDFs seguidos e volta sozinho depois de um tempo. Duas proteções:
+//  - 1 nova tentativa (após 3s) em erro de rede/429/5xx;
+//  - depois de 3 falhas SEGUIDAS, o Worker fica "em pausa" por 60s: os
+//    próximos PDFs nem tentam (não gastam 20s de timeout cada) e usam só a
+//    leitura local de texto (lib/textoCabecalhoPdf.ts). Qualquer sucesso
+//    zera o contador.
+const FALHAS_PARA_PAUSAR = 3;
+const PAUSA_WORKER_MS = 60_000;
+let falhasSeguidas = 0;
+let workerPausadoAte = 0;
+
+export function workerEmPausa(): boolean {
+  return Date.now() < workerPausadoAte;
+}
+
+function registrarResultadoWorker(ok: boolean) {
+  if (ok) {
+    falhasSeguidas = 0;
+    return;
+  }
+  falhasSeguidas++;
+  if (falhasSeguidas >= FALHAS_PARA_PAUSAR) {
+    workerPausadoAte = Date.now() + PAUSA_WORKER_MS;
+    falhasSeguidas = 0;
+    console.warn(`[pixWorkerClient] Worker falhou ${FALHAS_PARA_PAUSAR}x seguidas -- pausado por ${PAUSA_WORKER_MS / 1000}s, usando só leitura local do PDF.`);
+  }
+}
+
+type RespostaConsulta = { campos: CamposOcr | null; transitorio: boolean };
+
+async function consultarWorkerUmaVez(recorte: Blob, nome: string): Promise<RespostaConsulta> {
   const formData = new FormData();
   formData.append("file", recorte, nome);
 
-  const resposta = await fetch(WORKER_URL, { method: "POST", body: formData });
+  let resposta: Response;
+  try {
+    resposta = await fetch(WORKER_URL, { method: "POST", body: formData });
+  } catch (err) {
+    // "Failed to fetch": rede/CORS -- o Worker estourado às vezes responde
+    // sem cabeçalho CORS, e o navegador mostra como erro de rede.
+    console.warn(`[pixWorkerClient] falha de rede no Worker (${nome}):`, (err as Error).message);
+    return { campos: null, transitorio: true };
+  }
   if (!resposta.ok) {
     const corpoErro = await resposta.text().catch(() => "");
-    console.error(`[pixWorkerClient] worker respondeu ${resposta.status} (${nome}):`, corpoErro);
-    return null;
+    console.warn(`[pixWorkerClient] worker respondeu ${resposta.status} (${nome}):`, corpoErro.slice(0, 200));
+    return { campos: null, transitorio: resposta.status === 429 || resposta.status >= 500 };
   }
 
   const json = (await resposta.json().catch(() => null)) as RespostaWorker | null;
   if (!json?.success) {
     if (json?.error) console.warn(`[pixWorkerClient] ${nome}:`, json.error);
-    return null;
+    // Resposta "success:false" com corpo = OCR rodou e não achou nada (não é
+    // falha do Worker); sem corpo JSON = resposta quebrada (trata como falha).
+    return { campos: null, transitorio: !json };
   }
 
   return {
-    pixCopiaColaTexto: json.data?.pixCopiaCola ?? null,
-    valor: json.data?.valor ?? null,
-    vencimento: json.data?.vencimento ?? null,
-    linhaDigitavel: json.data?.linhaDigitavel ?? null,
-    codigo: json.data?.codigo ?? null,
-    nome: json.data?.nome ?? null,
+    transitorio: false,
+    campos: {
+      pixCopiaColaTexto: json.data?.pixCopiaCola ?? null,
+      valor: json.data?.valor ?? null,
+      vencimento: json.data?.vencimento ?? null,
+      linhaDigitavel: json.data?.linhaDigitavel ?? null,
+      codigo: json.data?.codigo ?? null,
+      nome: json.data?.nome ?? null,
+    },
   };
 }
 
-// Página 1, e se o cabeçalho não estiver lá (sem "Código"), página 2.
+// Chama o Worker pra OCR do recorte. O `pixCopiaCola` que o Worker
+// eventualmente devolver é só fallback de texto impresso -- a fonte
+// principal do Pix é o QR lido localmente (pixExtractor.ts).
+async function consultarWorker(recorte: Blob, nome: string): Promise<CamposOcr | null> {
+  if (workerEmPausa()) return null;
+  let r = await comTimeout(consultarWorkerUmaVez(recorte, nome), TIMEOUT_POR_PAGINA_MS, { campos: null, transitorio: true });
+  if (r.transitorio && !workerEmPausa()) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    r = await comTimeout(consultarWorkerUmaVez(recorte, nome), TIMEOUT_POR_PAGINA_MS, { campos: null, transitorio: true });
+  }
+  registrarResultadoWorker(!r.transitorio);
+  return r.campos;
+}
+
+// Campos vazios de `base` preenchidos com os de `extra` (nunca sobrescreve).
+function completar(base: CamposOcr, extra: Partial<CamposOcr> | null): CamposOcr {
+  if (!extra) return base;
+  const out = { ...base };
+  for (const k of Object.keys(out) as (keyof CamposOcr)[]) out[k] ??= extra[k] ?? null;
+  return out;
+}
+
+// [2026-10] Ordem: 1) leitura LOCAL do texto do PDF (rápida, sem rede, sem
+// limite -- lib/textoCabecalhoPdf.ts); 2) Worker/OCR só se faltou Código
+// ou Vencimento (PDF escaneado, layout diferente). Antes era só o Worker:
+// com ele fora do ar/limitado, TODO PDF ficava sem Código, e a planilha do
+// supervisor não casava nada. Quando os dois leem algo, o local vale
+// (texto do próprio PDF é exato; OCR pode errar dígito) e o Worker só
+// completa o que faltou.
 async function extrairCamposOcr(arquivo: File | Blob, nomeArquivo: string): Promise<CamposOcr | null> {
   let doc: any = null;
   try {
     const pdfjsLib = await carregarPdfjs();
     doc = await pdfjsLib.getDocument({ data: await arquivo.arrayBuffer() }).promise;
-    const paginas = Math.min(doc.numPages, MAX_PAGINAS_CABECALHO);
 
-    let melhor: CamposOcr | null = null;
-    for (let p = 1; p <= paginas; p++) {
+    let campos: CamposOcr = { pixCopiaColaTexto: null, valor: null, vencimento: null, linhaDigitavel: null, codigo: null, nome: null };
+    try {
+      const { semTexto: _semTexto, ...lidos } = await extrairCamposPorTexto(doc);
+      campos = completar(campos, lidos);
+    } catch (err) {
+      console.warn("[pixWorkerClient] leitura local de texto falhou:", (err as Error).message);
+    }
+    if (campos.codigo && campos.vencimento) return campos;
+
+    // Worker: página 1, e se o cabeçalho não estiver lá (sem "Código"), página 2.
+    const paginas = Math.min(doc.numPages, MAX_PAGINAS_CABECALHO);
+    for (let p = 1; p <= paginas && !workerEmPausa(); p++) {
       const recorte = await recortarCabecalho(doc, p);
       if (!recorte) continue;
       const nome = nomeArquivo.replace(/\.pdf$/i, "") + `-topo-${p}.jpg`;
-      const campos = await comTimeout(consultarWorker(recorte, nome), TIMEOUT_POR_PAGINA_MS, null);
-      if (campos?.codigo) return campos;
-      if (!melhor && campos && (campos.valor || campos.vencimento || campos.pixCopiaColaTexto)) melhor = campos;
+      const ocr = await consultarWorker(recorte, nome);
+      if (ocr?.codigo) return completar(campos, ocr);
+      if (ocr && (ocr.valor || ocr.vencimento || ocr.pixCopiaColaTexto)) campos = completar(campos, ocr);
     }
-    return melhor;
+    return Object.values(campos).some(Boolean) ? campos : null;
   } catch (err) {
-    console.error("[pixWorkerClient] erro ao extrair campos via OCR:", (err as Error).message);
+    console.error("[pixWorkerClient] erro ao extrair campos do PDF:", (err as Error).message);
     return null;
   } finally {
     try { doc?.destroy(); } catch (_) { /* noop */ }
