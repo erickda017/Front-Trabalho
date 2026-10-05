@@ -665,6 +665,55 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
     ao mudar (mesmo comportamento da busca por nome ali), entra na
     `queryKey` do React Query pra recarregar a lista.
 
+### Planilha de PIX do supervisor por OS + nome + vencimento — 2026-10
+
+- Operador sobe PDFs **ou .zip** em `/pix`. Pix vem do QR lido no navegador; pro Worker
+  (`processo-de-pdf`, limite 1MB) vai **só um JPEG com a faixa do topo + a do rodapé**
+  da pág. 1 (ou 2, quando a 1ª é propaganda) — `recortarCabecalho` em
+  `src/lib/pixWorkerClient.ts`. Worker devolve também `codigo` ("Código" do cabeçalho,
+  ex `010/022067040`) e `nome`. Grava em `pix_extracoes` (colunas `codigo`, `nome` —
+  `backend/migration-27`) **mesmo sem cliente cadastrado**.
+- Supervisor (aba "Planilha de PIX") busca `GET /api/supervisor/extracoes-pix` (todas as
+  extrações com código, qualquer operador/safra) e preenche a linha só quando OS == código
+  (sem prefixo/zeros) **e** CLIENTE ~ nome do PDF/arquivo **e** VENCIMENTO == vencimento do
+  PDF (`src/lib/casarPlanilhaPix.ts`; self-check `casarPlanilhaPix.check.ts`). Todas as abas;
+  cabeçalho procurado nas 15 primeiras linhas; apelidos (`Nº OS`, `Nome do Cliente`,
+  `Dt. Venc.`...); aba sem as 3 colunas (ex. `PROC`) é listada como ignorada; não
+  sobrescreve célula PIX preenchida; cria `COD PIX` se faltar; preserva formatos.
+- **Decisão:** não casa mais só por nome — OS sozinha ou nome sozinho trazem Pix de outro
+  mês/homônimo (cobrança errada). Na dúvida a célula fica vazia ("divergentes").
+- Upload solto (`/faturas/avulsas`) **não** passa pelo Worker, então não alimenta essa
+  planilha — só `/pix` alimenta.
+
+### Arquivos no Cloudflare R2 (Supabase Storage vira legado) — 2026-10
+
+- **Antes:** 4 buckets privados no Supabase Storage (`faturas`, `chat-midia`, `avatars`,
+  `pix-extracoes`); banco guarda só o **path** (`clientes.pdf_path`, `mensagens.anexo_path`,
+  `envios.foto_path`, `perfis.avatar_path`, `faturas_pendentes.pdf_path`,
+  `pix_extracoes.storage_path`). Front nunca fala com o Storage: lê pelo proxy autenticado
+  `GET /api/arquivos/:bucket/*` (confere dono) e o disparo/chat manda URL assinada pro Baileys.
+- **Agora:** `backend/src/lib/armazenamento.js` — adaptador com a MESMA interface do
+  `supabase.storage.from()` (upload/download/remove/move/createSignedUrl/list); os 12
+  arquivos que usavam `supabase.storage` só trocaram o prefixo. Chave no R2 =
+  `<bucket>/<path>` (o mesmo path do banco — **nenhuma coluna nova, nada muda no front**).
+  - Escrita → R2 quando `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/
+    `R2_BUCKET_NAME` existem; sem elas, Supabase (deploy sem env não quebra).
+  - Leitura/URL assinada → R2; se não estiver lá, Supabase (arquivos antigos seguem
+    abrindo). URL assinada do R2 com teto de 1h (proxy usa 60s, disparo 600s).
+  - Delete → nos dois. Move → copy+delete no R2 (ou move no legado).
+  - Mimetype executável (html/svg/xml/js) é gravado como `application/octet-stream`
+    (o front abre arquivo como `blob:` na origem do app).
+- **Migração:** `node scripts/migrarStorageParaR2.js` (simula) / `--executar` (copia,
+  confere tamanho, idempotente) / `--verificar` (exit 1 se algo não confere). **Nunca apaga
+  o Supabase.** Depois de `--verificar` OK: `STORAGE_LEGADO_SUPABASE=false` e só então
+  pensar em esvaziar os buckets antigos (manual, no painel).
+- Testes: `src/lib/armazenamento.test.js` (sem rede). Integração (S3 local + Supabase
+  falso + rota real do proxy + script) rodada na implementação: 20/20.
+- **Não feito (decisão):** upload direto navegador→R2 por presigned PUT. Os uploads
+  continuam passando pelo backend (multer, limites 2–30MB por rota), que valida dono e
+  tipo antes de gravar — evita CORS no bucket e um fluxo de "confirmar upload" em cada
+  tela. Reavaliar se o tráfego no Render virar gargalo.
+
 ## Bugs corrigidos (histórico)
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
