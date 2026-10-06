@@ -76,12 +76,33 @@ const post = (ctx, corpo) => ctx.doPost({ postData: { contents: JSON.stringify({
   assert.deepEqual(r.abas.map((a) => a.nome), ["Agosto", "PROC"]);
 }
 
+// Erro real: data da célula = meia-noite em São Paulo (03:00 UTC). Com o fuso
+// da planilha vazio e o do script nos EUA, virava o dia anterior. Tem que ler 10/10.
+{
+  const { ss, ctx } = carregar({
+    ERICK: [
+      ["OS", "CLIENTE", "VENCIMENTO"],
+      ["16341128", "FELIPE MATHEUS MENDES DE SOUZA", new Date("2026-10-10T03:00:00Z")],
+      ["99", "FUSO LESTE", new Date("2026-10-09T14:00:00Z")], // meia-noite de 10/10 em UTC+10
+      ["98", "FUSO OESTE", new Date("2026-10-10T10:00:00Z")], // meia-noite de 10/10 em UTC-10
+    ],
+  });
+  const ext = [
+    { codigo: "011/016341128", vencimento: "10/10/2026", nome: "FELIPE MATHEUS MENDES DE SOUZA", arquivo: "", pix_code: "000201FELIPE" },
+    { codigo: "99", vencimento: "10/10/2026", nome: "FUSO LESTE", arquivo: "", pix_code: "000201L" },
+    { codigo: "98", vencimento: "10/10/2026", nome: "FUSO OESTE", arquivo: "", pix_code: "000201O" },
+  ];
+  const r = post(ctx, { acao: "aba", nome: "ERICK", extracoes: ext });
+  assert.equal(r.resumo.preenchidas, 3, JSON.stringify(r.resumo.detalhes));
+  assert.equal(ss.sheets[0].grade[1][3], "000201FELIPE");
+}
+
 // Caso real (Agosto) com FUSO VAZIO + data como Date: usa o fallback, preenche e confere.
 {
-  const { ss, ctx, fusosUsados } = carregar({
+  const { ss, ctx } = carregar({
     Agosto: [
       ["OS", "CLIENTE", "VENCIMENTO", "COD PIX"],
-      [4202130, "ANA TALITA GARCIA DA SILVA", new Date("2026-07-15T12:00:00Z"), "PAGO 14-08"],
+      [4202130, "ANA TALITA GARCIA DA SILVA", new Date("2026-07-15T03:00:00Z"), "PAGO 14-08"], // meia-noite em SP,
       ["999", "JOAO", "10/08/2026", ""],
     ],
   });
@@ -91,7 +112,6 @@ const post = (ctx, corpo) => ctx.doPost({ postData: { contents: JSON.stringify({
   ];
   const r = post(ctx, { acao: "aba", nome: "Agosto", extracoes: ext });
   assert.equal(r.ok, true, r.erro);
-  assert.equal(fusosUsados[0], "America/Sao_Paulo");
   const g = ss.sheets[0].grade;
   assert.equal(g[1][3], "PAGO 14-08", "nunca sobrescreve texto do usuário");
   assert.equal(g[0][4], "COD PIX");

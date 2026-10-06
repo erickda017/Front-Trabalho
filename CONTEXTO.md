@@ -759,6 +759,16 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] "Atualizar Pix na planilha": 0 de 4013 linhas, todo vencimento
+  1 dia antes.** Relatório: planilha lida como 09/10/2026, PDF 10/10/2026 (176
+  "OS bate, vencimento não"). Upload manual funcionava. Causa: o Google entrega
+  a data da célula como meia-noite no fuso da planilha; no App da Web esse
+  fuso vem vazio e o script formatava no fuso do projeto Apps Script (EUA) --
+  meia-noite em SP = 23h do dia anterior nos EUA. Fix (`PixPlanilha.gs` v3):
+  `dataDaCelulaParaIso` = meia-noite + 12h lida em UTC (dia certo pra qualquer
+  fuso entre -12h e +12h), sem `Utilities.formatDate`. Paridade com o upload
+  manual refeita com as datas como o Google entrega: 1024 x 1024, 0 diferenças.
+
 - **[2026-10] "Atualizar Pix na planilha": erro de fuso, "já em andamento" e
   sem progresso.** Relatado: 1ª tentativa não mudou nada, 2ª "já tinha uma em
   andamento", 3ª "Planilha recusou: Invalid argument: timeZone. Should be of

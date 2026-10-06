@@ -81,8 +81,19 @@ function textoParaIso(t) {
 }
 
 // Célula de vencimento: Date (formatada como data na planilha), número
-// (serial, dias desde 30/12/1899) ou texto. `dataParaIso` converte Date no
-// fuso da PLANILHA (no Google: Utilities.formatDate).
+// (serial, dias desde 30/12/1899) ou texto. `dataParaIso`: ver
+// dataDaCelulaParaIso.
+// [2026-10] Data de célula (Date) -> "aaaa-mm-dd" SEM depender de fuso.
+// O Google entrega a data como "meia-noite no fuso da planilha". No App da Web
+// o fuso da planilha veio vazio e formatar no fuso do script (EUA) jogava
+// TODO vencimento 1 dia pra trás (10/10 virava 09/10 -- erro real: 0 de 4013
+// linhas casaram). Meia-noite + 12h cai no MESMO dia em UTC pra qualquer fuso
+// entre -12h e +12h (todo o Brasil), então dá o dia certo sem saber o fuso.
+function dataDaCelulaParaIso(d) {
+  var meioDia = new Date(d.getTime() + 12 * 3600000);
+  return meioDia.getUTCFullYear() + '-' + doisDigitos(meioDia.getUTCMonth() + 1) + '-' + doisDigitos(meioDia.getUTCDate());
+}
+
 function vencimentoDaCelula(v, dataParaIso) {
   if (v == null || v === '') return '';
   if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? '' : dataParaIso(v);
@@ -245,7 +256,8 @@ function casarPixNaGrade(nomeAba, valores, porOs, resumo, dataParaIso) {
 
 // [2026-10] No App da Web a planilha "ativa" e o fuso podem vir vazios
 // (erro real: "Invalid argument: timeZone. Should be of type: String").
-// O id da planilha é guardado no "Configurar chave" e o fuso tem fallback.
+// O id da planilha é guardado no "Configurar chave"; datas são lidas sem
+// depender de fuso (ver dataDaCelulaParaIso).
 function planilha_() {
   var id = PropertiesService.getScriptProperties().getProperty('PLANILHA_ID');
   var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
@@ -253,12 +265,6 @@ function planilha_() {
   return ss;
 }
 
-function fusoDe_(ss) {
-  var fuso = null;
-  try { fuso = ss.getSpreadsheetTimeZone(); } catch (e) { /* segue pro fallback */ }
-  if (!fuso) { try { fuso = Session.getScriptTimeZone(); } catch (e) { /* idem */ } }
-  return fuso || 'America/Sao_Paulo';
-}
 
 function abasProcessaveis_(ss) {
   return ss.getSheets().filter(function (a) { return a.getName() !== NOME_ABA_LOG; });
@@ -268,8 +274,7 @@ function abasProcessaveis_(ss) {
 // site). Depois de escrever, RELÊ as células e conta quantas ficaram mesmo
 // com o Pix ("verificadas") -- é o "atualizou de verdade?".
 function processarAba_(ss, aba, extracoes) {
-  var fuso = fusoDe_(ss);
-  var dataParaIso = function (d) { return Utilities.formatDate(d, fuso, 'yyyy-MM-dd'); };
+  var dataParaIso = dataDaCelulaParaIso;
   var resumo = novoResumo(extracoes);
   var porOs = indexarPorOs(extracoes, resumo);
   var nome = aba.getName();
@@ -358,7 +363,7 @@ function doPost(e) {
 // Abrir o endereço do App da Web no navegador mostra isto (teste rápido).
 function doGet() {
   var props = PropertiesService.getScriptProperties();
-  return responder_({ ok: true, script: 'Pix automático', versao: 2, chaveConfigurada: !!props.getProperty('CHAVE'), planilhaVinculada: !!props.getProperty('PLANILHA_ID') });
+  return responder_({ ok: true, script: 'Pix automático', versao: 3, chaveConfigurada: !!props.getProperty('CHAVE'), planilhaVinculada: !!props.getProperty('PLANILHA_ID') });
 }
 
 function onOpen() {
@@ -385,6 +390,5 @@ function verStatus() {
   var props = PropertiesService.getScriptProperties();
   SpreadsheetApp.getUi().alert(
     'Chave configurada: ' + (props.getProperty('CHAVE') ? 'sim' : 'NÃO') +
-    '\nPlanilha vinculada: ' + (props.getProperty('PLANILHA_ID') ? 'sim' : 'NÃO (rode Configurar chave)') +
-    '\nFuso usado: ' + fusoDe_(planilha_()));
+    '\nPlanilha vinculada: ' + (props.getProperty('PLANILHA_ID') ? 'sim' : 'NÃO (rode Configurar chave)'));
 }
