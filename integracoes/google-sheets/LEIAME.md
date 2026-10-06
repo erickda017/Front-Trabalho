@@ -40,8 +40,21 @@ Quem instalar precisa ter **permissão de edição** na planilha oficial.
    - `PLANILHA_CHAVE_INTEGRACAO` = a chave do passo 1 (a MESMA do passo 3)
    Salve (o Render reinicia o backend).
 6. Teste: abra o URL do passo 4 no navegador. Deve aparecer
-   `{"ok":true,"script":"Pix automático","chaveConfigurada":true}`.
-7. No site, clique **Atualizar Pix na planilha** e confira a aba **Log Pix**.
+   `"versao":2`, `"chaveConfigurada":true` e `"planilhaVinculada":true`.
+7. No site, clique **Atualizar Pix na planilha**. A tela mostra a barra de
+   progresso, a aba que está sendo processada, quantos Pix foram gravados e
+   **conferidos** (o script relê cada célula depois de escrever) e o erro de
+   cada aba, se houver. Tudo também fica na aba **Log Pix**.
+
+## Atualizar pra versão 2 (progresso aba por aba) — quem já instalou
+
+1. Apps Script: apague tudo, cole o `PixPlanilha.gs` novo, salve.
+2. Volte pra planilha, recarregue e rode **Pix automático → Configurar chave**
+   de novo (mesma chave). Isso agora também vincula a planilha ao script.
+3. **Implantar → Gerenciar implantações → (lápis) → Versão: Nova versão →
+   Implantar.** O URL continua o mesmo (não precisa mexer no Render).
+4. Abra o URL `/exec` no navegador: deve mostrar `"versao":2`,
+   `"chaveConfigurada":true` e `"planilhaVinculada":true`.
 
 ## Se alterar o script depois
 
@@ -57,7 +70,9 @@ Versão: Nova versão → Implantar**. Assim o URL continua o mesmo. (Uma
 | "Planilha recusou: chave inválida" | Chave do Render diferente da salva no passo 3. |
 | "chave não configurada na planilha" | Passo 3. |
 | "respondeu algo inesperado" | Implantação sem "Qualquer pessoa", ou URL não termina em `/exec`. |
-| "demorou demais" | Backend acordando (Render gratuito) ou planilha muito grande — clique de novo. |
+| "demorou demais" | Backend acordando (Render gratuito) ou aba muito grande — clique de novo (o que já foi gravado não é repetido). |
+| "acao desconhecida" | Script da planilha ainda é a versão 1 — ver "Atualizar pra versão 2". |
+| "Invalid argument: timeZone" | Versão 1 do script — atualize (a 2 corrige). |
 
 ## Teste local (sem Google)
 

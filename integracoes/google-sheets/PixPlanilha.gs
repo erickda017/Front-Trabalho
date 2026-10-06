@@ -243,52 +243,79 @@ function casarPixNaGrade(nomeAba, valores, porOs, resumo, dataParaIso) {
 /* Daqui pra baixo: só Google (SpreadsheetApp etc.)                          */
 /* ------------------------------------------------------------------------ */
 
-function preencherPlanilha_(extracoes) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var fuso = ss.getSpreadsheetTimeZone();
+// [2026-10] No App da Web a planilha "ativa" e o fuso podem vir vazios
+// (erro real: "Invalid argument: timeZone. Should be of type: String").
+// O id da planilha é guardado no "Configurar chave" e o fuso tem fallback.
+function planilha_() {
+  var id = PropertiesService.getScriptProperties().getProperty('PLANILHA_ID');
+  var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('planilha não encontrada -- abra a planilha e rode "Pix automático > Configurar chave" de novo');
+  return ss;
+}
+
+function fusoDe_(ss) {
+  var fuso = null;
+  try { fuso = ss.getSpreadsheetTimeZone(); } catch (e) { /* segue pro fallback */ }
+  if (!fuso) { try { fuso = Session.getScriptTimeZone(); } catch (e) { /* idem */ } }
+  return fuso || 'America/Sao_Paulo';
+}
+
+function abasProcessaveis_(ss) {
+  return ss.getSheets().filter(function (a) { return a.getName() !== NOME_ABA_LOG; });
+}
+
+// Processa UMA aba (o backend chama aba por aba, pra mostrar progresso no
+// site). Depois de escrever, RELÊ as células e conta quantas ficaram mesmo
+// com o Pix ("verificadas") -- é o "atualizou de verdade?".
+function processarAba_(ss, aba, extracoes) {
+  var fuso = fusoDe_(ss);
   var dataParaIso = function (d) { return Utilities.formatDate(d, fuso, 'yyyy-MM-dd'); };
   var resumo = novoResumo(extracoes);
   var porOs = indexarPorOs(extracoes, resumo);
-  var agora = new Date();
+  var nome = aba.getName();
+  var valores = aba.getDataRange().getValues();
+  var escritas = casarPixNaGrade(nome, valores, porOs, resumo, dataParaIso);
+  var escritasPix = escritas.filter(function (w) { return w.valor !== 'COD PIX'; });
+  resumo.escritas = 0;
+  resumo.verificadas = 0;
+  if (!escritas.length) return resumo;
 
-  ss.getSheets().forEach(function (aba) {
-    var nome = aba.getName();
-    if (nome === NOME_ABA_LOG) return;
-    var faixa = aba.getDataRange();
-    var valores = faixa.getValues();
-    var escritas = casarPixNaGrade(nome, valores, porOs, resumo, dataParaIso);
-    if (!escritas.length) return;
-    // Relê a aba UMA vez logo antes de escrever: se alguém preencheu uma
-    // célula enquanto o script rodava, ela não é sobrescrita.
-    var atuais = aba.getDataRange().getValues();
-    var vazia = function (w) { var v = (atuais[w.r] || [])[w.c]; return v == null || String(v).trim() === ''; };
-    // Coluna COD PIX nova: copia o formato da coluna vizinha (cabeçalho e
-    // linhas) numa chamada só, em vez de célula por célula.
-    var cabecalhoNovo = escritas.filter(function (w) { return w.valor === 'COD PIX' && w.copiarFormatoDe; })[0];
-    if (cabecalhoNovo && vazia(cabecalhoNovo) && cabecalhoNovo.c > 0) {
-      var nLinhas = Math.max(1, valores.length - cabecalhoNovo.r);
-      aba.getRange(cabecalhoNovo.r + 1, cabecalhoNovo.c, nLinhas, 1)
-        .copyTo(aba.getRange(cabecalhoNovo.r + 1, cabecalhoNovo.c + 1, nLinhas, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-    }
-    // Linhas seguidas na mesma coluna viram 1 escrita só (cada chamada ao
-    // Sheets custa ~30-50ms; 1000 Pix avulsos levariam quase 1 minuto).
-    var aEscrever = escritas.filter(vazia).sort(function (x, y) { return x.c - y.c || x.r - y.r; });
-    for (var i = 0; i < aEscrever.length; ) {
-      var j = i;
-      while (j + 1 < aEscrever.length && aEscrever[j + 1].c === aEscrever[i].c && aEscrever[j + 1].r === aEscrever[j].r + 1) j++;
-      var bloco = aEscrever.slice(i, j + 1).map(function (w) { return [w.valor]; });
-      aba.getRange(aEscrever[i].r + 1, aEscrever[i].c + 1, bloco.length, 1).setValues(bloco);
-      i = j + 1;
-    }
-  });
+  // Relê logo antes de escrever: célula preenchida por alguém nesse meio
+  // tempo não é sobrescrita.
+  var atuais = aba.getDataRange().getValues();
+  var vazia = function (w) { var v = (atuais[w.r] || [])[w.c]; return v == null || String(v).trim() === ''; };
+  var cabecalhoNovo = escritas.filter(function (w) { return w.valor === 'COD PIX' && w.copiarFormatoDe; })[0];
+  if (cabecalhoNovo && vazia(cabecalhoNovo) && cabecalhoNovo.c > 0) {
+    var nLinhas = Math.max(1, valores.length - cabecalhoNovo.r);
+    aba.getRange(cabecalhoNovo.r + 1, cabecalhoNovo.c, nLinhas, 1)
+      .copyTo(aba.getRange(cabecalhoNovo.r + 1, cabecalhoNovo.c + 1, nLinhas, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  }
+  // Linhas seguidas na mesma coluna viram 1 escrita só.
+  var aEscrever = escritas.filter(vazia).sort(function (x, y) { return x.c - y.c || x.r - y.r; });
+  for (var i = 0; i < aEscrever.length; ) {
+    var j = i;
+    while (j + 1 < aEscrever.length && aEscrever[j + 1].c === aEscrever[i].c && aEscrever[j + 1].r === aEscrever[j].r + 1) j++;
+    var bloco = aEscrever.slice(i, j + 1).map(function (w) { return [w.valor]; });
+    aba.getRange(aEscrever[i].r + 1, aEscrever[i].c + 1, bloco.length, 1).setValues(bloco);
+    i = j + 1;
+  }
+  SpreadsheetApp.flush();
 
-  // Log: 1 linha por Pix preenchido (aba, linha, critério vem dos detalhes).
-  var preenchidas = resumo.detalhes.filter(function (d) { return d.status === 'preenchida'; });
-  if (preenchidas.length) {
+  var depois = aba.getDataRange().getValues();
+  var escritosPix = aEscrever.filter(function (w) { return w.valor !== 'COD PIX'; });
+  resumo.escritas = escritosPix.length;
+  resumo.verificadas = escritosPix.filter(function (w) { return String((depois[w.r] || [])[w.c]) === w.valor; }).length;
+  // Linhas que casaram mas a célula foi preenchida por outra pessoa no meio do caminho.
+  resumo.puladasNaHora = escritasPix.length - escritosPix.length;
+
+  if (resumo.verificadas) {
+    var agora = new Date();
     var abaLog = ss.getSheetByName(NOME_ABA_LOG) || ss.insertSheet(NOME_ABA_LOG);
     if (abaLog.getLastRow() === 0) abaLog.appendRow(['Quando', 'Aba', 'Linha', 'OS', 'Cliente', 'Vencimento', 'Critério / PDF']);
-    var linhas = preenchidas.map(function (d) { return [agora, d.aba, d.linha, d.os, d.cliente, d.vencimento, d.motivo]; });
-    abaLog.getRange(abaLog.getLastRow() + 1, 1, linhas.length, linhas[0].length).setValues(linhas);
+    var linhas = resumo.detalhes
+      .filter(function (d) { return d.status === 'preenchida'; })
+      .map(function (d) { return [agora, d.aba, d.linha, d.os, d.cliente, d.vencimento, d.motivo]; });
+    if (linhas.length) abaLog.getRange(abaLog.getLastRow() + 1, 1, linhas.length, linhas[0].length).setValues(linhas);
   }
   return resumo;
 }
@@ -297,20 +324,30 @@ function responder_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// Chamado pelo backend do site (POST /api/integracao/planilha/atualizar).
-// Corpo: { chave, extracoes: [{ codigo, vencimento, nome, arquivo, pix_code }] }
+// Chamado pelo backend do site. Corpo: { chave, acao, ... }
+//   acao "abas": lista as abas (o backend usa pra montar o progresso).
+//   acao "aba":  { nome, extracoes } processa UMA aba.
 function doPost(e) {
   var corpo;
   try { corpo = JSON.parse(e.postData.contents); } catch (err) { return responder_({ ok: false, erro: 'corpo inválido' }); }
   var chave = PropertiesService.getScriptProperties().getProperty('CHAVE');
   if (!chave) return responder_({ ok: false, erro: 'chave não configurada na planilha (menu Pix automático > Configurar chave)' });
   if (corpo.chave !== chave) return responder_({ ok: false, erro: 'chave inválida' });
-  if (!Array.isArray(corpo.extracoes)) return responder_({ ok: false, erro: 'extracoes ausente' });
 
   var trava = LockService.getDocumentLock();
-  if (!trava.tryLock(120000)) return responder_({ ok: false, erro: 'outra atualização ainda está rodando -- tente de novo em 1 minuto' });
+  if (!trava.tryLock(60000)) return responder_({ ok: false, erro: 'planilha ocupada com outra atualização -- tente de novo em 1 minuto' });
   try {
-    return responder_({ ok: true, resumo: preencherPlanilha_(corpo.extracoes) });
+    var ss = planilha_();
+    if (corpo.acao === 'abas') {
+      return responder_({ ok: true, planilha: ss.getName(), abas: abasProcessaveis_(ss).map(function (a) { return { nome: a.getName(), linhas: a.getLastRow() }; }) });
+    }
+    if (corpo.acao === 'aba') {
+      if (!Array.isArray(corpo.extracoes)) return responder_({ ok: false, erro: 'extracoes ausente' });
+      var aba = ss.getSheetByName(corpo.nome);
+      if (!aba) return responder_({ ok: false, erro: 'aba "' + corpo.nome + '" não existe mais' });
+      return responder_({ ok: true, resumo: processarAba_(ss, aba, corpo.extracoes) });
+    }
+    return responder_({ ok: false, erro: 'acao desconhecida -- atualize o script da planilha (versão nova no LEIAME)' });
   } catch (err) {
     return responder_({ ok: false, erro: String(err && err.message || err) });
   } finally {
@@ -320,8 +357,8 @@ function doPost(e) {
 
 // Abrir o endereço do App da Web no navegador mostra isto (teste rápido).
 function doGet() {
-  var configurado = !!PropertiesService.getScriptProperties().getProperty('CHAVE');
-  return responder_({ ok: true, script: 'Pix automático', chaveConfigurada: configurado });
+  var props = PropertiesService.getScriptProperties();
+  return responder_({ ok: true, script: 'Pix automático', versao: 2, chaveConfigurada: !!props.getProperty('CHAVE'), planilhaVinculada: !!props.getProperty('PLANILHA_ID') });
 }
 
 function onOpen() {
@@ -338,11 +375,16 @@ function configurarChave() {
   if (r.getSelectedButton() !== ui.Button.OK) return;
   var chave = r.getResponseText().trim();
   if (chave.length < 20) { ui.alert('Chave curta demais (mínimo 20 caracteres).'); return; }
-  PropertiesService.getScriptProperties().setProperty('CHAVE', chave);
-  ui.alert('Chave salva. Agora implante como App da Web (ver LEIAME).');
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('CHAVE', chave);
+  props.setProperty('PLANILHA_ID', SpreadsheetApp.getActiveSpreadsheet().getId());
+  ui.alert('Chave salva e planilha vinculada.');
 }
 
 function verStatus() {
-  var configurado = !!PropertiesService.getScriptProperties().getProperty('CHAVE');
-  SpreadsheetApp.getUi().alert('Chave configurada: ' + (configurado ? 'sim' : 'NÃO'));
+  var props = PropertiesService.getScriptProperties();
+  SpreadsheetApp.getUi().alert(
+    'Chave configurada: ' + (props.getProperty('CHAVE') ? 'sim' : 'NÃO') +
+    '\nPlanilha vinculada: ' + (props.getProperty('PLANILHA_ID') ? 'sim' : 'NÃO (rode Configurar chave)') +
+    '\nFuso usado: ' + fusoDe_(planilha_()));
 }

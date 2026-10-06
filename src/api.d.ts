@@ -308,7 +308,8 @@ declare module "@/api" {
     // backend (ver middleware/supervisor.js) -- 403 se chamadas por um
     // operador comum (ver routes/supervisor.tsx).
     integracao: {
-      atualizarPlanilha: () => Promise<import("@/components/shared/ResumoPlanilhaPix").ResultadoCasamento>;
+      atualizarPlanilha: () => Promise<{ tarefa: import("@/components/shared/ResumoPlanilhaPix").TarefaPlanilha; jaEmAndamento: boolean }>;
+      statusPlanilha: () => Promise<{ tarefa: import("@/components/shared/ResumoPlanilhaPix").TarefaPlanilha | null }>;
     };
     supervisor: {
       operadores: () => Promise<OperadorComCarteira[]>;

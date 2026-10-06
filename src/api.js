@@ -330,6 +330,7 @@ export const api = {
   // backend/src/lib/planilhaIntegracao.js e integracoes/google-sheets/LEIAME.md.
   integracao: {
     atualizarPlanilha: () => request('/integracao/planilha/atualizar', { method: 'POST' }),
+    statusPlanilha: () => request('/integracao/planilha/status'),
   },
   supervisor: {
     // Todas as rotas abaixo exigem role=supervisor no backend (ver

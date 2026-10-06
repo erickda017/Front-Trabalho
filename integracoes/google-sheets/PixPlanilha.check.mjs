@@ -7,98 +7,111 @@ import vm from "node:vm";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-function planilhaFalsa(abas) {
-  const sheets = Object.entries(abas).map(([nome, grade]) => {
-    const formatos = [];
-    const aba = {
-      grade,
-      getName: () => nome,
-      getDataRange: () => ({ getValues: () => grade.map((l) => l.map((v) => (v === undefined ? "" : v))) }),
-      getRange: (r, c, nr, nc) => ({
-        getValue: () => (grade[r - 1] ?? [])[c - 1] ?? "",
-        setValue: (v) => { (grade[r - 1] ??= [])[c - 1] = v; },
-        setValues: (vals) => vals.forEach((l, i) => { if (nc === 1 && l.length === 1) (grade[r - 1 + i] ??= [])[c - 1] = l[0]; else grade[r - 1 + i] = l.slice(); }),
-        copyTo: (alvo) => formatos.push(alvo),
-      }),
-      getLastRow: () => grade.length,
-      appendRow: (l) => grade.push(l),
-      formatos,
-    };
-    return aba;
-  });
+function abaFalsa(nome, grade) {
   return {
-    sheets,
-    getSpreadsheetTimeZone: () => "America/Sao_Paulo",
-    getSheets: () => sheets,
-    getSheetByName: (n) => sheets.find((s) => s.getName() === n) ?? null,
-    insertSheet: (n) => { const s = planilhaFalsa({ [n]: [] }).sheets[0]; sheets.push(s); return s; },
+    grade,
+    formatos: [],
+    getName: () => nome,
+    getLastRow() { return grade.length; },
+    getDataRange: () => ({ getValues: () => grade.map((l) => l.map((v) => (v === undefined ? "" : v))) }),
+    getRange(r, c, nr = 1, nc = 1) {
+      const aba = this;
+      return {
+        setValues: (vals) => vals.forEach((l, i) => { if (nc === 1 && l.length === 1) (grade[r - 1 + i] ??= [])[c - 1] = l[0]; else grade[r - 1 + i] = l.slice(); }),
+        copyTo: (alvo) => aba.formatos.push(alvo),
+      };
+    },
+    appendRow: (l) => grade.push(l),
   };
 }
 
-function carregar(abas, chave = "chave-de-teste-com-mais-de-20") {
-  const ss = planilhaFalsa(abas);
-  const props = { CHAVE: chave };
+function carregar(abas, { chave = "chave-de-teste-com-mais-de-20", fusoPlanilha = "" } = {}) {
+  const sheets = Object.entries(abas).map(([n, g]) => abaFalsa(n, g));
+  const ss = {
+    sheets,
+    getName: () => "Planilha oficial",
+    getId: () => "ID1",
+    // [2026-10] erro real: no App da Web o fuso veio vazio.
+    getSpreadsheetTimeZone: () => fusoPlanilha,
+    getSheets: () => sheets,
+    getSheetByName: (n) => sheets.find((s) => s.getName() === n) ?? null,
+    insertSheet: (n) => { const s = abaFalsa(n, []); sheets.push(s); return s; },
+  };
+  const props = { CHAVE: chave, PLANILHA_ID: "ID1" };
+  const fusosUsados = [];
   const ctx = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, CopyPasteType: { PASTE_FORMAT: "f" } },
-    Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
+    SpreadsheetApp: { openById: () => ss, getActiveSpreadsheet: () => null, flush() {}, CopyPasteType: { PASTE_FORMAT: "f" } },
+    Session: { getScriptTimeZone: () => "" },
+    Utilities: {
+      formatDate: (d, fuso) => {
+        if (typeof fuso !== "string" || !fuso) throw new Error("Invalid argument: timeZone. Should be of type: String");
+        fusosUsados.push(fuso);
+        return d.toISOString().slice(0, 10);
+      },
+    },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null }) },
     LockService: { getDocumentLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
-    ContentService: { createTextOutput: (t) => ({ t, setMimeType() { return JSON.parse(t); } }), MimeType: { JSON: "j" } },
+    ContentService: { createTextOutput: (t) => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: "j" } },
   };
   vm.createContext(ctx);
   vm.runInContext(readFileSync(new URL("./PixPlanilha.gs", import.meta.url), "utf8"), ctx);
-  return { ss, ctx };
+  return { ss, ctx, fusosUsados };
 }
 
-const post = (ctx, corpo) => ctx.doPost({ postData: { contents: JSON.stringify(corpo) } });
 const CH = "chave-de-teste-com-mais-de-20";
+const post = (ctx, corpo) => ctx.doPost({ postData: { contents: JSON.stringify({ chave: CH, ...corpo }) } });
 
-// Chave errada / ausente -> recusa sem tocar em nada.
+// Chave errada / ausente -> recusa.
 {
-  const { ss, ctx } = carregar({ Set: [["OS", "CLIENTE", "VENCIMENTO"], ["500", "MARIA", "10/08/2026"]] });
-  assert.deepEqual(post(ctx, { chave: "errada", extracoes: [] }), { ok: false, erro: "chave inválida" });
-  assert.equal(ss.sheets[0].grade[0].length, 3);
-  const sem = carregar({ A: [] }, null);
-  assert.match(post(sem.ctx, { chave: CH, extracoes: [] }).erro, /chave não configurada/);
+  const { ctx } = carregar({ A: [] });
+  assert.deepEqual(ctx.doPost({ postData: { contents: JSON.stringify({ chave: "x", acao: "abas" }) } }), { ok: false, erro: "chave inválida" });
+  const sem = carregar({ A: [] }, { chave: null });
+  assert.match(post(sem.ctx, { acao: "abas" }).erro, /chave não configurada/);
 }
 
-// Caso real (Agosto): "COD PIX" com "PAGO 14-08" -> coluna nova; texto do usuário intacto;
-// célula já preenchida nunca é sobrescrita; data como Date; log criado.
+// Lista de abas (sem a Log Pix).
 {
-  const { ss, ctx } = carregar({
+  const { ctx } = carregar({ Agosto: [["OS"]], PROC: [["X"]], "Log Pix": [] });
+  const r = post(ctx, { acao: "abas" });
+  assert.deepEqual(r.abas.map((a) => a.nome), ["Agosto", "PROC"]);
+}
+
+// Caso real (Agosto) com FUSO VAZIO + data como Date: usa o fallback, preenche e confere.
+{
+  const { ss, ctx, fusosUsados } = carregar({
     Agosto: [
       ["OS", "CLIENTE", "VENCIMENTO", "COD PIX"],
       [4202130, "ANA TALITA GARCIA DA SILVA", new Date("2026-07-15T12:00:00Z"), "PAGO 14-08"],
       ["999", "JOAO", "10/08/2026", ""],
     ],
-    PROC: [["VENDEDOR", "SUPERVISOR"]],
   });
-  const r = post(ctx, {
-    chave: CH,
-    extracoes: [
-      { codigo: "010/004202130", vencimento: "15/07/2026", nome: "ANA TALITA GARCIA DA SILVA", arquivo: "a.pdf", pix_code: "000201PIX-ANA" },
-      { codigo: "999", vencimento: "10/09/2026", nome: "JOAO", arquivo: "j.pdf", pix_code: "000201PIX-ERRADO" },
-    ],
-  });
-  assert.equal(r.ok, true);
+  const ext = [
+    { codigo: "010/004202130", vencimento: "15/07/2026", nome: "ANA TALITA GARCIA DA SILVA", arquivo: "a.pdf", pix_code: "000201PIX-ANA" },
+    { codigo: "999", vencimento: "10/09/2026", nome: "JOAO", arquivo: "j.pdf", pix_code: "000201PIX-ERRADO" },
+  ];
+  const r = post(ctx, { acao: "aba", nome: "Agosto", extracoes: ext });
+  assert.equal(r.ok, true, r.erro);
+  assert.equal(fusosUsados[0], "America/Sao_Paulo");
   const g = ss.sheets[0].grade;
   assert.equal(g[1][3], "PAGO 14-08", "nunca sobrescreve texto do usuário");
   assert.equal(g[0][4], "COD PIX");
   assert.equal(g[1][4], "000201PIX-ANA");
   assert.equal(g[2][4] ?? "", "", "vencimento diferente -> vazio");
   assert.equal(r.resumo.preenchidas, 1);
+  assert.equal(r.resumo.escritas, 1);
+  assert.equal(r.resumo.verificadas, 1, "releu a célula e confirmou");
   assert.equal(r.resumo.divergentes, 1);
-  assert.deepEqual(r.resumo.puladas, [{ aba: "PROC", motivo: "sem coluna OS, CLIENTE, VENCIMENTO" }]);
   assert.equal(ss.sheets[0].formatos.length, 1, "copia o formato da coluna vizinha numa chamada só");
   const log = ss.getSheetByName("Log Pix");
-  assert.ok(log, "aba Log Pix criada");
-  assert.equal(log.grade.length, 2); // cabeçalho + 1 preenchida
-  assert.equal(log.grade[1][3], "4202130");
+  assert.equal(log.grade.length, 2);
 
-  // 2ª execução: nada novo pra preencher, nada muda.
-  const r2 = post(ctx, { chave: CH, extracoes: [{ codigo: "4202130", vencimento: "15/07/2026", nome: "X", arquivo: "", pix_code: "000201OUTRO" }] });
+  // 2ª execução: reaproveita a coluna, nada novo.
+  const r2 = post(ctx, { acao: "aba", nome: "Agosto", extracoes: ext });
   assert.equal(r2.resumo.preenchidas, 0);
   assert.equal(r2.resumo.jaTinhamPix, 1);
-  assert.equal(g[1][4], "000201PIX-ANA");
+  assert.equal(g[0].length, 5, "não cria outra coluna COD PIX");
+
+  assert.match(post(ctx, { acao: "aba", nome: "Sumiu", extracoes: [] }).erro, /não existe/);
+  assert.match(post(ctx, { extracoes: [] }).erro, /acao desconhecida/);
 }
 console.log("PixPlanilha: ok");

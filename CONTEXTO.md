@@ -759,6 +759,24 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] "Atualizar Pix na planilha": erro de fuso, "já em andamento" e
+  sem progresso.** Relatado: 1ª tentativa não mudou nada, 2ª "já tinha uma em
+  andamento", 3ª "Planilha recusou: Invalid argument: timeZone. Should be of
+  type: String". Causa: no App da Web `getSpreadsheetTimeZone()` veio vazio
+  (`Utilities.formatDate` exige texto); a 1ª chamada ainda rodava no servidor
+  quando a 2ª chegou, e a tela não tinha como mostrar isso. Fix:
+  - `PixPlanilha.gs` v2: fuso com fallback (`Session` → `America/Sao_Paulo`),
+    planilha aberta por id (gravado no "Configurar chave"), protocolo por aba
+    (`acao: "abas"` / `acao: "aba"`) e **releitura** das células depois de
+    escrever (`verificadas`).
+  - Backend: vira tarefa em segundo plano (`executarAtualizacao` em
+    `lib/planilhaIntegracao.js`): busca Pix → lista abas → 1 chamada por aba
+    (1 nova tentativa em erro passageiro; erro numa aba não para as outras).
+    `POST /atualizar` devolve a tarefa já rodando em vez de 409;
+    `GET /status` devolve o andamento.
+  - Front (`BotaoAtualizarPlanilhaPix`): barra de progresso, aba atual, tempo,
+    status por aba (gravados e conferidos / erro), resultado final.
+
 - **[2026-10] Extração do Código: Worker primeiro, OCR local de fallback
   (corrige a entrada logo abaixo).** Relatado: "nenhum PDF achou o código,
   no F12 o worker não tá sendo usado". Testado com os 95 PDFs reais (Claro,
