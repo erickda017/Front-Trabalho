@@ -182,4 +182,18 @@ assert.equal(ws4["D2"]?.v, "00020101PIX-500");
 assert.match(r4.detalhes[0]!.motivo, /^OS \+ vencimento --/);
 assert.equal(ws4["D3"]?.v, undefined);
 assert.match(r4.detalhes[1]!.motivo, /ambíguo/);
+// 2ª rodada na mesma planilha (já com a COD PIX nova): reaproveita a coluna, não cria outra.
+const wb5 = XLSX.utils.book_new();
+const ws5 = XLSX.utils.aoa_to_sheet([
+  ["OS", "CLIENTE", "VENCIMENTO", "COD PIX", "COD PIX"],
+  ["22067040", "MARIA SOUZA", "10/08/2026", "PAGO 14-08", "00020101PIX-MARIA"],
+  ["777", "JOSE LIMA", "10/08/2026", "PAGO 14-08", ""],
+]);
+XLSX.utils.book_append_sheet(wb5, ws5, "Agosto");
+const r5 = preencherPixNoWorkbook(wb5, [
+  { arquivo: "j.pdf", nome: "JOSE LIMA", codigo: "777", vencimento: "10/08/2026", pix_code: "00020101PIX-JOSE" },
+]);
+assert.equal(ws5["E3"]?.v, "00020101PIX-JOSE");
+assert.equal(ws5["F1"], undefined, "não cria uma 3ª coluna");
+assert.equal(r5.jaTinhamPix, 1);
 console.log("casarPlanilhaPix: ok");

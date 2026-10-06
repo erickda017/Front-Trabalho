@@ -665,6 +665,31 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
     ao mudar (mesmo comportamento da busca por nome ali), entra na
     `queryKey` do React Query pra recarregar a lista.
 
+### Pix direto na planilha oficial (Google Sheets) — 2026-10
+
+- Botão **"Atualizar Pix na planilha"** em `/pix` (operadores) e Supervisor → Planilha de
+  PIX (`src/components/shared/ResumoPlanilhaPix.tsx`). Manual, sem agendamento (uso
+  ~1x/mês no fechamento). Envia os Pix de **todos** os operadores (decisão do supervisor).
+- Fluxo: front → `POST /api/integracao/planilha/atualizar` (login normal;
+  `backend/src/routes/integracaoPlanilha.routes.js` + `lib/planilhaIntegracao.js`) →
+  backend junta `pix_extracoes` com OS (mesma fonte de `/supervisor/extracoes-pix`) e faz
+  POST pro **Apps Script publicado como App da Web** dentro da planilha
+  (`integracoes/google-sheets/PixPlanilha.gs`, guia em `LEIAME.md`) → script casa e preenche
+  → devolve o mesmo resumo do upload manual.
+- **Sem Google Cloud**: o App da Web roda com a conta Google de quem implantou.
+  Variáveis no Render: `PLANILHA_WEBAPP_URL` (só aceita `script.google.com`) e
+  `PLANILHA_CHAVE_INTEGRACAO` (≥ 20 caracteres, a MESMA salva no script). Sem elas: 503
+  "não configurada". Um clique por vez no servidor (409) + LockService no script.
+- Script: mesma regra de `casarPlanilhaPix.ts` (paridade testada com a planilha real: 2048
+  linhas, 0 diferenças). Só escreve em célula vazia (relê a aba antes de escrever), copia
+  o formato da coluna vizinha pra "COD PIX" nova, registra na aba **Log Pix**.
+- **Bug corrigido junto (site e script)**: rodar de novo numa planilha já processada
+  criava OUTRA coluna "COD PIX" (a coluna "COD PIX" original com "PAGO…" era descartada e
+  a nova não era reconhecida). Agora, entre as colunas com nome de Pix, usa a 1ª que só
+  tem Pix ou está vazia.
+- Testes: `integracoes/google-sheets/PixPlanilha.check.mjs` (Google simulado),
+  `backend/src/lib/planilhaIntegracao.test.js`, `casarPlanilhaPix.check.ts`.
+
 ### Disparo para números colados, sem cadastro — 2026-10
 
 - Tela Disparos → Etapa 1 → **"Colar números"**: só a lista de WhatsApp (1 por linha

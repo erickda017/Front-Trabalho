@@ -202,24 +202,26 @@ export function preencherPixNoWorkbook(
     const celAba = (r: number, c: number) => ws[XLSX.utils.encode_cell({ r, c })];
     const textoDe = (r: number, c: number) => String(celAba(r, c)?.v ?? "").trim();
 
-    let colPix = acharColuna(cabecalho, COL_PIX);
     // [2026-10] Cabeçalho com nome de Pix não garante que a coluna é de Pix:
     // na planilha real, Agosto tem "COD PIX" com "PAGO 14-08" nas 289
-    // linhas (é a coluna de OBS renomeada). Antes isso contava tudo como
-    // "já tinham PIX" e nada era preenchido. Se a coluna tem texto que não
-    // é Pix, ela é tratada como coluna de outra coisa (não é sobrescrita)
-    // e o Pix vai pra uma "COD PIX" nova.
-    if (colPix !== -1) {
-      let outroTexto = 0;
-      for (let r = r0 + 1; r <= range.e.r; r++) {
-        const t = textoDe(r, colPix);
-        if (t && !pareceCodigoPix(t)) outroTexto++;
+    // linhas (é a coluna de OBS renomeada). Entre as colunas com nome de
+    // Pix, usa a 1ª que só tem Pix (ou está vazia) -- assim a "COD PIX"
+    // criada numa rodada anterior é reaproveitada, em vez de criar uma
+    // coluna nova a cada mês. Coluna "de Pix" com outro texto nunca é usada.
+    let colPix = -1;
+    let primeiraOcupada = -1;
+    for (let c = 0; c < cabecalho.length && colPix === -1; c++) {
+      if (!COL_PIX.some((re) => re.test(cabecalho[c] ?? ""))) continue;
+      let limpa = true;
+      for (let r = r0 + 1; r <= range.e.r && limpa; r++) {
+        const t = textoDe(r, c);
+        if (t && !pareceCodigoPix(t)) limpa = false;
       }
-      if (outroTexto > 0) {
-        const de = XLSX.utils.encode_col(colPix);
-        colPix = -1;
-        resumo.colunasRedirecionadas.push({ aba: nomeAba, de, para: "" });
-      }
+      if (limpa) colPix = c;
+      else if (primeiraOcupada === -1) primeiraOcupada = c;
+    }
+    if (colPix === -1 && primeiraOcupada !== -1) {
+      resumo.colunasRedirecionadas.push({ aba: nomeAba, de: XLSX.utils.encode_col(primeiraOcupada), para: "" });
     }
     const colunaNova = colPix === -1;
     if (colunaNova) {

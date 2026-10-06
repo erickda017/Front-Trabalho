@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
+import { BotaoAtualizarPlanilhaPix } from "@/components/shared/ResumoPlanilhaPix";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao, LinhasEsqueleto, Paginacao, TabelaWrap } from "@/components/shared/Controls";
 import {
@@ -856,6 +857,13 @@ function Pix() {
               tamanhoPagina={TAMANHO_PAGINA}
               onMudarPagina={setPagina}
             />
+          </SectionCard>
+
+          <SectionCard
+            titulo="Planilha oficial (Google Sheets)"
+            descricao="Depois de extrair, envie os Pix pra planilha oficial do supervisor. Vão os Pix de todos os operadores; só células de Pix vazias são preenchidas."
+          >
+            <BotaoAtualizarPlanilhaPix />
           </SectionCard>
         </div>
 

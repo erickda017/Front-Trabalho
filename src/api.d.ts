@@ -307,6 +307,9 @@ declare module "@/api" {
     // [2026-08] SUPERVISOR: todas as rotas abaixo exigem role=supervisor no
     // backend (ver middleware/supervisor.js) -- 403 se chamadas por um
     // operador comum (ver routes/supervisor.tsx).
+    integracao: {
+      atualizarPlanilha: () => Promise<import("@/components/shared/ResumoPlanilhaPix").ResultadoCasamento>;
+    };
     supervisor: {
       operadores: () => Promise<OperadorComCarteira[]>;
       // [2026-08] Passou a paginar de verdade (perPageDefault:1000 cortava em

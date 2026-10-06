@@ -326,6 +326,11 @@ export const api = {
       return request('/perfil/me', { method: 'PUT', body: formData });
     },
   },
+  // [2026-10] Botão "Atualizar Pix na planilha" (Google Sheets oficial) -- ver
+  // backend/src/lib/planilhaIntegracao.js e integracoes/google-sheets/LEIAME.md.
+  integracao: {
+    atualizarPlanilha: () => request('/integracao/planilha/atualizar', { method: 'POST' }),
+  },
   supervisor: {
     // Todas as rotas abaixo exigem role=supervisor no backend (ver
     // middleware/supervisor.js) -- 403 se chamadas por um operador comum.
