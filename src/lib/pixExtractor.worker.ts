@@ -226,6 +226,66 @@ async function extrairPixDaPagina(pagina: any, indicePagina: number): Promise<Re
   return null;
 }
 
+// [2026-10] CANTO "NATIVO": PDFs de impressora virtual ("Microsoft Print To
+// PDF") e escaneados guardam a página como UMA imagem de ~144 dpi, onde o QR
+// do Pix tem ~1px por módulo. Pedir ao pdfjs uma escala alta (alvos de
+// 1800/2600px acima) faz ELE reamostrar essa imagem, e o resultado ficou
+// borrado a ponto do jsQR não ler -- foi o que derrubou 18 de 48 PDFs
+// (ex.: faturas da Claro com capa de "primeira fatura" na página 1, QR na
+// página 2). Testado no Chromium com os PDFs reais: render em escala 2 (1
+// pixel do canvas = 1 pixel da imagem, sem reamostrar) + ampliação do
+// canvas com suavização do próprio navegador lê todos. É barato (render
+// pequeno), então roda ANTES dos alvos altos, em todas as páginas.
+const ESCALA_NATIVA = 2;
+const FATOR_AMPLIACAO_NATIVO = 3;
+
+async function tentarCantoNativo(pagina: any, regiao: RegiaoFracao, comBlocos: boolean): Promise<string | null> {
+  const viewport = pagina.getViewport({ scale: ESCALA_NATIVA });
+  const x0 = Math.floor(viewport.width * regiao.x0);
+  const y0 = Math.floor(viewport.height * regiao.y0);
+  const w = Math.max(1, Math.ceil(viewport.width * regiao.x1) - x0);
+  const h = Math.max(1, Math.ceil(viewport.height * regiao.y1) - y0);
+
+  const origem = new OffscreenCanvas(w, h);
+  origem.width = w;
+  origem.height = h;
+  const ctxOrigem = origem.getContext("2d", { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null;
+  if (!ctxOrigem) return null;
+  ctxOrigem.fillStyle = "#ffffff";
+  ctxOrigem.fillRect(0, 0, w, h);
+  ctxOrigem.translate(-x0, -y0);
+  await pagina.render({ canvasContext: ctxOrigem as unknown as CanvasRenderingContext2D, viewport }).promise;
+
+  const ampliado = new OffscreenCanvas(w * FATOR_AMPLIACAO_NATIVO, h * FATOR_AMPLIACAO_NATIVO);
+  const ctxAmpliado = ampliado.getContext("2d", { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null;
+  if (!ctxAmpliado) {
+    liberarCanvas(origem);
+    return null;
+  }
+  ctxAmpliado.imageSmoothingEnabled = true;
+  ctxAmpliado.imageSmoothingQuality = "high";
+  ctxAmpliado.drawImage(origem as any, 0, 0, w, h, 0, 0, ampliado.width, ampliado.height);
+  liberarCanvas(origem);
+
+  let pix = lerQrDoRetangulo(ctxAmpliado, 0, 0, ampliado.width, ampliado.height);
+  if (!pix && comBlocos) pix = escanearBlocos(ctxAmpliado, ampliado.width, ampliado.height);
+  liberarCanvas(ampliado);
+  return pix;
+}
+
+async function extrairPixRapidoDaPagina(pagina: any, indicePagina: number): Promise<ResultadoPixWorker | null> {
+  for (const [regiao, origem] of [
+    [REGIAO_CANTO_JUSTA, "canto"],
+    [REGIAO_CANTO_AMPLA, "canto-ampliado"],
+  ] as const) {
+    // Blocos (lento) só na janela justa; a ampla é só leitura direta -- a
+    // varredura completa de sempre cobre o resto na 2ª passada.
+    const pix = await tentarCantoNativo(pagina, regiao, origem === "canto");
+    if (pix) return { pixCopiaCola: pix, pagina: indicePagina + 1, origem };
+  }
+  return null;
+}
+
 function comTimeout<T>(promise: Promise<T>, ms: number, valorPadrao: T): Promise<T> {
   return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(valorPadrao), ms))]);
 }
@@ -237,15 +297,25 @@ async function extrairPixDoBuffer(buffer: ArrayBuffer): Promise<ResultadoPixWork
     doc = await pdfjsLib.getDocument({ data: buffer }).promise;
 
     const totalPaginas = Math.min(doc.numPages, MAX_PAGINAS_POR_PDF);
-    for (let indice = 0; indice < totalPaginas; indice++) {
-      let pagina: any = null;
-      try {
-        pagina = await doc.getPage(indice + 1);
-        const resultado = await comTimeout(extrairPixDaPagina(pagina, indice), TIMEOUT_POR_PAGINA_MS, null);
-        if (resultado) return resultado;
-      } finally {
-        if (pagina && typeof pagina.cleanup === "function") {
-          try { pagina.cleanup(); } catch (_) { /* noop */ }
+    // 2 passadas: primeiro só a leitura rápida (nativa) em TODAS as páginas --
+    // assim a capa de propaganda da página 1 não gasta o tempo todo da
+    // página (varredura pesada sem achar nada) antes de chegar na página
+    // com o QR. Só depois a varredura completa de sempre.
+    for (const rapido of [true, false]) {
+      for (let indice = 0; indice < totalPaginas; indice++) {
+        let pagina: any = null;
+        try {
+          pagina = await doc.getPage(indice + 1);
+          const tarefa = rapido ? extrairPixRapidoDaPagina(pagina, indice) : extrairPixDaPagina(pagina, indice);
+          const resultado = await comTimeout(tarefa, TIMEOUT_POR_PAGINA_MS, null);
+          if (resultado) return resultado;
+        } catch (err) {
+          if (!rapido) throw err;
+          console.warn("[pixExtractor] leitura nativa falhou, segue pro método completo:", (err as Error).message);
+        } finally {
+          if (pagina && typeof pagina.cleanup === "function") {
+            try { pagina.cleanup(); } catch (_) { /* noop */ }
+          }
         }
       }
     }

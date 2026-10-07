@@ -759,6 +759,22 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Pix não extraído de faturas Claro "Print To PDF" (18 de 48).**
+  Sintoma: PDFs de 4-6 páginas, 1ª página = capa "Você acabou de receber a sua
+  primeira fatura" (sem Pix), fatura real na pág. 2, voltavam sem Pix. NÃO foi
+  a auditoria (nenhum arquivo de extração mudou). Causa: "Microsoft Print To
+  PDF" guarda cada página como UMA imagem de 144 dpi (1190x1682); o QR do Pix
+  fica com ~1px por módulo. Pedir escala alta ao pdfjs (alvos 1800/2600)
+  reamostra a imagem e o jsQR não lê (testado no Chromium: falha em todos os
+  alvos, com e sem varredura em blocos; os PDFs Skia dos 200 anteriores
+  passavam só no limite). Também: a capa gastava o timeout de 20s em
+  varredura pesada antes de chegar na pág. 2. Correção em
+  `pixExtractor.ts` e `pixExtractor.worker.ts` (espelhados): (1) `tentarCantoNativo`
+  renderiza o canto em escala 2 (1px do canvas = 1px da imagem) e amplia 3x no
+  canvas com suavização, lê direto (+ blocos só na janela justa); (2) duas
+  passadas -- leitura nativa rápida em TODAS as páginas, depois a varredura
+  completa de sempre. Validado no Chromium: 4/4 PDFs de "PDFS QUE DERAM ERRO"
+  (repo-de-testes) + 95/95 de `novembro`, sem regressão.
 - **[2026-10] Auditoria de segurança completa (backend, banco, storage/R2,
   WhatsApp, front, Worker, planilha).** Auth é Bearer (Supabase JWT no
   header), NÃO cookie: não existe CSRF, e o CORS fica com `credentials:false`
