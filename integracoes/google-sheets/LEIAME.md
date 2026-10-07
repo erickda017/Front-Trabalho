@@ -40,7 +40,7 @@ Quem instalar precisa ter **permissão de edição** na planilha oficial.
    - `PLANILHA_CHAVE_INTEGRACAO` = a chave do passo 1 (a MESMA do passo 3)
    Salve (o Render reinicia o backend).
 6. Teste: abra o URL do passo 4 no navegador. Deve aparecer
-   `"versao":3`, `"chaveConfigurada":true` e `"planilhaVinculada":true`.
+   `"versao":4`, `"chaveConfigurada":true` e `"planilhaVinculada":true`.
 7. No site, clique **Atualizar Pix na planilha**. A tela mostra a barra de
    progresso, a aba que está sendo processada, quantos Pix foram gravados e
    **conferidos** (o script relê cada célula depois de escrever) e o erro de
@@ -53,7 +53,7 @@ Quem instalar precisa ter **permissão de edição** na planilha oficial.
    de novo (mesma chave). Isso agora também vincula a planilha ao script.
 3. **Implantar → Gerenciar implantações → (lápis) → Versão: Nova versão →
    Implantar.** O URL continua o mesmo (não precisa mexer no Render).
-4. Abra o URL `/exec` no navegador: deve mostrar `"versao":3`,
+4. Abra o URL `/exec` no navegador: deve mostrar `"versao":4`,
    `"chaveConfigurada":true` e `"planilhaVinculada":true`.
 
 ## Se alterar o script depois

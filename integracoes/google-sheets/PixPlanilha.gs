@@ -128,7 +128,9 @@ function indexarPorOs(extracoes, resumo) {
   var porOs = {};
   extracoes.forEach(function (e) {
     var k = chaveOs(e.codigo);
-    if (!k || !e.pix_code) return;
+    // Segurança: só entra valor que É código Pix (começa com 000201, texto
+    // curto) -- nada que comece com "=" vira fórmula na planilha.
+    if (!k || typeof e.pix_code !== 'string' || e.pix_code.length > 512 || !pareceCodigoPix(e.pix_code)) return;
     (porOs[k] = porOs[k] || []).push(e);
     resumo.extracoesComOs++;
   });
@@ -337,7 +339,7 @@ function doPost(e) {
   try { corpo = JSON.parse(e.postData.contents); } catch (err) { return responder_({ ok: false, erro: 'corpo inválido' }); }
   var chave = PropertiesService.getScriptProperties().getProperty('CHAVE');
   if (!chave) return responder_({ ok: false, erro: 'chave não configurada na planilha (menu Pix automático > Configurar chave)' });
-  if (corpo.chave !== chave) return responder_({ ok: false, erro: 'chave inválida' });
+  if (!mesmaChave_(String(corpo.chave || ''), chave)) return responder_({ ok: false, erro: 'chave inválida' });
 
   var trava = LockService.getDocumentLock();
   if (!trava.tryLock(60000)) return responder_({ ok: false, erro: 'planilha ocupada com outra atualização -- tente de novo em 1 minuto' });
@@ -361,9 +363,16 @@ function doPost(e) {
 }
 
 // Abrir o endereço do App da Web no navegador mostra isto (teste rápido).
+// Compara sem parar no 1º caractere diferente (não vaza a chave por tempo).
+function mesmaChave_(a, b) {
+  var dif = a.length ^ b.length;
+  for (var i = 0; i < Math.max(a.length, b.length); i++) dif |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return dif === 0;
+}
+
 function doGet() {
   var props = PropertiesService.getScriptProperties();
-  return responder_({ ok: true, script: 'Pix automático', versao: 3, chaveConfigurada: !!props.getProperty('CHAVE'), planilhaVinculada: !!props.getProperty('PLANILHA_ID') });
+  return responder_({ ok: true, script: 'Pix automático', versao: 4, chaveConfigurada: !!props.getProperty('CHAVE'), planilhaVinculada: !!props.getProperty('PLANILHA_ID') });
 }
 
 function onOpen() {

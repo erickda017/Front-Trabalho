@@ -134,4 +134,11 @@ const post = (ctx, corpo) => ctx.doPost({ postData: { contents: JSON.stringify({
   assert.match(post(ctx, { acao: "aba", nome: "Sumiu", extracoes: [] }).erro, /não existe/);
   assert.match(post(ctx, { extracoes: [] }).erro, /acao desconhecida/);
 }
+// Segurança: valor que não é Pix (ex.: fórmula) nunca é gravado.
+{
+  const { ss, ctx } = carregar({ X: [["OS", "CLIENTE", "VENCIMENTO"], ["555", "ANA", "10/10/2026"]] });
+  const r = post(ctx, { acao: "aba", nome: "X", extracoes: [{ codigo: "555", vencimento: "10/10/2026", nome: "ANA", arquivo: "", pix_code: '=HYPERLINK("http://x")' }] });
+  assert.equal(r.resumo.preenchidas, 0);
+  assert.equal(ss.sheets[0].grade[1][3] ?? "", "");
+}
 console.log("PixPlanilha: ok");

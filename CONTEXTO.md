@@ -759,6 +759,57 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Auditoria de segurança completa (backend, banco, storage/R2,
+  WhatsApp, front, Worker, planilha).** Auth é Bearer (Supabase JWT no
+  header), NÃO cookie: não existe CSRF, e o CORS fica com `credentials:false`
+  de propósito. Corrigido:
+  - **Path traversal no proxy de arquivos (crítico):** `/api/arquivos` olhava
+    só o 1º segmento do path; `MEU_ID/../OUTRO/x.pdf` (ou `%2e%2e`, `\`)
+    passava e o fallback do Supabase legado resolvia o `..` com a
+    service_role. Agora `pathArmazenamentoValido()` em
+    `Backend-Trabalho/src/lib/armazenamento.js` barra TODA operação (R2 e
+    legado) antes de escolher o destino; também no `foto_path` do disparo
+    (`envios.routes.js`) e no nome do documento recebido pelo WhatsApp
+    (`services/chatIngest.js`, sanitizado só no path; `anexo_nome` mantém o
+    original). Teste em `armazenamento.test.js`.
+  - **XSS por arquivo vindo do WhatsApp:** o proxy repassava o Content-Type
+    gravado e o front abria como `blob:` na origem do app (lê o token do
+    localStorage). Agora lista branca (PDF, imagem raster, áudio, vídeo,
+    texto) no proxy (`tipoExibivel`) E no front (`src/api.js`); o resto vira
+    download binário. Proxy manda `nosniff` + CSP `sandbox`.
+  - **Mídia recebida sem teto:** download do WhatsApp para a RAM sem limite
+    (OOM derrubava todos). Teto `CHAT_MIDIA_MAX_MB` (padrão 25).
+  - **Rate limit era um balde só:** sem `trust proxy`, `req.ip` era o IP do
+    proxy do Render. Agora `app.set('trust proxy', 1)` + `ipKeyGenerator`
+    (IPv6). JSON de 5 MB passou a ser lido DEPOIS do rate limit.
+  - **server.js:** `helmet` (CSP fechada, HSTS, nosniff, sem X-Powered-By),
+    `Cache-Control: no-store` em `/api`, erro 5xx não devolve mensagem
+    interna, `requestTimeout` 15 min / `headersTimeout` 60 s (era 0 =
+    slowloris), fail-fast em produção (sem `SUPABASE_URL`,
+    `SUPABASE_SERVICE_ROLE_KEY` ou `FRONTEND_ORIGIN`, ou com `*` nela, o
+    processo NÃO sobe e o Render mantém o deploy anterior).
+  - **Status da planilha vazava dados:** `GET /integracao/planilha/status`
+    devolvia linhas (nome/OS/vencimento de todos os operadores) a qualquer
+    logado. Agora só quem iniciou e o supervisor veem o detalhe.
+  - **Apps Script v4:** chave comparada em tempo constante; só grava valor
+    que é Pix (`000201...`, até 512 caracteres) -- fórmula nunca entra.
+  - **RLS "FOR ALL":** operador podia gravar direto pela API do Supabase
+    (anon key + próprio JWT), pulando o backend. `migration-28` deixa as
+    policies SÓ LEITURA, tira grants de escrita e as policies de upload
+    direto no Storage da migration-5. **Precisa rodar no SQL Editor.**
+  - ReDoS em `parseListaClientes` (regex quadrática), CSV injection com
+    `+`/`-` (`exportar.js`), piso de 7 dias na retenção da limpeza, xlsx
+    0.18.5 (CVE-2023-30533 / CVE-2024-22363) trocado pela 0.20.3 oficial nos
+    dois repos, `npm audit fix` no backend (proxy-addr, qs, axios), logout
+    limpa os Pix guardados no navegador, `robots.txt`/`X-Robots-Tag`
+    bloqueiam indexação, `vercel.json` com cabeçalhos (frame-ancestors,
+    nosniff, HSTS, Referrer-Policy, Permissions-Policy).
+  - **Fica pro usuário (painel):** desligar cadastro público no Supabase
+    Auth; tornar os repos privados (o histórico do Front ainda tem as
+    planilhas de clientes do commit `87ef245`); Worker de OCR sem
+    autenticação (código fora do repo); CSP completa do front ainda não
+    aplicada (precisa teste no navegador por causa do Tesseract/jsDelivr).
+
 - **[2026-10] "Atualizar Pix na planilha": 0 de 4013 linhas, todo vencimento
   1 dia antes.** Relatório: planilha lida como 09/10/2026, PDF 10/10/2026 (176
   "OS bate, vencimento não"). Upload manual funcionava. Causa: o Google entrega

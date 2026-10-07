@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "@/supabaseClient";
 import { api, buscarBlobUrlProtegida } from "@/api";
 import { listarTodosClientes } from "@/lib/clientesPaginados";
+import { limparExtracoesPessoais } from "@/lib/extratorPessoal";
 import type {
   Cliente,
   Tag,
@@ -145,7 +146,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // [2026-10] SEGURANÇA: sair também apaga o que ficou no navegador (Pix
+  // extraídos guardados por 8h em lib/extratorPessoal.ts) -- em computador
+  // compartilhado, o próximo a usar não vê dado do operador anterior.
   const logout = useCallback(() => {
+    try {
+      limparExtracoesPessoais();
+      window.sessionStorage.clear();
+    } catch {
+      /* navegador sem storage: segue o logout */
+    }
     supabase.auth.signOut();
   }, []);
 

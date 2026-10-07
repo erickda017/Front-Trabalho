@@ -349,7 +349,13 @@ export function BotaoAtualizarPlanilhaPix() {
                   atualização e não foram mexidas.
                 </Aviso>
               )}
-              <ResultadoPlanilhaPix resultado={tarefa.resumo} nomeArquivo="planilha-oficial" />
+              {Array.isArray(tarefa.resumo.detalhes) ? (
+                <ResultadoPlanilhaPix resultado={tarefa.resumo} nomeArquivo="planilha-oficial" />
+              ) : (
+                <p className="text-sm text-subtle">
+                  Atualização iniciada por outro operador. Detalhes por linha ficam só com quem iniciou e com o supervisor.
+                </p>
+              )}
             </>
           )}
           {!rodando && terminouComErro && !tarefa.resumo && tarefa.erro && (

@@ -111,8 +111,17 @@ export async function buscarBlobArquivoProtegido(pdfUrlOuPath) {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error(`falha ao baixar PDF (${res.status})`);
-  return res.blob();
+  // [2026-10] SEGURANÇA: o blob: abre NA ORIGEM DO APP. Se o tipo fosse
+  // HTML/SVG (arquivo vindo de remetente do WhatsApp), o script rodaria aqui
+  // e leria a sessão do localStorage. Só tipos que o navegador não executa
+  // mantêm o tipo; o resto vira binário (download). O backend já faz o
+  // mesmo -- isto é a segunda barreira.
+  const blob = await res.blob();
+  const tipo = (blob.type || '').split(';')[0].trim().toLowerCase();
+  return TIPOS_EXIBIVEIS.test(tipo) ? blob : new Blob([blob], { type: 'application/octet-stream' });
 }
+
+const TIPOS_EXIBIVEIS = /^(application\/pdf|image\/(png|jpe?g|gif|webp|bmp|heic|heif)|audio\/[\w.+-]+|video\/[\w.+-]+|text\/plain)$/;
 
 export async function buscarBlobUrlProtegida(pdfUrlOuPath) {
   const blob = await buscarBlobArquivoProtegido(pdfUrlOuPath);
