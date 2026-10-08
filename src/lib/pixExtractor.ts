@@ -641,7 +641,7 @@ export async function extrairPixEmLotes(
         try {
           resultados[inicioLote + indiceNoLote] = await extrairPixLocal(item.arquivo);
         } catch (err) {
-          console.error(`[pixExtractor] falha ao processar "${item.nomeArquivo ?? "arquivo"}":`, (err as Error).message);
+          console.error("[pixExtractor] falha ao processar um arquivo:", (err as Error).name);
           resultados[inicioLote + indiceNoLote] = null;
         }
         opcoes?.onProgresso?.({ processados: inicioLote + indiceNoLote + 1, total: itens.length });

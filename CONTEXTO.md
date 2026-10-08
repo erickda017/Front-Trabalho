@@ -757,6 +757,12 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Segurança rodada 2 (logs + criptografia)**: backend mascara dado
+  de cliente em todo `console.*` (`lib/redigir.js`), sessão do WhatsApp vai cifrada
+  (AES-256-GCM, env `DATA_ENCRYPTION_KEY` no Render; sem ela segue em texto puro) e
+  o front não loga mais nome de arquivo (= nome do cliente) no console. Detalhes e
+  pendências em `Backend-Trabalho/SEGURANCA.md`.
+
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
 - **[2026-10] Extrator de Pix: pesquisa na lista e 10 por página.** A lista

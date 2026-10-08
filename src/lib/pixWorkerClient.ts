@@ -127,12 +127,12 @@ async function chamarWorker(doc: any, numeroPagina: number, nomeArquivo: string)
     try {
       const resposta = await fetch(WORKER_URL, { method: "POST", body: formData });
       const json = await resposta.json().catch(() => null);
-      if (!resposta.ok) console.warn(`[pixWorkerClient] worker respondeu ${resposta.status} (${nomeArquivo}):`, json?.error ?? "");
+      if (!resposta.ok) console.warn(`[pixWorkerClient] worker respondeu ${resposta.status}.`);
       return { status: resposta.status, json };
     } catch (err) {
       // "Failed to fetch": rede/CORS (o Worker estourado às vezes responde
       // sem cabeçalho CORS e o navegador mostra como erro de rede).
-      console.warn(`[pixWorkerClient] falha de rede no Worker (${nomeArquivo}):`, (err as Error).message);
+      console.warn("[pixWorkerClient] falha de rede no Worker.");
       return { status: "rede", json: null };
     }
   })();
@@ -168,7 +168,7 @@ async function extrairCamposOcr(arquivo: File | Blob, nomeArquivo: string): Prom
       ambienteOcr: ambienteOcrNavegador,
       log: (nivel, msg) => console[nivel](msg),
     });
-    if (fonteCodigo && fonteCodigo !== "worker") console.info(`[pixWorkerClient] Código de ${nomeArquivo} lido por fallback (${fonteCodigo}).`);
+    if (fonteCodigo && fonteCodigo !== "worker") console.info(`[pixWorkerClient] código lido por fallback (${fonteCodigo}).`);
     return campos;
   } catch (err) {
     console.error("[pixWorkerClient] erro ao extrair campos do PDF:", (err as Error).message);
