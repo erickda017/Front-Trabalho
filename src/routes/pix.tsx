@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { BotaoAtualizarPlanilhaPix } from "@/components/shared/ResumoPlanilhaPix";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { Aviso, Botao, LinhasEsqueleto, Paginacao, TabelaWrap } from "@/components/shared/Controls";
+import { Aviso, Botao, Busca, LinhasEsqueleto, Paginacao, TabelaWrap } from "@/components/shared/Controls";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,15 @@ import { useAppState } from "@/lib/app-state";
 import type { PixExtracao, PixExtracaoStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatarDataHoraAbsoluta } from "@/lib/format";
+
+function normalizarBusca(v: unknown): string {
+  return String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export const Route = createFileRoute("/pix")({
   head: () => ({
@@ -237,14 +246,28 @@ function Pix() {
   );
   const erroLista = erroListaObj ? (erroListaObj as Error).message : null;
 
-  // [paginação] 50 extrações por página -- mesma ideia da tela Clientes.
-  const TAMANHO_PAGINA = 50;
+  // [2026-10] Pesquisa na lista: arquivo, cliente, chave Pix (ou pedaço dela)
+  // e status. Sem acento/maiúscula, vários termos = todos precisam bater.
+  const [busca, setBusca] = useState("");
+  const extracoesFiltradas = useMemo(() => {
+    const termos = normalizarBusca(busca).split(" ").filter(Boolean);
+    if (termos.length === 0) return extracoes;
+    return extracoes.filter((e) => {
+      const alvo = normalizarBusca(
+        [e.arquivo, e.cliente_nome, e.pix_code, e.valor, e.vencimento, statusInfo[e.status]?.label, e.erro].join(" "),
+      );
+      return termos.every((t) => alvo.includes(t));
+    });
+  }, [extracoes, busca]);
+
+  // [paginação] 10 extrações por página (antes 50 -- lista longa demais).
+  const TAMANHO_PAGINA = 10;
   const [pagina, setPagina] = useState(1);
-  const totalPaginas = Math.max(1, Math.ceil(extracoes.length / TAMANHO_PAGINA));
+  const totalPaginas = Math.max(1, Math.ceil(extracoesFiltradas.length / TAMANHO_PAGINA));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const extracoesPaginadas = useMemo(
-    () => extracoes.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
-    [extracoes, paginaSegura],
+    () => extracoesFiltradas.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
+    [extracoesFiltradas, paginaSegura],
   );
 
   // [2026-08] "Opção 2": extração rodando no BACKEND em vez do navegador --
@@ -741,6 +764,25 @@ function Pix() {
             flush
             bodyClassName="p-0"
           >
+            {extracoes.length > 0 && (
+              <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-3">
+                <Busca
+                  value={busca}
+                  onChange={(e) => {
+                    setBusca(e.target.value);
+                    setPagina(1);
+                  }}
+                  placeholder="Pesquisar por Pix, cliente ou arquivo"
+                  aria-label="Pesquisar extrações de Pix"
+                  className="w-full sm:max-w-sm"
+                />
+                {busca.trim() && (
+                  <span className="text-subtle text-xs">
+                    {extracoesFiltradas.length} de {extracoes.length}
+                  </span>
+                )}
+              </div>
+            )}
             {erroLista ? (
               <div className="p-5">
                 <Aviso tone="danger">
@@ -764,6 +806,12 @@ function Pix() {
                 icon={KeyRound}
                 titulo="Nenhuma fatura processada ainda."
                 descricao="Envie um PDF de fatura acima para começar a extrair chaves PIX."
+              />
+            ) : extracoesFiltradas.length === 0 ? (
+              <EmptyState
+                icon={KeyRound}
+                titulo="Nenhum Pix encontrado."
+                descricao="Nada bate com a pesquisa. Tente outro nome, arquivo ou pedaço da chave."
               />
             ) : (
               <TabelaWrap compact>
@@ -853,7 +901,7 @@ function Pix() {
             <Paginacao
               paginaAtual={paginaSegura}
               totalPaginas={totalPaginas}
-              totalItens={extracoes.length}
+              totalItens={extracoesFiltradas.length}
               tamanhoPagina={TAMANHO_PAGINA}
               onMudarPagina={setPagina}
             />

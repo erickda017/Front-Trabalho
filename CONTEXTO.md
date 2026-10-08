@@ -759,6 +759,11 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 > Formato: **[data aproximada] título** — sintoma, causa raiz, arquivo(s) tocado(s).
 
+- **[2026-10] Extrator de Pix: pesquisa na lista e 10 por página.** A lista
+  "Extrações" (abaixo do extrator, `routes/pix.tsx`) ganhou campo de pesquisa
+  (arquivo, cliente, chave Pix ou pedaço dela, valor, vencimento, status, erro;
+  sem acento/maiúscula; vários termos = todos precisam bater; mostra "X de Y").
+  A paginação passou de 50 para 10 por página e respeita o filtro.
 - **[2026-10] Pix não extraído de faturas Claro "Print To PDF" (18 de 48).**
   Sintoma: PDFs de 4-6 páginas, 1ª página = capa "Você acabou de receber a sua
   primeira fatura" (sem Pix), fatura real na pág. 2, voltavam sem Pix. NÃO foi
