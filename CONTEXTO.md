@@ -757,6 +757,13 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapa 1 (identidade + menu)**: menu de 14 itens em 4 grupos virou
+  5 blocos (Início/Conversas, Carteira, Disparos, Ferramentas, Ativação Chip); "Conexão" é o
+  status do WhatsApp no rodapé da sidebar (clicável) e "Perfil" só no avatar. Rotas/URLs
+  iguais. Sidebar verde-pinho (hue 170) em vez de grafite-azulado, cantos 6px, corpo em
+  Hanken Grotesk (era Inter Tight), marca nova em SVG, item ativo com barra lateral. Plano:
+  telas seguintes uma por vez (Clientes, Disparos, Conversas, Pix, Início).
+
 - **[2026-10] Segurança rodada 2 (logs + criptografia)**: backend mascara dado
   de cliente em todo `console.*` (`lib/redigir.js`), sessão do WhatsApp vai cifrada
   (AES-256-GCM, env `DATA_ENCRYPTION_KEY` no Render; sem ela segue em texto puro) e

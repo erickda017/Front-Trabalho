@@ -36,44 +36,29 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// [2026-10] Menu enxuto: 5 blocos por tarefa (antes 14 itens em 4 grupos).
+// "Conexão" virou o status do WhatsApp no rodapé (clicável) e "Perfil" fica só
+// no menu do avatar. Rotas/URLs NÃO mudaram -- só onde cada link aparece.
+// "Faturas" foi unificada em /clientes (/faturas segue como redirect).
+// Backend também exige o papel em toda rota /supervisor/*; esconder o link é só UX.
 const nav = [
-  { to: "/", label: "Dashboard", icon: Gauge, grupo: "Operação" },
-  { to: "/disparos", label: "Disparos", icon: Send, grupo: "Operação" },
-  { to: "/historico", label: "Histórico", icon: History, grupo: "Operação" },
-  { to: "/chat", label: "Chat", icon: MessageSquare, grupo: "Operação" },
-  // [layout] "Faturas" foi unificada em /clientes (mesma base de clientes,
-  // agora com filtro de data/valor+ordenação e upload de PDF avulso que só
-  // existiam na tela separada) -- ver prompt original: "unificar clientes e
-  // faturas". /faturas continua existindo como redirect (ver routes/faturas.tsx),
-  // só sai do menu.
-  { to: "/clientes", label: "Clientes", icon: Users, grupo: "Gestão" },
-  // [2026-09] Fila de trabalho + registro de tratativa de cobrança (ver
-  // CONTEXTO.md) -- status_operador já existia e já bloqueava disparo desde
-  // a migration-20, só não tinha tela nenhuma pra registrar.
-  { to: "/qualidade", label: "Qualidade", icon: ClipboardList, grupo: "Gestão" },
-  // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado").
-  { to: "/safras", label: "Safras", icon: Layers, grupo: "Gestão" },
-  { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Gestão" },
-  { to: "/importar", label: "Importar", icon: Upload, grupo: "Gestão" },
-  { to: "/tags", label: "Tags", icon: Tag, grupo: "Gestão" },
-  // Só aparece pra quem tem role=supervisor -- filtrado abaixo em
-  // SidebarContent. Backend também exige o papel em toda rota /supervisor/*
-  // (ver middleware/supervisor.js), então esconder o link é só UX, não é a
-  // barreira de segurança de verdade.
-  { to: "/supervisor", label: "Supervisor", icon: ShieldCheck, grupo: "Gestão", supervisorOnly: true },
-  // [2026-09] Campanha nova, separada da de cobrança (ver CONTEXTO.md,
-  // "Ativação Chip") -- grupo próprio no menu pra deixar claro que é uma
-  // carteira/fluxo à parte, não uma sub-tela de Clientes/Chat.
-  { to: "/ativacao-chip", label: "Clientes", icon: Cpu, grupo: "Ativação Chip" },
-  { to: "/ativacao-chip/chat", label: "Chat", icon: MessageSquare, grupo: "Ativação Chip" },
-  { to: "/conexoes", label: "Conexão", icon: Smartphone, grupo: "Sistema" },
-  // [2026-08] Unificada com o perfil do operador (ex-"Configurações" --
-  // sobrava só um card de debug de ambiente e uma conexão duplicada, ver
-  // routes/perfil.tsx). Mesmo destino do "Editar perfil" no menu do avatar.
-  { to: "/perfil", label: "Perfil", icon: Settings, grupo: "Sistema" },
+  { to: "/", label: "Início", icon: Gauge, grupo: "" },
+  { to: "/chat", label: "Conversas", icon: MessageSquare, grupo: "" },
+  { to: "/clientes", label: "Clientes", icon: Users, grupo: "Carteira" },
+  { to: "/qualidade", label: "Qualidade", icon: ClipboardList, grupo: "Carteira" },
+  { to: "/safras", label: "Safras", icon: Layers, grupo: "Carteira" },
+  { to: "/disparos", label: "Novo disparo", icon: Send, grupo: "Disparos" },
+  { to: "/historico", label: "Histórico", icon: History, grupo: "Disparos" },
+  { to: "/pix", label: "Extrator de PIX", icon: KeyRound, grupo: "Ferramentas" },
+  { to: "/importar", label: "Importar", icon: Upload, grupo: "Ferramentas" },
+  { to: "/tags", label: "Tags", icon: Tag, grupo: "Ferramentas" },
+  { to: "/supervisor", label: "Supervisor", icon: ShieldCheck, grupo: "Ferramentas", supervisorOnly: true },
+  // Campanha separada da cobrança (ver CONTEXTO.md, "Ativação Chip").
+  { to: "/ativacao-chip", label: "Clientes do chip", icon: Cpu, grupo: "Ativação Chip" },
+  { to: "/ativacao-chip/chat", label: "Conversas do chip", icon: MessageSquare, grupo: "Ativação Chip" },
 ] as const;
 
-const grupos = ["Operação", "Gestão", "Ativação Chip", "Sistema"] as const;
+const grupos = ["", "Carteira", "Disparos", "Ferramentas", "Ativação Chip"] as const;
 
 export const statusConexao: Record<string, { label: string; tone: Tone }> = {
   connected: { label: "Conectado", tone: "success" },
@@ -99,13 +84,15 @@ function SidebarContent({
   return (
     <div className="bg-sidebar text-sidebar-foreground flex h-full flex-col">
       <div className={cn("flex items-center gap-2.5 px-4 py-4", collapsed && "flex-col gap-3 px-2")}>
-        <div className="bg-sidebar-primary grid size-8 shrink-0 place-items-center rounded-md">
-          <span className="font-display text-sidebar-primary-foreground text-sm font-bold">V</span>
-        </div>
+        <svg viewBox="0 0 32 32" className="size-8 shrink-0" aria-hidden="true">
+          <rect width="32" height="32" rx="7" className="fill-sidebar-primary" />
+          <path d="M9 10.5h14M9 16h14M9 21.5h8" className="stroke-sidebar-primary-foreground" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+          <path d="M20 19.5l2.5 2.5 4-4.5" className="stroke-sidebar-primary-foreground" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <p className="font-display truncate text-sm font-semibold">Voxcel Faturas</p>
-            <p className="text-sidebar-foreground/50 truncate text-[11px]">Painel operacional</p>
+            <p className="text-sidebar-foreground/50 truncate text-[11px]">Cobrança por WhatsApp</p>
           </div>
         )}
         {onToggleCollapse && (
@@ -120,19 +107,18 @@ function SidebarContent({
         )}
       </div>
 
-      <nav className={cn("min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-4", collapsed && "px-2")}>
+      <nav className={cn("min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-4", collapsed && "px-2")}>
         {grupos.map((grupo) => {
           const itens = nav.filter((n) => n.grupo === grupo && (!("supervisorOnly" in n && n.supervisorOnly) || isSupervisor));
           if (!itens.length) return null;
           return (
             <div key={grupo} className="space-y-0.5">
-              {collapsed ? (
-                <div className="bg-sidebar-border mx-auto my-2.5 h-px w-6" />
-              ) : (
-                <p className="text-sidebar-foreground/40 px-2.5 pb-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase">
-                  {grupo}
-                </p>
-              )}
+              {grupo &&
+                (collapsed ? (
+                  <div className="bg-sidebar-border mx-auto my-2.5 h-px w-6" />
+                ) : (
+                  <p className="text-sidebar-foreground/45 px-2.5 pb-1 text-xs font-semibold">{grupo}</p>
+                ))}
               {itens.map((item) => {
                 const active = pathname === item.to;
                 return (
@@ -143,11 +129,11 @@ function SidebarContent({
                     title={collapsed ? item.label : undefined}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors",
+                      "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                       collapsed && "justify-center px-0",
                       active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground before:bg-sidebar-primary before:absolute before:inset-y-1.5 before:-left-3 before:w-[3px] max-lg:before:-left-3 before:rounded-r"
+                        : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
                     )}
                   >
                     <item.icon
@@ -163,13 +149,34 @@ function SidebarContent({
       </nav>
 
       <div className={cn("border-sidebar-border mt-auto border-t p-3", collapsed && "p-2")}>
+        {collapsed && (
+          <Link
+            to="/conexoes"
+            title={`WhatsApp: ${(statusConexao[conexao.status] ?? statusConexao["disconnected"]!).label}`}
+            className="hover:bg-sidebar-accent/60 relative grid h-9 place-items-center rounded-md transition-colors"
+          >
+            <Smartphone className="text-sidebar-foreground/70 size-4" />
+            <span
+              className={cn(
+                "absolute top-1.5 right-3 size-2 rounded-full",
+                conexao.status === "connected" ? "bg-success" : conexao.status === "disconnected" ? "bg-destructive" : "bg-warning",
+              )}
+            />
+          </Link>
+        )}
         {!collapsed && (
           <div className="space-y-1.5">
             {(() => {
               const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
               return (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sidebar-foreground/55 truncate text-[11px] font-medium">
+                <Link
+                  to="/conexoes"
+                  onClick={onNavigate}
+                  title="Abrir conexão do WhatsApp"
+                  className="hover:bg-sidebar-accent/60 -m-1.5 flex items-center justify-between gap-2 rounded-md p-1.5 transition-colors"
+                >
+                  <span className="text-sidebar-foreground/70 flex items-center gap-1.5 truncate text-xs font-medium">
+                    <Smartphone className="size-3.5" />
                     WhatsApp
                   </span>
                   {conexao.configurada ? (
@@ -182,9 +189,9 @@ function SidebarContent({
                       {info.label}
                     </StatusPill>
                   ) : (
-                    <span className="text-sidebar-foreground/35 text-[11px]">não configurado</span>
+                    <span className="text-sidebar-foreground/45 text-[11px]">configurar</span>
                   )}
-                </div>
+                </Link>
               );
             })()}
           </div>
