@@ -452,47 +452,58 @@ function Dashboard() {
           <div className="min-w-0 space-y-6">
             <SectionCard
               titulo="Status do WhatsApp"
-              eyebrow="Conexão"
               acoes={
                 <Link to="/conexoes" className="text-xs font-medium text-primary hover:underline">
                   Gerenciar conexão
                 </Link>
               }
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {!conexao.configurada ? (
-                  <div className="panel-sunken flex flex-col items-center justify-center gap-2 rounded-md p-6 text-center">
-                    <Smartphone className="text-subtle size-5" />
-                    <p className="text-sm font-medium text-foreground">WhatsApp não configurado</p>
-                    <Link
-                      to="/conexoes"
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      Configurar agora
-                    </Link>
-                  </div>
-                ) : (
-                  (() => {
-                    const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
-                    return (
-                      <div className="panel flex flex-col gap-2 rounded-md p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold">WhatsApp</p>
-                          <StatusPill tone={info.tone} dot pulse={conexao.status === "connected"}>
-                            {info.label}
-                          </StatusPill>
-                        </div>
-                        <div className="text-muted-foreground grid gap-1 text-xs">
-                          <span>Número: {conexao.telefone ?? "—"}</span>
-                          <span>Nome: {conexao.nome ?? "—"}</span>
-                          <span>Última conexão: {formatarData(conexao.ultima_conexao)}</span>
-                          <span>Mensagens enviadas: {conexao.mensagens_enviadas ?? "—"}</span>
-                        </div>
+              {!conexao.configurada ? (
+                <div className="panel-sunken flex flex-col items-center justify-center gap-2 rounded-md p-6 text-center">
+                  <Smartphone className="text-subtle size-5" />
+                  <p className="text-sm font-medium text-foreground">WhatsApp não configurado</p>
+                  <Link to="/conexoes" className="text-xs font-medium text-primary hover:underline">
+                    Configurar agora
+                  </Link>
+                </div>
+              ) : (
+                (() => {
+                  const info = statusConexao[conexao.status] ?? statusConexao["disconnected"]!;
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <StatusPill tone={info.tone} dot pulse={conexao.status === "connected"}>
+                          {info.label}
+                        </StatusPill>
+                        {conexao.status !== "connected" && (
+                          <Link
+                            to="/conexoes"
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Reconectar
+                          </Link>
+                        )}
                       </div>
-                    );
-                  })()
-                )}
-              </div>
+                      <dl className="text-xs">
+                        {[
+                          ["Número", conexao.telefone ?? "—"],
+                          ["Nome", conexao.nome ?? "—"],
+                          ["Última conexão", formatarData(conexao.ultima_conexao)],
+                          ["Mensagens enviadas", String(conexao.mensagens_enviadas ?? "—")],
+                        ].map(([rotulo, valor]) => (
+                          <div
+                            key={rotulo}
+                            className="border-border flex items-baseline justify-between gap-3 border-t py-1.5 first:border-t-0"
+                          >
+                            <dt className="text-muted-foreground">{rotulo}</dt>
+                            <dd className="min-w-0 truncate font-medium">{valor}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  );
+                })()
+              )}
             </SectionCard>
 
             <SectionCard titulo="Desempenho de entrega" eyebrow="Taxas">
