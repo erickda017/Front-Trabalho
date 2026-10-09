@@ -25,6 +25,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
+import { Marca } from "@/components/shared/Marca";
 import { StatusPill, type Tone } from "@/components/shared/StatusPill";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import {
@@ -84,11 +85,7 @@ function SidebarContent({
   return (
     <div className="bg-sidebar text-sidebar-foreground flex h-full flex-col">
       <div className={cn("flex items-center gap-2.5 px-4 py-4", collapsed && "flex-col gap-3 px-2")}>
-        <svg viewBox="0 0 32 32" className="size-8 shrink-0" aria-hidden="true">
-          <rect width="32" height="32" rx="7" className="fill-sidebar-primary" />
-          <path d="M9 10.5h14M9 16h14M9 21.5h8" className="stroke-sidebar-primary-foreground" strokeWidth="2.4" strokeLinecap="round" fill="none" />
-          <path d="M20 19.5l2.5 2.5 4-4.5" className="stroke-sidebar-primary-foreground" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
+        <Marca sobreEscuro />
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <p className="font-display truncate text-sm font-semibold">Voxcel Faturas</p>

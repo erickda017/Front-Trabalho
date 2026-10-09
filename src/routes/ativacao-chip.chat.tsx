@@ -394,12 +394,12 @@ function ChatAtivacaoChip() {
 
   return (
     <AppShell
-      title="Chat — Ativação Chip"
-      subtitle="Conversas do WhatsApp desta campanha (separadas da carteira de cobrança)"
+      title="Conversas do chip"
+      subtitle="WhatsApp da campanha de ativação, separado da cobrança"
       flush
       actions={
         <span className="bg-surface-raised text-muted-foreground inline-flex h-9 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-border">
-          <span className={cn("size-1.5 rounded-full", totalNaoLidas > 0 ? "bg-success animate-pulse" : "bg-subtle")} />
+          <span className={cn("size-1.5 rounded-full", totalNaoLidas > 0 ? "bg-primary animate-pulse" : "bg-subtle")} />
           {totalNaoLidas} não lidas
         </span>
       }
@@ -448,14 +448,14 @@ function ChatAtivacaoChip() {
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm font-medium">{nome}</span>
-                          <span className={cn("shrink-0 text-[10px]", c.nao_lidas > 0 ? "text-success font-semibold" : "text-subtle")}>
+                          <span className={cn("shrink-0 text-[10px]", c.nao_lidas > 0 ? "text-primary font-semibold" : "text-subtle")}>
                             {carimboLista(c.ultima_mensagem_em)}
                           </span>
                         </span>
                         <span className="flex items-center justify-between gap-2">
                           <span className="text-muted-foreground truncate text-xs">{c.ultima_mensagem || "—"}</span>
                           {c.nao_lidas > 0 && (
-                            <span className="bg-success text-success-foreground grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold">
+                            <span className="bg-primary text-primary-foreground grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold">
                               {c.nao_lidas}
                             </span>
                           )}
@@ -628,7 +628,7 @@ function ChatAtivacaoChip() {
                   type="submit"
                   aria-label="Enviar mensagem"
                   disabled={(!rascunho.trim() && !anexo) || enviando}
-                  className="bg-success text-success-foreground grid size-10 shrink-0 place-items-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
+                  className="bg-primary text-primary-foreground grid size-10 shrink-0 place-items-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   {enviando ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                 </button>

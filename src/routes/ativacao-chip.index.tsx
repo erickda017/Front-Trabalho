@@ -571,8 +571,8 @@ function AtivacaoChip() {
 
   return (
     <AppShell
-      title="Ativação Chip"
-      subtitle="Campanha separada da carteira de cobrança -- clientes, planilha e status próprios."
+      title="Clientes do chip"
+      subtitle="Campanha de ativação, separada da cobrança: planilha e status próprios"
       actions={
         <div className="flex items-center gap-2">
           {selecionados.size > 0 && (

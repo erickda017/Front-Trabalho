@@ -1,11 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { Camera, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { StatusPill } from "@/components/shared/StatusPill";
 import { Aviso, Botao } from "@/components/shared/Controls";
 import { useAppState } from "@/lib/app-state";
 
@@ -87,7 +86,11 @@ function PerfilOperador() {
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
             {fotoExibida ? (
-              <img src={fotoExibida} alt="" className="bg-surface-sunken size-20 rounded-full object-cover" />
+              <img
+                src={fotoExibida}
+                alt=""
+                className="bg-surface-sunken size-20 rounded-full object-cover"
+              />
             ) : (
               <div className="bg-surface-sunken text-subtle grid size-20 place-items-center rounded-full text-2xl font-semibold">
                 {(nome.trim() || "?").charAt(0).toUpperCase()}
@@ -103,7 +106,13 @@ function PerfilOperador() {
               <Camera className="size-3.5" />
             </button>
           </div>
-          <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} className="hidden" />
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            onChange={escolherFoto}
+            className="hidden"
+          />
           {fotoExibida && (
             <button
               type="button"
@@ -163,25 +172,10 @@ export const Route = createFileRoute("/perfil")({
 // virou um status de uma linha em vez de card duplicando o que /conexoes já
 // mostra por completo.
 function Perfil() {
-  const { conexao } = useAppState();
-
   return (
-    <AppShell title="Perfil" subtitle="Sua conta e a conexão do WhatsApp">
+    <AppShell title="Perfil" subtitle="Seus dados de acesso">
       <div className="flex flex-col gap-6">
         <PerfilOperador />
-
-        <div className="flex items-center gap-2 text-sm">
-          {conexao.configurada ? (
-            <StatusPill tone={conexao.status === "connected" ? "success" : "warning"} dot pulse={conexao.status === "connected"}>
-              {conexao.status === "connected" ? "WhatsApp conectado" : "WhatsApp configurado, mas não conectado"}
-            </StatusPill>
-          ) : (
-            <span className="text-muted-foreground text-xs">WhatsApp ainda não configurado.</span>
-          )}
-          <Link to="/conexoes" className="text-primary text-xs font-medium hover:underline">
-            Ver conexão
-          </Link>
-        </div>
       </div>
     </AppShell>
   );

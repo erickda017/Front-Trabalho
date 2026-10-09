@@ -29,10 +29,10 @@ export function SectionCard({
       {(titulo || acoes || eyebrow) && (
         <header className="border-border flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3.5 sm:px-5">
           <div className="min-w-0">
-            {eyebrow && <p className="label-eyebrow mb-1">{eyebrow}</p>}
             {(titulo || descricao) && (
               <h2 className="flex items-center gap-1.5 truncate text-sm font-semibold">
                 {titulo}
+                {eyebrow && <span className="text-subtle truncate text-xs font-normal">· {eyebrow}</span>}
                 {descricao && <HelpTooltip texto={descricao} />}
               </h2>
             )}

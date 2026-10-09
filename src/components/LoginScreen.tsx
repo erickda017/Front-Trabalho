@@ -1,3 +1,4 @@
+import { Marca } from "@/components/shared/Marca";
 import { useState, type FormEvent } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 
@@ -72,9 +73,7 @@ export function LoginScreen() {
           picotada, como o corte entre a via do cliente e o canhoto. */}
       <aside className="bg-sidebar text-sidebar-foreground perforated-edge relative hidden w-[42%] max-w-lg flex-col justify-between p-10 lg:flex">
         <div className="flex items-center gap-2.5">
-          <div className="bg-sidebar-primary grid size-8 place-items-center rounded-md">
-            <span className="font-display text-sidebar-primary-foreground text-sm font-bold">V</span>
-          </div>
+          <Marca sobreEscuro />
           <span className="font-display text-sm font-semibold">Voxcel Faturas</span>
         </div>
 
@@ -123,9 +122,7 @@ export function LoginScreen() {
       <div className="flex min-w-0 flex-1 items-center justify-center px-5 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="bg-primary grid size-8 place-items-center rounded-md">
-              <span className="font-display text-primary-foreground text-sm font-bold">V</span>
-            </div>
+            <Marca />
             <span className="font-display text-sm font-semibold">Voxcel Faturas</span>
           </div>
 

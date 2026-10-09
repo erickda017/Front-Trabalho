@@ -211,27 +211,29 @@ function Conexoes() {
           </Aviso>
         )}
 
-        <SectionCard
-          titulo="Proteções de envio"
-          eyebrow="Segurança"
-          descricao="Mecanismos aplicados automaticamente pelo backend durante o disparo."
-        >
-          <ul className="text-muted-foreground list-inside list-disc space-y-1.5 text-xs">
-            <li>Delay aleatório entre o envio de cada mensagem.</li>
-            <li>Pausa automática a cada bloco de envios.</li>
-            <li>
-              Limite diário de disparos (por operador), com retomada à meia-noite no horário de
-              Brasília.
-            </li>
-            <li>
-              Número validado no WhatsApp antes do envio, evitando disparos para contatos inválidos.
-            </li>
-            <li>
-              Distribuição entre 2 números (se ambos conectados), reduzindo concentração de
-              mensagens num só.
-            </li>
-          </ul>
-        </SectionCard>
+        <details className="panel px-4 py-3 sm:px-5">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-sm font-medium select-none">
+            Proteções de envio aplicadas automaticamente
+          </summary>
+          <div className="mt-3">
+            <ul className="text-muted-foreground list-inside list-disc space-y-1.5 text-xs">
+              <li>Delay aleatório entre o envio de cada mensagem.</li>
+              <li>Pausa automática a cada bloco de envios.</li>
+              <li>
+                Limite diário de disparos (por operador), com retomada à meia-noite no horário de
+                Brasília.
+              </li>
+              <li>
+                Número validado no WhatsApp antes do envio, evitando disparos para contatos
+                inválidos.
+              </li>
+              <li>
+                Distribuição entre 2 números (se ambos conectados), reduzindo concentração de
+                mensagens num só.
+              </li>
+            </ul>
+          </div>
+        </details>
       </div>
     </AppShell>
   );

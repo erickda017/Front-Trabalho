@@ -757,6 +757,14 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapa final (telas restantes)**: marca em componente único
+  (`components/shared/Marca.tsx`, usado na sidebar e no Login); `SectionCard` não mostra mais o
+  "eyebrow" em linha própria (vira complemento discreto ao lado do título); Ativação Chip passou a
+  se chamar "Clientes do chip" / "Conversas do chip" (igual ao menu) e o chat do chip usa a cor da
+  marca; Perfil perdeu o status duplicado do WhatsApp (já está na sidebar); Conexão recolheu a lista
+  estática "Proteções de envio". Qualidade, Importar, Tags e Safras já estavam enxutas e ficaram
+  como estão (só herdam a nova identidade).
+
 - **[2026-10] Redesign, etapas 7-8 (Histórico, Supervisor) + correção visual no Início**: Histórico
   — lotes em tabela (Lote, Status, Enviados com barra, Entregues, Lidos, Falhas, Criado em; clique
   abre o painel do lote como antes) e CSV/XLSX num menu "Exportar". Supervisor — abas agrupadas
