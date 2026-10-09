@@ -9,6 +9,7 @@ import {
   KeyRound,
   Link2,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   SlidersHorizontal,
@@ -27,9 +28,16 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { TagPicker } from "@/components/shared/TagPicker";
 import { VisualizadorPdf } from "@/components/shared/VisualizadorPdf";
 import { UploadAvulsoFaturas } from "@/components/shared/UploadAvulsoFaturas";
-import { Botao, Busca, Campo, FiltroChips, Aviso, LinhasEsqueleto, Paginacao, Rotulo, Seletor } from "@/components/shared/Controls";
+import { Botao, Busca, Campo, Aviso, LinhasEsqueleto, Paginacao, Rotulo, Seletor } from "@/components/shared/Controls";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -833,9 +841,10 @@ type StatusVerificacaoVencimentos = {
   concluido_em: string | null;
 };
 
-function VerificacaoVencimentos({ onAtualizado }: { onAtualizado: () => void }) {
+// [2026-10] Virou hook: a verificação (e o polling) continua viva mesmo com o
+// menu "Mais ações" fechado; o botão só mostra o andamento quando está rodando.
+function useVerificacaoVencimentos(onAtualizado: () => void) {
   const [status, setStatus] = useState<StatusVerificacaoVencimentos | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
   const avisouConclusaoRef = useRef(false);
 
   useEffect(() => {
@@ -863,69 +872,18 @@ function VerificacaoVencimentos({ onAtualizado }: { onAtualizado: () => void }) 
     if (status?.rodando) avisouConclusaoRef.current = false;
   }, [status, onAtualizado]);
 
+  // [CRÍTICO] apenasPendentes=false reverifica todo mundo com PDF: clientes que
+  // passaram pela lista crua ou promoção FPD->SPD ANTES da correção do bug de
+  // vencimento=prazo (ver CONTEXTO.md) podem ter um vencimento gravado ERRADO.
   async function iniciar(apenasPendentes: boolean) {
-    setErro(null);
     try {
-      const estado = await api.clientes.verificarVencimentos(apenasPendentes);
-      setStatus(estado);
+      setStatus(await api.clientes.verificarVencimentos(apenasPendentes));
     } catch (e) {
-      setErro((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
 
-  if (!status) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Botao variante="outline" onClick={() => iniciar(true)}>
-          <FileSearch className="size-3.5" />
-          Verificar vencimentos nos PDFs
-        </Botao>
-        {/* [CRÍTICO] Clientes que passaram pela lista crua ou promoção FPD->SPD
-            ANTES da correção do bug de vencimento=prazo (ver CONTEXTO.md) podem
-            já ter um `vencimento` preenchido, só que ERRADO -- "apenas
-            pendentes" (o padrão) nunca revê quem já tem algum vencimento
-            gravado. Esta opção força reverificar todo mundo com PDF. */}
-        <button
-          type="button"
-          onClick={() => iniciar(false)}
-          title="Reverifica todo mundo com PDF anexado, mesmo quem já tem vencimento gravado -- útil pra corrigir dados salvos antes da correção do bug de vencimento=prazo."
-          className="text-muted-foreground hover:text-foreground text-[11px] underline decoration-dotted underline-offset-2"
-        >
-          revalidar todos
-        </button>
-      </div>
-    );
-  }
-
-  if (status.rodando) {
-    const pct = status.total ? Math.round((status.processados / status.total) * 100) : 0;
-    return (
-      <div className="border-border bg-surface-raised flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
-        <Loader2 className="text-primary size-3.5 shrink-0 animate-spin" />
-        <span className="text-muted-foreground whitespace-nowrap">
-          Verificando PDFs... {status.processados}/{status.total} ({pct}%)
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <Botao variante="outline" onClick={() => iniciar(true)}>
-        <FileSearch className="size-3.5" />
-        Verificar vencimentos nos PDFs
-      </Botao>
-      <button
-        type="button"
-        onClick={() => iniciar(false)}
-        title="Reverifica todo mundo com PDF anexado, mesmo quem já tem vencimento gravado -- útil pra corrigir dados salvos antes da correção do bug de vencimento=prazo."
-        className="text-muted-foreground hover:text-foreground text-[11px] underline decoration-dotted underline-offset-2"
-      >
-        revalidar todos
-      </button>
-      {erro && <span className="text-destructive text-xs">{erro}</span>}
-    </div>
-  );
+  return { status, iniciar };
 }
 
 function Clientes() {
@@ -974,6 +932,7 @@ function Clientes() {
   const [filtrosAvancadosAbertos, setFiltrosAvancadosAbertos] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [importarPagosAberto, setImportarPagosAberto] = useState(false);
+  const verificacao = useVerificacaoVencimentos(refreshClientes);
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -1176,11 +1135,43 @@ function Clientes() {
       subtitle="Cadastro, faturas em PDF e histórico de envios"
       actions={
         <div className="flex items-center gap-2">
-          <VerificacaoVencimentos onAtualizado={refreshClientes} />
-          <Botao variante="outline" onClick={() => setImportarPagosAberto(true)}>
-            <TagIcon className="size-3.5" />
-            Importar pagos
-          </Botao>
+          {verificacao.status?.rodando && (
+            <span className="bg-surface-raised border-border text-muted-foreground flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
+              <Loader2 className="text-primary size-3.5 animate-spin" />
+              Verificando PDFs {verificacao.status.processados}/{verificacao.status.total}
+            </span>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Botao variante="outline" aria-label="Mais ações">
+                <MoreHorizontal className="size-4" />
+                <span className="hidden sm:inline">Mais ações</span>
+              </Botao>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onClick={() => setImportarPagosAberto(true)} className="gap-2">
+                <TagIcon className="size-3.5" />
+                Importar pagos
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={!!verificacao.status?.rodando}
+                onClick={() => verificacao.iniciar(true)}
+                className="gap-2"
+              >
+                <FileSearch className="size-3.5" />
+                Ler vencimentos dos PDFs
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!!verificacao.status?.rodando}
+                onClick={() => verificacao.iniciar(false)}
+                title="Reverifica todo mundo com PDF anexado, mesmo quem já tem vencimento gravado -- útil pra corrigir dados salvos antes da correção do bug de vencimento=prazo."
+                className="text-muted-foreground gap-2 pl-8"
+              >
+                Refazer para todos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Botao variante="primary" onClick={() => { setClienteEditando(null); setModalAberto(true); }}>
             <Plus className="size-3.5" />
             Novo cliente
@@ -1190,8 +1181,6 @@ function Clientes() {
     >
       <ImportarPagosDialog aberto={importarPagosAberto} onOpenChange={setImportarPagosAberto} onImportado={refreshClientes} />
       <div className="space-y-4">
-        <UploadAvulsoFaturas onAssociado={refreshClientes} />
-
         <div className="toolbar flex flex-wrap items-center gap-2">
           {/* [2026-08] Busca é `flex-1` por padrão (Controls.tsx) pra crescer
               sozinha numa toolbar mais vazia -- aqui, com 2 seletores + 2
@@ -1203,7 +1192,7 @@ function Clientes() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome ou telefone"
-            className="flex-none w-full sm:w-52"
+            className="flex-none w-full sm:w-64"
           />
           <Seletor
             value={filtroTag}
@@ -1231,29 +1220,30 @@ function Clientes() {
               ))}
             </Seletor>
           )}
-          <FiltroChips
-            valor={filtroPix}
-            onChange={setFiltroPix}
-            opcoes={[
-              { valor: "todos", label: "Todos", contagem: contagens.todos },
-              { valor: "com_pix", label: "Com PIX", contagem: contagens.com_pix },
-              { valor: "sem_pix", label: "Sem PIX", contagem: contagens.sem_pix },
-              { valor: "com_fatura", label: "Com fatura", contagem: contagens.com_fatura },
-              { valor: "sem_fatura", label: "Sem fatura", contagem: contagens.sem_fatura },
-            ]}
-          />
-          {/* [2026-08] "Quantos disparos cada cliente recebeu" -- filtro
-              recebeu/não recebeu, calculado a partir de disparos_recebidos
-              (ver backend/src/routes/clientes.routes.js, GET /). */}
-          <FiltroChips
-            valor={filtroDisparo}
-            onChange={setFiltroDisparo}
-            opcoes={[
-              { valor: "todos", label: "Qualquer disparo", contagem: contagensDisparo.todos },
-              { valor: "recebeu", label: "Já recebeu", contagem: contagensDisparo.recebeu },
-              { valor: "nao_recebeu", label: "Nunca recebeu", contagem: contagensDisparo.nao_recebeu },
-            ]}
-          />
+          <Seletor
+            value={filtroPix}
+            onChange={(e) => setFiltroPix(e.target.value as FiltroPix)}
+            aria-label="Filtrar por PIX e fatura"
+            className="w-auto min-w-[9rem]"
+          >
+            <option value="todos">PIX e fatura: todos ({contagens.todos})</option>
+            <option value="com_pix">Com PIX ({contagens.com_pix})</option>
+            <option value="sem_pix">Sem PIX ({contagens.sem_pix})</option>
+            <option value="com_fatura">Com fatura ({contagens.com_fatura})</option>
+            <option value="sem_fatura">Sem fatura ({contagens.sem_fatura})</option>
+          </Seletor>
+          {/* [2026-08] "Quantos disparos cada cliente recebeu" -- calculado a
+              partir de disparos_recebidos (ver backend GET /clientes). */}
+          <Seletor
+            value={filtroDisparo}
+            onChange={(e) => setFiltroDisparo(e.target.value as FiltroDisparo)}
+            aria-label="Filtrar por disparos recebidos"
+            className="w-auto min-w-[9rem]"
+          >
+            <option value="todos">Disparos: todos ({contagensDisparo.todos})</option>
+            <option value="recebeu">Já recebeu ({contagensDisparo.recebeu})</option>
+            <option value="nao_recebeu">Nunca recebeu ({contagensDisparo.nao_recebeu})</option>
+          </Seletor>
           <button
             type="button"
             onClick={() => setFiltrosAvancadosAbertos((v) => !v)}
@@ -1394,7 +1384,7 @@ function Clientes() {
             <>
               {/* Desktop */}
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[54rem] border-collapse text-left text-sm">
+                <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
                   <thead className="bg-surface-raised sticky top-0 z-[1]">
                     <tr>
                       <th className="th-cell w-10">
@@ -1403,19 +1393,19 @@ function Clientes() {
                           onCheckedChange={alternarSelecaoPagina}
                         />
                       </th>
-                      <th className="th-cell">Nome</th>
-                      <th className="th-cell">Telefone</th>
-                      <th className="th-cell">Valor</th>
-                      <th className="th-cell">Vencimento</th>
+                      <th className="th-cell">Cliente</th>
+                      <th className="th-cell">Fatura</th>
                       <th className="th-cell">PIX</th>
                       <th className="th-cell">Disparos</th>
                       <th className="th-cell">Tags</th>
-                      <th className="th-cell text-right">Ações</th>
+                      <th className="th-cell w-20 text-right">
+                        <span className="sr-only">Ações</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {clientesCarregando ? (
-                      <LinhasEsqueleto colunas={9} />
+                      <LinhasEsqueleto colunas={7} />
                     ) : (
                       paginados.map((c) => (
                         <tr
@@ -1429,25 +1419,23 @@ function Clientes() {
                               onCheckedChange={() => toggleSelecionado(c.id)}
                             />
                           </td>
-                          <td className="td-cell font-medium">
-                            <div className="flex flex-col items-start gap-1">
-                              <span>{c.nome}</span>
+                          <td className="td-cell">
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="font-medium">{c.nome}</span>
+                              <span className="text-muted-foreground tabular font-mono text-xs">
+                                {c.telefones.join(" · ")}
+                              </span>
                               <SafraTipoPill cliente={c} />
                             </div>
                           </td>
-                          <td className="td-cell text-muted-foreground tabular font-mono text-xs">
-                            {c.telefones.length > 1 ? (
-                              <div className="flex flex-col gap-0.5">
-                                {c.telefones.map((t) => (
-                                  <span key={t}>{t}</span>
-                                ))}
-                              </div>
-                            ) : (
-                              c.telefones[0]
-                            )}
+                          <td className="td-cell">
+                            <div className="flex flex-col">
+                              <span className="tabular font-medium">{formatarValor(c.valor)}</span>
+                              <span className="text-muted-foreground tabular text-xs">
+                                {c.vencimento ? `vence ${formatarData(c.vencimento)}` : "sem vencimento"}
+                              </span>
+                            </div>
                           </td>
-                          <td className="td-cell tabular">{formatarValor(c.valor)}</td>
-                          <td className="td-cell text-muted-foreground tabular">{formatarData(c.vencimento)}</td>
                           <td className="td-cell">
                             {c.pix_code ? (
                               <StatusPill tone="success" dot>
@@ -1481,13 +1469,13 @@ function Clientes() {
                             <div className="flex items-center justify-end gap-1">
                               {!c.pdf_url && (
                                 <label
-                                  className="text-muted-foreground hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded"
+                                  className="text-muted-foreground hover:text-foreground hover:bg-surface-raised inline-flex size-8 cursor-pointer items-center justify-center rounded-md"
                                   title="Anexar PDF"
                                 >
                                   {enviandoPdfId === c.id ? (
-                                    <Loader2 className="size-3.5 animate-spin" />
+                                    <Loader2 className="size-4 animate-spin" />
                                   ) : (
-                                    <Upload className="size-3.5" />
+                                    <Upload className="size-4" />
                                   )}
                                   <input
                                     type="file"
@@ -1500,25 +1488,38 @@ function Clientes() {
                                   />
                                 </label>
                               )}
-                              <button
-                                onClick={() => { setClienteEditando(c); setModalAberto(true); }}
-                                aria-label="Editar cliente"
-                                className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded"
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setConfirmandoRemocao(c)}
-                                disabled={removendo === c.id}
-                                aria-label="Remover cliente"
-                                className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded disabled:opacity-40"
-                              >
-                                {removendo === c.id ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="size-3.5" />
-                                )}
-                              </button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    aria-label={`Ações de ${c.nome}`}
+                                    className="text-muted-foreground hover:text-foreground hover:bg-surface-raised inline-flex size-8 items-center justify-center rounded-md"
+                                  >
+                                    {removendo === c.id ? (
+                                      <Loader2 className="size-4 animate-spin" />
+                                    ) : (
+                                      <MoreHorizontal className="size-4" />
+                                    )}
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40">
+                                  <DropdownMenuItem
+                                    onClick={() => { setClienteEditando(c); setModalAberto(true); }}
+                                    className="gap-2"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                    Editar
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setConfirmandoRemocao(c)}
+                                    disabled={removendo === c.id}
+                                    className="text-destructive focus:text-destructive gap-2"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    Remover
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </td>
                         </tr>
@@ -1526,7 +1527,7 @@ function Clientes() {
                     )}
                     {!clientesCarregando && filtrados.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="text-muted-foreground px-5 py-10 text-center text-xs">
+                        <td colSpan={7} className="text-muted-foreground px-5 py-10 text-center text-xs">
                           Nenhum cliente encontrado para os filtros aplicados.
                         </td>
                       </tr>
@@ -1618,6 +1619,8 @@ function Clientes() {
             </>
           )}
         </SectionCard>
+
+        <UploadAvulsoFaturas onAssociado={refreshClientes} />
       </div>
 
       {modalAberto && (

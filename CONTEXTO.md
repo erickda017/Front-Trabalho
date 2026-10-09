@@ -757,6 +757,13 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapa 2 (Clientes)**: cabeçalho com "Novo cliente" + menu "Mais ações"
+  (Importar pagos, Ler vencimentos dos PDFs, Refazer para todos); a verificação de vencimentos
+  virou o hook `useVerificacaoVencimentos` (mesma API/polling, mostra o andamento no cabeçalho).
+  Filtros PIX/fatura e disparos viraram seletores (mesmos estados e contagens). Tabela de 9 para
+  7 colunas (Cliente = nome+telefone+safra; Fatura = valor+vencimento; Editar/Remover num menu ⋯).
+  Upload de faturas avulsas foi para baixo da tabela. Lógica de dados não mudou.
+
 - **[2026-10] Redesign, etapa 1 (identidade + menu)**: menu de 14 itens em 4 grupos virou
   5 blocos (Início/Conversas, Carteira, Disparos, Ferramentas, Ativação Chip); "Conexão" é o
   status do WhatsApp no rodapé da sidebar (clicável) e "Perfil" só no avatar. Rotas/URLs
