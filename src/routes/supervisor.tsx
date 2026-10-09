@@ -8,6 +8,7 @@ import {
   FileText,
   KeyRound,
   Loader2,
+  Send,
   ShieldCheck,
   Trash2,
   Upload,
@@ -78,15 +79,17 @@ export const Route = createFileRoute("/supervisor")({
   component: Supervisor,
 });
 
+// [2026-10] Abas agrupadas por tipo de uso: visão geral, consulta de dados
+// (todas as carteiras), ferramentas e a área de risco (exclusão) separada.
 const ABAS = [
-  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "clientes", label: "Clientes", icon: Users },
-  { id: "faturas", label: "Faturas", icon: FileText },
-  { id: "disparos", label: "Disparos", icon: KeyRound },
-  { id: "planilha", label: "Planilha de PIX", icon: FileSpreadsheet },
-  { id: "extrator", label: "Extrator pessoal", icon: ShieldCheck },
+  { id: "dashboard", label: "Visão geral", icon: BarChart3, grupo: "geral" },
+  { id: "clientes", label: "Clientes", icon: Users, grupo: "dados" },
+  { id: "faturas", label: "Faturas", icon: FileText, grupo: "dados" },
+  { id: "disparos", label: "Disparos", icon: Send, grupo: "dados" },
+  { id: "planilha", label: "Planilha de PIX", icon: FileSpreadsheet, grupo: "ferramentas" },
+  { id: "extrator", label: "Extrator pessoal", icon: KeyRound, grupo: "ferramentas" },
   // [2026-09] Ver docs/superpowers/specs/2026-09-10-painel-exclusao-design.md
-  { id: "exclusao", label: "Exclusão", icon: Trash2 },
+  { id: "exclusao", label: "Exclusão", icon: Trash2, grupo: "risco" },
 ] as const;
 type AbaId = (typeof ABAS)[number]["id"];
 
@@ -124,21 +127,31 @@ function Supervisor() {
       title="Supervisor"
       subtitle="Visão de todos os operadores: clientes, faturas, disparos e ferramentas de PIX"
     >
-      <div className="border-border mb-6 flex gap-1 overflow-x-auto border-b">
-        {ABAS.map((a) => (
-          <button
-            key={a.id}
-            onClick={() => setAba(a.id)}
-            className={cn(
-              "focus-ring flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
-              aba === a.id
-                ? "border-primary text-foreground"
-                : "text-muted-foreground hover:text-foreground border-transparent",
+      <div className="border-border mb-6 flex items-center gap-1 overflow-x-auto border-b" role="tablist">
+        {ABAS.map((a, i) => (
+          <div key={a.id} className={cn("flex shrink-0 items-center gap-1", a.grupo === "risco" && "ml-auto pl-4")}>
+            {i > 0 && ABAS[i - 1]!.grupo !== a.grupo && a.grupo !== "risco" && (
+              <span className="bg-border mx-2 h-5 w-px" aria-hidden="true" />
             )}
-          >
-            <a.icon className="size-4" />
-            {a.label}
-          </button>
+            <button
+              role="tab"
+              aria-selected={aba === a.id}
+              onClick={() => setAba(a.id)}
+              className={cn(
+                "focus-ring flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
+                aba === a.id
+                  ? a.grupo === "risco"
+                    ? "border-destructive text-destructive"
+                    : "border-primary text-foreground"
+                  : a.grupo === "risco"
+                    ? "text-destructive/70 hover:text-destructive border-transparent"
+                    : "text-muted-foreground hover:text-foreground border-transparent",
+              )}
+            >
+              <a.icon className="size-4" />
+              {a.label}
+            </button>
+          </div>
         ))}
       </div>
 
@@ -221,6 +234,61 @@ function AbaDashboard() {
         ))}
       </div>
 
+      <SectionCard
+        titulo="Por operador"
+        descricao="Carteira e disparos de cada operador."
+        flush
+        bodyClassName="p-0"
+      >
+        {!carregando && !dados?.por_operador.length ? (
+          <EmptyState icon={Users} titulo="Nenhum operador logou ainda" compacto />
+        ) : (
+          <TabelaWrap>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border text-subtle border-b text-left text-xs uppercase">
+                  <th className="px-4 py-2.5">Operador</th>
+                  <th className="px-4 py-2.5">Clientes</th>
+                  <th className="px-4 py-2.5">Com PDF</th>
+                  <th className="px-4 py-2.5">Com PIX</th>
+                  <th className="px-4 py-2.5">Em andamento</th>
+                  <th className="px-4 py-2.5">Concluídos</th>
+                  <th className="px-4 py-2.5">Entregues / lidos</th>
+                  <th className="px-4 py-2.5">Falhas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-border divide-y">
+                {carregando ? (
+                  <LinhasEsqueleto colunas={8} linhas={4} />
+                ) : (
+                  (dados?.por_operador ?? []).map((op) => (
+                    <tr key={op.operador.id}>
+                      <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
+                      <td className="px-4 py-2.5">{op.total_clientes}</td>
+                      <td className="px-4 py-2.5">{op.com_pdf}</td>
+                      <td className="px-4 py-2.5">{op.com_pix}</td>
+                      <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
+                      <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
+                      <td className="px-4 py-2.5">
+                        {op.entregues} / {op.lidos}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {op.falhas > 0 ? (
+                          <span className="text-destructive">{op.falhas}</span>
+                        ) : (
+                          "0"
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </TabelaWrap>
+        )}
+      </SectionCard>
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Mesmo bloco "Faturas em valor" que já existe no Painel do operador
           (ver routes/index.tsx), agora agregado de todos os operadores. */}
       <SectionCard titulo="Faturas em valor" eyebrow="Financeiro (todos os operadores)">
@@ -307,59 +375,7 @@ function AbaDashboard() {
         )}
       </SectionCard>
 
-      <SectionCard
-        titulo="Por operador"
-        descricao="Carteira e disparos de cada operador."
-        flush
-        bodyClassName="p-0"
-      >
-        {!carregando && !dados?.por_operador.length ? (
-          <EmptyState icon={Users} titulo="Nenhum operador logou ainda" compacto />
-        ) : (
-          <TabelaWrap>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-border text-subtle border-b text-left text-xs uppercase">
-                  <th className="px-4 py-2.5">Operador</th>
-                  <th className="px-4 py-2.5">Clientes</th>
-                  <th className="px-4 py-2.5">Com PDF</th>
-                  <th className="px-4 py-2.5">Com PIX</th>
-                  <th className="px-4 py-2.5">Em andamento</th>
-                  <th className="px-4 py-2.5">Concluídos</th>
-                  <th className="px-4 py-2.5">Entregues / lidos</th>
-                  <th className="px-4 py-2.5">Falhas</th>
-                </tr>
-              </thead>
-              <tbody className="divide-border divide-y">
-                {carregando ? (
-                  <LinhasEsqueleto colunas={8} linhas={4} />
-                ) : (
-                  (dados?.por_operador ?? []).map((op) => (
-                    <tr key={op.operador.id}>
-                      <td className="px-4 py-2.5 font-medium">{nomeOperador(op.operador)}</td>
-                      <td className="px-4 py-2.5">{op.total_clientes}</td>
-                      <td className="px-4 py-2.5">{op.com_pdf}</td>
-                      <td className="px-4 py-2.5">{op.com_pix}</td>
-                      <td className="px-4 py-2.5">{op.disparos_em_andamento}</td>
-                      <td className="px-4 py-2.5">{op.disparos_concluidos}</td>
-                      <td className="px-4 py-2.5">
-                        {op.entregues} / {op.lidos}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {op.falhas > 0 ? (
-                          <span className="text-destructive">{op.falhas}</span>
-                        ) : (
-                          "0"
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </TabelaWrap>
-        )}
-      </SectionCard>
+      </div>
     </div>
   );
 }

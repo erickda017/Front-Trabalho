@@ -757,6 +757,15 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapas 7-8 (Histórico, Supervisor) + correção visual no Início**: Histórico
+  — lotes em tabela (Lote, Status, Enviados com barra, Entregues, Lidos, Falhas, Criado em; clique
+  abre o painel do lote como antes) e CSV/XLSX num menu "Exportar". Supervisor — abas agrupadas
+  (Visão geral | Clientes, Faturas, Disparos | Planilha de PIX, Extrator pessoal | Exclusão
+  separada à direita em vermelho), ícones corrigidos (Disparos usava chave), e na visão geral a
+  tabela "Por operador" subiu para logo após os indicadores, com valor e gráfico lado a lado.
+  Início — o cartão do WhatsApp (coluna lateral) usava uma grade de 2 colunas herdada do layout
+  largo: o status "Desconectado" estourava a caixa; agora é uma lista rótulo/valor em largura total.
+
 - **[2026-10] Redesign, etapas 4-6 (Conversas, Extrator de PIX, Início)**: Conversas — "Vincular
   cliente" só fica à vista (âmbar) quando não há vínculo; vincular/trocar e apagar foram para o
   menu ⋯; mensagens rápidas ganharam ícone de raio; verde do WhatsApp trocado pela cor da marca
