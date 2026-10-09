@@ -8,18 +8,25 @@ import {
   FileText,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
   Paperclip,
   Plus,
   QrCode,
   Receipt,
   Search,
   Send,
-  Settings,
   Trash2,
   UserPlus,
   X,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
@@ -743,7 +750,7 @@ function Chat() {
           <span
             className={cn(
               "size-1.5 rounded-full",
-              totalNaoLidas > 0 ? "bg-success animate-pulse" : "bg-subtle",
+              totalNaoLidas > 0 ? "bg-primary animate-pulse" : "bg-subtle",
             )}
           />
           {totalNaoLidas} não lidas
@@ -781,7 +788,7 @@ function Chat() {
                   className={cn(
                     "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                     filtro === f.id
-                      ? "bg-success/15 text-success ring-success/25 ring-1"
+                      ? "bg-primary-soft text-primary-strong ring-primary/25 ring-1"
                       : "text-muted-foreground hover:bg-surface-raised/50",
                   )}
                 >
@@ -819,7 +826,7 @@ function Chat() {
                           <span
                             className={cn(
                               "shrink-0 text-[10px]",
-                              c.nao_lidas > 0 ? "text-success font-semibold" : "text-subtle",
+                              c.nao_lidas > 0 ? "text-primary font-semibold" : "text-subtle",
                             )}
                           >
                             {carimboLista(c.ultima_mensagem_em)}
@@ -830,7 +837,7 @@ function Chat() {
                             {c.ultima_mensagem || "—"}
                           </span>
                           {c.nao_lidas > 0 && (
-                            <span className="bg-success text-success-foreground grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold">
+                            <span className="bg-primary text-primary-foreground grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold">
                               {c.nao_lidas}
                             </span>
                           )}
@@ -924,33 +931,53 @@ function Chat() {
                   <Receipt className="size-3.5" />
                   Enviar fatura
                 </button>
-                <div className="bg-border mx-0.5 h-5 w-px shrink-0" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErroVincular(null);
-                    setModalVincularAberto(true);
-                  }}
-                  aria-label={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
-                  title={ativo.cliente_id ? "Trocar cliente vinculado" : "Vincular a um cliente cadastrado"}
-                  className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-full transition-colors",
-                    ativo.cliente_id
-                      ? "text-muted-foreground hover:bg-surface-raised/60"
-                      : "bg-warning/15 text-warning hover:bg-warning/25",
-                  )}
-                >
-                  <UserPlus className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Apagar conversa"
-                  title="Apagar conversa"
-                  onClick={() => setApagandoConversaId(ativo.id)}
-                  className="text-subtle hover:text-destructive hover:bg-surface-raised/50 grid size-8 shrink-0 place-items-center rounded-full transition-colors"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                {/* Sem cliente vinculado, "Vincular" fica à vista em âmbar (é pendência);
+                    vinculado, ele e "Apagar" ficam no menu ⋯ pra não competirem com "Enviar fatura". */}
+                {!ativo.cliente_id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErroVincular(null);
+                      setModalVincularAberto(true);
+                    }}
+                    className="bg-warning/15 text-warning hover:bg-warning/25 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                  >
+                    <UserPlus className="size-3.5" />
+                    Vincular cliente
+                  </button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Mais ações da conversa"
+                      className="text-muted-foreground hover:text-foreground hover:bg-surface-raised grid size-8 shrink-0 place-items-center rounded-full transition-colors"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    {ativo.cliente_id && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setErroVincular(null);
+                          setModalVincularAberto(true);
+                        }}
+                        className="gap-2"
+                      >
+                        <UserPlus className="size-3.5" />
+                        Trocar cliente vinculado
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={() => setApagandoConversaId(ativo.id)}
+                      className="text-destructive focus:text-destructive gap-2"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Apagar conversa
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </header>
 
@@ -1102,10 +1129,11 @@ function Chat() {
                 <button
                   type="button"
                   aria-label="Gerenciar mensagens rápidas"
+                  title="Mensagens rápidas (atalho /)"
                   onClick={() => setGerenciarRespostasAberto(true)}
                   className="text-muted-foreground hover:text-foreground hover:bg-surface-raised/50 grid size-10 shrink-0 place-items-center rounded-full transition-colors"
                 >
-                  <Settings className="size-4" />
+                  <Zap className="size-4" />
                 </button>
                 <textarea
                   ref={campoRef}
@@ -1147,7 +1175,7 @@ function Chat() {
                   type="submit"
                   aria-label="Enviar mensagem"
                   disabled={(!rascunho.trim() && !anexo) || enviando}
-                  className="bg-success text-success-foreground grid size-10 shrink-0 place-items-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
+                  className="bg-primary text-primary-foreground grid size-10 shrink-0 place-items-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   {enviando ? (
                     <Loader2 className="size-4 animate-spin" />
