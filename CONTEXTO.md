@@ -757,6 +757,15 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapas 4-6 (Conversas, Extrator de PIX, Início)**: Conversas — "Vincular
+  cliente" só fica à vista (âmbar) quando não há vínculo; vincular/trocar e apagar foram para o
+  menu ⋯; mensagens rápidas ganharam ícone de raio; verde do WhatsApp trocado pela cor da marca
+  nos elementos de UI (as bolhas seguem iguais). Extrator de PIX — coluna única: Enviar, Extrações
+  (largura total), depois Verificação + Planilha lado a lado; "Como funciona" recolhido. Início
+  (ex-"Painel") — coluna principal (indicadores, disparos por dia, safras) + lateral (WhatsApp,
+  desempenho, valor); "Atalhos" virou botões no cabeçalho (Novo disparo, Extrator de PIX). Só
+  layout; nenhum dado/endpoint mudou.
+
 - **[2026-10] Redesign, etapa 3 (Disparos) + faturas avulsas**: "Disparo" virou "Novo disparo", em duas
   colunas (Destinatários e Mensagem à esquerda; à direita, "Resumo do lote" com o botão
   "Revisar e disparar" fixo, WhatsApp, Configurações avançadas e Teste recolhidos). Sumiram os
