@@ -757,6 +757,14 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Redesign, etapa 3 (Disparos) + faturas avulsas**: "Disparo" virou "Novo disparo", em duas
+  colunas (Destinatários e Mensagem à esquerda; à direita, "Resumo do lote" com o botão
+  "Revisar e disparar" fixo, WhatsApp, Configurações avançadas e Teste recolhidos). Sumiram os
+  rótulos "Etapa N" (a numeração já estava errada). Lógica de criação do lote intacta. Em
+  Clientes, "Faturas avulsas" é um botão no cabeçalho que abre um painel grande (sempre montado,
+  só escondido) e há "Apagar todas" nas pendências: `DELETE /api/faturas/avulsas/pendentes`
+  (só as do próprio operador, em lotes; lote que falha no Storage mantém a linha; grava auditoria).
+
 - **[2026-10] Redesign, etapa 2 (Clientes)**: cabeçalho com "Novo cliente" + menu "Mais ações"
   (Importar pagos, Ler vencimentos dos PDFs, Refazer para todos); a verificação de vencimentos
   virou o hook `useVerificacaoVencimentos` (mesma API/polling, mostra o andamento no cabeçalho).

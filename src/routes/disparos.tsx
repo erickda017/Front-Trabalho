@@ -373,7 +373,6 @@ function EtapaDestinatarios({
 
   return (
     <SectionCard
-      eyebrow="Etapa 1"
       titulo="Destinatários"
       descricao={
         modoNumeros
@@ -579,7 +578,6 @@ function EtapaMensagem({
 
   return (
     <SectionCard
-      eyebrow="Etapa 2"
       titulo="Mensagem"
       descricao={
         templates.length > 1
@@ -633,7 +631,7 @@ function EtapaConexao() {
   const temSlot2 = conexaoSlot2.configurada;
 
   return (
-    <SectionCard eyebrow="Etapa 4" titulo="WhatsApp" descricao="Sessão(ões) de WhatsApp usada(s) para este disparo.">
+    <SectionCard titulo="WhatsApp" descricao="Sessão(ões) de WhatsApp usada(s) para este disparo.">
       {conexaoCarregando ? (
         <p className="text-subtle text-xs">Carregando conexão…</p>
       ) : (
@@ -743,7 +741,6 @@ function ConfiguracoesAvancadas({
 
   return (
     <SectionCard
-      eyebrow="Etapas 5-7"
       titulo="Configurações avançadas"
       descricao="Anexo, intervalo de envio e agendamento -- opcionais, o padrão já funciona pra maioria dos disparos."
       acoes={
@@ -1461,8 +1458,8 @@ function Disparo() {
 
   return (
     <AppShell
-      title="Disparo"
-      subtitle="Monte, agende e acompanhe um lote de disparo de faturas"
+      title="Novo disparo"
+      subtitle="Escolha quem recebe, escreva a mensagem e dispare"
       actions={
         <Botao
           variante="secondary"
@@ -1481,46 +1478,74 @@ function Disparo() {
         {envioAtivoId ? (
           <ProgressoDisparo envioAtivoId={envioAtivoId} setEnvioAtivoId={setEnvioAtivoId} />
         ) : (
-          <>
-            <EtapaDestinatarios telefonesAvulsos={telefonesAvulsos} setTelefonesAvulsos={setTelefonesAvulsos} />
-            <EtapaMensagem templates={templates} setTemplates={setTemplates} />
-            <EtapaConexao />
-            <ConfiguracoesAvancadas
-              modo={modo}
-              setModo={setModo}
-              janelaHoras={janelaHoras}
-              setJanelaHoras={setJanelaHoras}
-              janelaMinutos={janelaMinutos}
-              setJanelaMinutos={setJanelaMinutos}
-              agendarPara={agendarPara}
-              setAgendarPara={setAgendarPara}
-            />
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            {/* Coluna principal: o que MUDA a cada disparo. */}
+            <div className="min-w-0 space-y-6">
+              <EtapaDestinatarios telefonesAvulsos={telefonesAvulsos} setTelefonesAvulsos={setTelefonesAvulsos} />
+              <EtapaMensagem templates={templates} setTemplates={setTemplates} />
+            </div>
 
-            <SectionCard eyebrow="Etapa 8" titulo="Confirmação">
-              <Botao
-                variante="primary"
-                onClick={() => setConfirmarAberto(true)}
-                disabled={!podeConfirmar}
-              >
-                <Send className="size-4" />
-                Revisar e disparar
-              </Botao>
-              {totalDestinatarios === 0 && (
-                <p className="text-subtle mt-2 text-xs">Selecione ao menos um cliente ou cole números para continuar.</p>
-              )}
-              {variaveisVazias.length > 0 && (
-                <Aviso tone="warning" className="mt-3">
-                  A mensagem usa {variaveisVazias.join(", ")}, mas números colados não têm esses dados -- vão sair
-                  em branco. Ex.: &quot;Olá {"{{nome}}"}, tudo bem?&quot; vira &quot;Olá , tudo bem?&quot;.
-                </Aviso>
-              )}
-              {modoNumeros && modo === "pix" && (
-                <Aviso tone="danger" className="mt-3">
-                  O modo &quot;só Pix&quot; não funciona com números colados (eles não têm Pix). Troque o modo nas
-                  configurações avançadas.
-                </Aviso>
-              )}
-            </SectionCard>
+            {/* Coluna lateral: resumo + botão de disparar sempre à vista (fixa em tela larga);
+                o que quase nunca muda (anexo, janela, agenda, teste) fica recolhido. */}
+            <div className="min-w-0 space-y-6 xl:sticky xl:top-20">
+              <SectionCard titulo="Resumo do lote">
+                <dl className="space-y-2 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Destinatários</dt>
+                    <dd className="metric-value !text-xl">{totalDestinatarios}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Envio</dt>
+                    <dd className="font-medium">{{ pdf: "Com PDF", pix: "Só Pix", livre: "Só texto" }[modo]}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Quando</dt>
+                    <dd className="font-medium">
+                      {agendarPara
+                        ? new Date(agendarPara).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+                        : "Agora"}
+                    </dd>
+                  </div>
+                </dl>
+                <Botao
+                  variante="primary"
+                  className="mt-4 w-full"
+                  onClick={() => setConfirmarAberto(true)}
+                  disabled={!podeConfirmar}
+                >
+                  <Send className="size-4" />
+                  Revisar e disparar
+                </Botao>
+                {totalDestinatarios === 0 && (
+                  <p className="text-subtle mt-2 text-xs">Selecione ao menos um cliente ou cole números para continuar.</p>
+                )}
+                {variaveisVazias.length > 0 && (
+                  <Aviso tone="warning" className="mt-3">
+                    A mensagem usa {variaveisVazias.join(", ")}, mas números colados não têm esses dados -- vão sair
+                    em branco. Ex.: &quot;Olá {"{{nome}}"}, tudo bem?&quot; vira &quot;Olá , tudo bem?&quot;.
+                  </Aviso>
+                )}
+                {modoNumeros && modo === "pix" && (
+                  <Aviso tone="danger" className="mt-3">
+                    O modo &quot;só Pix&quot; não funciona com números colados (eles não têm Pix). Troque o modo em
+                    Configurações avançadas.
+                  </Aviso>
+                )}
+              </SectionCard>
+
+              <EtapaConexao />
+              <ConfiguracoesAvancadas
+                modo={modo}
+                setModo={setModo}
+                janelaHoras={janelaHoras}
+                setJanelaHoras={setJanelaHoras}
+                janelaMinutos={janelaMinutos}
+                setJanelaMinutos={setJanelaMinutos}
+                agendarPara={agendarPara}
+                setAgendarPara={setAgendarPara}
+              />
+              <TesteDisparo templateSugerido={templates[0]} />
+            </div>
 
             <ConfirmarDisparo
               aberto={confirmarAberto}
@@ -1532,10 +1557,10 @@ function Disparo() {
               onConfirmar={criarEIniciar}
               confirmando={criando}
             />
-          </>
+          </div>
         )}
 
-        <TesteDisparo templateSugerido={templates[0]} />
+        {envioAtivoId && <TesteDisparo templateSugerido={templates[0]} />}
       </div>
     </AppShell>
   );
