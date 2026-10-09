@@ -933,6 +933,8 @@ function Clientes() {
   const [modalAberto, setModalAberto] = useState(false);
   const [importarPagosAberto, setImportarPagosAberto] = useState(false);
   const verificacao = useVerificacaoVencimentos(refreshClientes);
+  const [avulsasAberto, setAvulsasAberto] = useState(false);
+  const [avulsasPendentes, setAvulsasPendentes] = useState(0);
   const [clienteEditando, setClienteEditando] = useState<Cliente | null>(null);
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null);
   const [removendo, setRemovendo] = useState<string | null>(null);
@@ -1141,6 +1143,13 @@ function Clientes() {
               Verificando PDFs {verificacao.status.processados}/{verificacao.status.total}
             </span>
           )}
+          <Botao variante={avulsasAberto ? "secondary" : "outline"} onClick={() => setAvulsasAberto((v) => !v)} aria-expanded={avulsasAberto}>
+            <Upload className="size-3.5" />
+            <span className="hidden sm:inline">Faturas avulsas</span>
+            {avulsasPendentes > 0 && (
+              <span className="bg-warning text-warning-foreground rounded-full px-1.5 text-[10px] font-semibold">{avulsasPendentes}</span>
+            )}
+          </Botao>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Botao variante="outline" aria-label="Mais ações">
@@ -1181,6 +1190,11 @@ function Clientes() {
     >
       <ImportarPagosDialog aberto={importarPagosAberto} onOpenChange={setImportarPagosAberto} onImportado={refreshClientes} />
       <div className="space-y-4">
+        {/* Sempre montado (só escondido): um envio em andamento não se perde ao fechar o painel. */}
+        <div className={avulsasAberto ? "block" : "hidden"}>
+          <UploadAvulsoFaturas painel onAssociado={refreshClientes} onPendentes={setAvulsasPendentes} />
+        </div>
+
         <div className="toolbar flex flex-wrap items-center gap-2">
           {/* [2026-08] Busca é `flex-1` por padrão (Controls.tsx) pra crescer
               sozinha numa toolbar mais vazia -- aqui, com 2 seletores + 2
@@ -1619,8 +1633,6 @@ function Clientes() {
             </>
           )}
         </SectionCard>
-
-        <UploadAvulsoFaturas onAssociado={refreshClientes} />
       </div>
 
       {modalAberto && (

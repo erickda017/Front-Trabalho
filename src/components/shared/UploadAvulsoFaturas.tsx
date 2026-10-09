@@ -40,7 +40,17 @@ type PendenciaAvulsa = {
   criado_em: string;
 };
 
-export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }) {
+export function UploadAvulsoFaturas({
+  onAssociado,
+  painel = false,
+  onPendentes,
+}: {
+  onAssociado: () => void;
+  /** Modo painel: sempre aberto, sem o "+" de recolher (quem abre/fecha é a página) e com área de soltar maior. */
+  painel?: boolean;
+  /** Avisa a página quantas pendências existem (pro contador do botão). */
+  onPendentes?: (quantidade: number) => void;
+}) {
   const { clientes } = useAppState();
   const [enviando, setEnviando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoAvulso[]>([]);
@@ -51,7 +61,10 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
   const [clienteEscolhido, setClienteEscolhido] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
-  const [aberto, setAberto] = useState(false);
+  const [abertoLocal, setAberto] = useState(false);
+  const aberto = painel || abertoLocal;
+  const [descartandoTodas, setDescartandoTodas] = useState(false);
+  const [descartandoTodasAtivo, setDescartandoTodasAtivo] = useState(false);
   const [pdfAberto, setPdfAberto] = useState<string | null>(null);
   const [descartando, setDescartando] = useState<PendenciaAvulsa | null>(null);
   const [descartandoAtivo, setDescartandoAtivo] = useState(false);
@@ -71,6 +84,25 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
   useEffect(() => {
     carregarPendencias();
   }, [carregarPendencias]);
+
+  useEffect(() => {
+    onPendentes?.(pendencias.length);
+  }, [pendencias.length, onPendentes]);
+
+  async function confirmarDescarteTodas() {
+    setDescartandoTodasAtivo(true);
+    try {
+      const r = await api.faturas.pendentes.removerTodas();
+      if (r.falharam > 0) toast.warning(`${r.removidas} apagada(s); ${r.falharam} não puderam ser apagadas — tente de novo.`);
+      else toast.success(`${r.removidas} fatura(s) avulsa(s) apagada(s).`);
+      await carregarPendencias();
+      setDescartandoTodas(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDescartandoTodasAtivo(false);
+    }
+  }
 
   // [2026-10] Lote de 400+ PDFs: uma queda de rede ou o rate limit no meio
   // do caminho fazia aquele arquivo se perder (o loop só seguia pro
@@ -147,13 +179,13 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
       acoes={
         <div className="flex items-center gap-2">
           {!aberto && <span className="text-subtle hidden text-xs sm:inline">{resumo}</span>}
-          <button
+          {!painel && <button
             onClick={() => setAberto((v) => !v)}
             className="text-subtle hover:text-foreground focus-ring rounded p-1"
             aria-label={aberto ? "Recolher" : "Expandir"}
           >
             <Plus className={cn("size-4 transition-transform", aberto && "rotate-45")} />
-          </button>
+          </button>}
         </div>
       }
     >
@@ -174,7 +206,7 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
             className={cn(
-              "flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors",
+              painel ? "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed px-6 py-16 text-center transition-colors" : "flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors",
               arrastando ? "border-primary bg-primary-soft" : "border-border hover:border-border-strong bg-surface-sunken",
             )}
           >
@@ -215,9 +247,17 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
 
           {(carregandoPendencias || pendencias.length > 0) && (
             <div className="border-border border-t pt-3">
-              <p className="text-subtle mb-2 text-xs font-medium">
-                Pendentes de associação {pendencias.length > 0 && `(${pendencias.length})`}
-              </p>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-subtle text-xs font-medium">
+                  Pendentes de associação {pendencias.length > 0 && `(${pendencias.length})`}
+                </p>
+                {pendencias.length > 0 && (
+                  <Botao tamanho="sm" variante="ghost" onClick={() => setDescartandoTodas(true)} className="text-destructive">
+                    <X className="size-3.5" />
+                    Apagar todas
+                  </Botao>
+                )}
+              </div>
               {carregandoPendencias ? (
                 <div className="bg-surface-sunken h-16 w-full animate-pulse rounded-md" />
               ) : (
@@ -269,6 +309,30 @@ export function UploadAvulsoFaturas({ onAssociado }: { onAssociado: () => void }
       )}
     </SectionCard>
     <VisualizadorPdf url={pdfAberto} onClose={() => setPdfAberto(null)} />
+    <AlertDialog open={descartandoTodas} onOpenChange={(open) => !open && !descartandoTodasAtivo && setDescartandoTodas(false)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Apagar todas as {pendencias.length} faturas avulsas?</AlertDialogTitle>
+          <AlertDialogDescription>
+            São os PDFs que ainda não estão ligados a nenhum cliente. Eles são removidos de vez do armazenamento. PDFs já
+            associados a clientes não são afetados. Não tem como desfazer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={descartandoTodasAtivo}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              e.preventDefault();
+              confirmarDescarteTodas();
+            }}
+            disabled={descartandoTodasAtivo}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {descartandoTodasAtivo ? "Apagando…" : "Apagar todas"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={!!descartando} onOpenChange={(open) => !open && setDescartando(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>

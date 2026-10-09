@@ -201,6 +201,7 @@ declare module "@/api" {
         >;
         associar: (id: string, clienteId: string) => Promise<unknown>;
         remover: (id: string) => Promise<{ ok: boolean }>;
+        removerTodas: () => Promise<{ removidas: number; falharam: number }>;
       };
     };
     clientes: {

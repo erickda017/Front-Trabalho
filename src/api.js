@@ -251,6 +251,8 @@ export const api = {
           body: JSON.stringify({ cliente_id: clienteId }),
         }),
       remover: (id) => request(`/faturas/avulsas/pendentes/${id}`, { method: 'DELETE' }),
+      // [2026-10] Apaga de uma vez todas as pendências (PDFs sem cliente) do operador.
+      removerTodas: () => request('/faturas/avulsas/pendentes', { method: 'DELETE' }),
     },
   },
   // [2026-08] Ver CONTEXTO.md ("Safras (FPD/SPD) e histórico consolidado") e
