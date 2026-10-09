@@ -9,7 +9,14 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { BotaoAtualizarPlanilhaPix } from "@/components/shared/ResumoPlanilhaPix";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { Aviso, Botao, Busca, LinhasEsqueleto, Paginacao, TabelaWrap } from "@/components/shared/Controls";
+import {
+  Aviso,
+  Botao,
+  Busca,
+  LinhasEsqueleto,
+  Paginacao,
+  TabelaWrap,
+} from "@/components/shared/Controls";
 import {
   Dialog,
   DialogContent,
@@ -110,7 +117,8 @@ async function expandirZips(files: File[]): Promise<File[]> {
     const { default: JSZip } = await import("jszip");
     const zip = await JSZip.loadAsync(f);
     for (const entrada of Object.values(zip.files)) {
-      if (entrada.dir || !/\.pdf$/i.test(entrada.name) || entrada.name.startsWith("__MACOSX/")) continue;
+      if (entrada.dir || !/\.pdf$/i.test(entrada.name) || entrada.name.startsWith("__MACOSX/"))
+        continue;
       const nome = entrada.name.split("/").pop() || entrada.name;
       saida.push(new File([await entrada.async("blob")], nome, { type: "application/pdf" }));
     }
@@ -254,7 +262,15 @@ function Pix() {
     if (termos.length === 0) return extracoes;
     return extracoes.filter((e) => {
       const alvo = normalizarBusca(
-        [e.arquivo, e.cliente_nome, e.pix_code, e.valor, e.vencimento, statusInfo[e.status]?.label, e.erro].join(" "),
+        [
+          e.arquivo,
+          e.cliente_nome,
+          e.pix_code,
+          e.valor,
+          e.vencimento,
+          statusInfo[e.status]?.label,
+          e.erro,
+        ].join(" "),
       );
       return termos.every((t) => alvo.includes(t));
     });
@@ -266,7 +282,8 @@ function Pix() {
   const totalPaginas = Math.max(1, Math.ceil(extracoesFiltradas.length / TAMANHO_PAGINA));
   const paginaSegura = Math.min(pagina, totalPaginas);
   const extracoesPaginadas = useMemo(
-    () => extracoesFiltradas.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
+    () =>
+      extracoesFiltradas.slice((paginaSegura - 1) * TAMANHO_PAGINA, paginaSegura * TAMANHO_PAGINA),
     [extracoesFiltradas, paginaSegura],
   );
 
@@ -559,8 +576,8 @@ function Pix() {
       title="Extrator de PIX"
       subtitle="Envie faturas em PDF e a chave PIX de cada cliente é extraída automaticamente"
     >
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="space-y-6 lg:col-span-8">
+      <div>
+        <div className="space-y-6">
           <SectionCard
             titulo="Enviar faturas"
             descricao={`Selecione um ou mais PDFs de fatura para extrair a chave PIX. Sem limite de quantidade -- os arquivos são processados em pacotes.`}
@@ -690,71 +707,16 @@ function Pix() {
                       // qualquer scanner ler, em qualquer resolução de render.
                       // Colar manualmente na ficha do cliente é o caminho.
                       <Aviso tone="info">
-                        Quem falhou pode ter a chave PIX colada manualmente na ficha do
-                        cliente (aba Clientes) -- alguns boletos vêm como imagem de baixa
-                        resolução e o QR fica ilegível pra qualquer scanner, não é
-                        necessariamente um problema no PDF em si.
+                        Quem falhou pode ter a chave PIX colada manualmente na ficha do cliente (aba
+                        Clientes) -- alguns boletos vêm como imagem de baixa resolução e o QR fica
+                        ilegível pra qualquer scanner, não é necessariamente um problema no PDF em
+                        si.
                       </Aviso>
                     )}
                 </div>
               )}
 
               {erroEnvio && <Aviso tone="danger">{erroEnvio}</Aviso>}
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            titulo="Rodar verificação"
-            descricao="Revarre clientes que já têm PDF de fatura mas ficaram sem Pix (Worker fora do ar, layout raro etc.) e tenta achar o QR de novo, direto no seu navegador."
-            acoes={
-              <Botao variante="secondary" onClick={rodarVerificacao} disabled={verificando}>
-                {verificando ? "Verificando…" : "Rodar verificação"}
-              </Botao>
-            }
-          >
-            <div className="space-y-2">
-              {resumoVerificacao && (
-                <>
-                  <div className="bg-surface-sunken h-1.5 w-full overflow-hidden rounded-full">
-                    <div
-                      className="bg-primary h-full rounded-full transition-all"
-                      style={{
-                        width: `${resumoVerificacao.total ? (resumoVerificacao.processados / resumoVerificacao.total) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="text-subtle text-xs">
-                    {resumoVerificacao.total === 0 ? (
-                      "Nenhum cliente com PDF pendente de Pix no momento."
-                    ) : (
-                      <>
-                        {resumoVerificacao.processados} / {resumoVerificacao.total} processado(s)
-                        {resumoVerificacao.processados > 0 && (
-                          <>
-                            {" — "}
-                            <span className="text-success">
-                              {resumoVerificacao.encontrados} achado(s)
-                            </span>
-                            {resumoVerificacao.semSucesso > 0 && (
-                              <>
-                                {", "}
-                                <span className="text-muted-foreground">
-                                  {resumoVerificacao.semSucesso} sem sucesso
-                                </span>
-                              </>
-                            )}
-                          </>
-                        )}
-                        {!verificando &&
-                          resumoVerificacao.processados === resumoVerificacao.total &&
-                          resumoVerificacao.total > 0 &&
-                          " — concluído."}
-                      </>
-                    )}
-                  </p>
-                </>
-              )}
-              {erroVerificacao && <Aviso tone="danger">{erroVerificacao}</Aviso>}
             </div>
           </SectionCard>
 
@@ -907,50 +869,109 @@ function Pix() {
             />
           </SectionCard>
 
-          <SectionCard
-            titulo="Planilha oficial (Google Sheets)"
-            descricao="Depois de extrair, envie os Pix pra planilha oficial do supervisor. Vão os Pix de todos os operadores; só células de Pix vazias são preenchidas."
-          >
-            <BotaoAtualizarPlanilhaPix />
-          </SectionCard>
-        </div>
-
-        <div className="lg:col-span-4">
-          <SectionCard titulo="Como funciona" eyebrow="Documentação">
-            <ol className="space-y-4">
-              {[
-                {
-                  titulo: "1. Envie a fatura",
-                  descricao: `Faça upload de um ou mais PDFs de fatura, um por cliente. Processado em pacotes de ${TAMANHO_LOTE_EXTRACAO}.`,
-                },
-                {
-                  titulo: "2. Extração automática",
-                  descricao:
-                    "O PDF é lido no seu navegador e enviado, página por página, ao serviço de OCR até localizar a chave PIX.",
-                },
-                {
-                  titulo: "3. Vínculo com o cliente",
-                  descricao:
-                    "Pelo nome do arquivo, o PIX e o próprio PDF são associados automaticamente ao cliente já cadastrado. Sem casamento, vincule manualmente na lista abaixo.",
-                },
-              ].map((passo) => (
-                <li key={passo.titulo} className="flex gap-3">
-                  <div className="bg-primary-soft text-primary-strong mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold">
-                    {passo.titulo.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{passo.titulo}</p>
-                    <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
-                      {passo.descricao}
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <SectionCard
+              titulo="Rodar verificação"
+              descricao="Revarre clientes que já têm PDF de fatura mas ficaram sem Pix (Worker fora do ar, layout raro etc.) e tenta achar o QR de novo, direto no seu navegador."
+              acoes={
+                <Botao variante="secondary" onClick={rodarVerificacao} disabled={verificando}>
+                  {verificando ? "Verificando…" : "Rodar verificação"}
+                </Botao>
+              }
+            >
+              <div className="space-y-2">
+                {resumoVerificacao && (
+                  <>
+                    <div className="bg-surface-sunken h-1.5 w-full overflow-hidden rounded-full">
+                      <div
+                        className="bg-primary h-full rounded-full transition-all"
+                        style={{
+                          width: `${resumoVerificacao.total ? (resumoVerificacao.processados / resumoVerificacao.total) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-subtle text-xs">
+                      {resumoVerificacao.total === 0 ? (
+                        "Nenhum cliente com PDF pendente de Pix no momento."
+                      ) : (
+                        <>
+                          {resumoVerificacao.processados} / {resumoVerificacao.total} processado(s)
+                          {resumoVerificacao.processados > 0 && (
+                            <>
+                              {" — "}
+                              <span className="text-success">
+                                {resumoVerificacao.encontrados} achado(s)
+                              </span>
+                              {resumoVerificacao.semSucesso > 0 && (
+                                <>
+                                  {", "}
+                                  <span className="text-muted-foreground">
+                                    {resumoVerificacao.semSucesso} sem sucesso
+                                  </span>
+                                </>
+                              )}
+                            </>
+                          )}
+                          {!verificando &&
+                            resumoVerificacao.processados === resumoVerificacao.total &&
+                            resumoVerificacao.total > 0 &&
+                            " — concluído."}
+                        </>
+                      )}
                     </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </SectionCard>
+                  </>
+                )}
+                {erroVerificacao && <Aviso tone="danger">{erroVerificacao}</Aviso>}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              titulo="Planilha oficial (Google Sheets)"
+              descricao="Depois de extrair, envie os Pix pra planilha oficial do supervisor. Vão os Pix de todos os operadores; só células de Pix vazias são preenchidas."
+            >
+              <BotaoAtualizarPlanilhaPix />
+            </SectionCard>
+          </div>
+
+          <details className="panel group px-4 py-3 sm:px-5">
+            <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-sm font-medium select-none">
+              Como funciona
+            </summary>
+            <div className="mt-4">
+              <ol className="space-y-4">
+                {[
+                  {
+                    titulo: "1. Envie a fatura",
+                    descricao: `Faça upload de um ou mais PDFs de fatura, um por cliente. Processado em pacotes de ${TAMANHO_LOTE_EXTRACAO}.`,
+                  },
+                  {
+                    titulo: "2. Extração automática",
+                    descricao:
+                      "O PDF é lido no seu navegador e enviado, página por página, ao serviço de OCR até localizar a chave PIX.",
+                  },
+                  {
+                    titulo: "3. Vínculo com o cliente",
+                    descricao:
+                      "Pelo nome do arquivo, o PIX e o próprio PDF são associados automaticamente ao cliente já cadastrado. Sem casamento, vincule manualmente na lista abaixo.",
+                  },
+                ].map((passo) => (
+                  <li key={passo.titulo} className="flex gap-3">
+                    <div className="bg-primary-soft text-primary-strong mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold">
+                      {passo.titulo.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{passo.titulo}</p>
+                      <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
+                        {passo.descricao}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </details>
         </div>
       </div>
-
       <Dialog open={!!vinculando} onOpenChange={(open) => !open && setVinculando(null)}>
         <DialogContent>
           <DialogHeader>
