@@ -65,7 +65,7 @@ function ConversorLista() {
   const [erro, setErro] = useState<string | null>(null);
   const [itens, setItens] = useState<ItemConvertido[] | null>(null);
   const [avisos, setAvisos] = useState<string[]>([]);
-  const [importado, setImportado] = useState<{ criados: number; erros: unknown[] } | null>(null);
+  const [importado, setImportado] = useState<{ criados: number; jaExistiam: number; erros: unknown[] } | null>(null);
   const [progressoImportacao, setProgressoImportacao] = useState<{ processados: number; total: number } | null>(null);
 
   async function converter() {
@@ -122,15 +122,17 @@ function ConversorLista() {
     setProgressoImportacao({ processados: 0, total: itens.length });
     try {
       let criados = 0;
+      let jaExistiam = 0;
       const erros: unknown[] = [];
       for (let i = 0; i < itens.length; i += TAMANHO_LOTE_IMPORTACAO) {
         const bloco = itens.slice(i, i + TAMANHO_LOTE_IMPORTACAO);
         const data = await api.clientes.importarLista(bloco);
         criados += data.criados;
+        jaExistiam += data.ja_existiam;
         erros.push(...data.erros);
         setProgressoImportacao({ processados: Math.min(i + bloco.length, itens.length), total: itens.length });
       }
-      setImportado({ criados, erros });
+      setImportado({ criados, jaExistiam, erros });
       await refreshClientes();
     } catch (e) {
       // Erro no meio do caminho: o que já foi importado nos blocos
@@ -228,7 +230,9 @@ function ConversorLista() {
                   <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />
                 )}
                 <span>
-                  {importado.criados} cliente(s) criado(s)/atualizado(s) no cadastro.
+                  {importado.criados} cliente(s) novo(s) adicionado(s).
+                  {importado.jaExistiam > 0 &&
+                    ` ${importado.jaExistiam} já estavam cadastrados (mesmo telefone ou contrato) e foram mantidos como estão.`}
                   {importado.erros.length > 0 && ` ${importado.erros.length} com erro (veja o console).`}
                 </span>
               </div>

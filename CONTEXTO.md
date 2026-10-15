@@ -757,6 +757,16 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] Importar lista só adiciona o que é novo (sem duplicar nem regravar)**: `POST
+  /clientes/importar-lista` deixou de ser upsert por telefone. Carrega a carteira de cobrança do
+  operador e pula quem já existe (mesmo telefone OU mesmo contrato, ver
+  `lib/duplicadosImportacao.js`), sem sobrescrever valor/prazo do cliente existente; repetido no
+  mesmo lote também é pulado. Nome sozinho NÃO conta como duplicata (homônimos e pessoa com 2
+  números são casos reais). Efeito colateral: o 2º telefone de um cliente cujo contrato já existe é
+  pulado (o índice único de contrato já impedia esse insert antes, só que com erro). Resposta ganhou
+  `ja_existiam` e `ja_existiam_amostra`; a tela Importar mostra "N já estavam cadastrados".
+  `POST /clientes` (cadastro manual) devolve 409 amigável se o telefone já existe. A importação da
+  Ativação Chip continua como estava.
 - **[2026-10] "APAGAR" do Painel de Exclusão deixava a carteira pela metade + filtros que não funcionavam**
   (relatado: depois de apagar tudo pelo supervisor ainda sobravam vários clientes só com o nome, Pix
   com mais de mil linhas sem como filtrar, e o filtro por data de importação não funcionava).

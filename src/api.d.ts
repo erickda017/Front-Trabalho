@@ -270,7 +270,7 @@ declare module "@/api" {
       >;
       uploadPdf: (id: string, file: File, dadosPixPrecalculado?: DadosPix | null) => Promise<Cliente>;
       converterLista: (texto: string) => Promise<{ itens: ItemConvertido[]; avisos: string[]; total: number }>;
-      importarLista: (itens: ItemConvertido[]) => Promise<{ criados: number; erros: unknown[]; total: number }>;
+      importarLista: (itens: ItemConvertido[]) => Promise<{ criados: number; ja_existiam: number; ja_existiam_amostra: { nome: string; motivo: string }[]; erros: unknown[]; total: number }>;
       importarPagos: (texto: string) => Promise<{
         tag: { id: string; nome: string; cor: string; permite_disparo: boolean };
         total_colados: number;
