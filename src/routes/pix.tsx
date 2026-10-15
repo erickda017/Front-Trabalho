@@ -13,10 +13,13 @@ import {
   Aviso,
   Botao,
   Busca,
+  Campo,
   LinhasEsqueleto,
   Paginacao,
+  Seletor,
   TabelaWrap,
 } from "@/components/shared/Controls";
+import { LimparExtracoesPix } from "@/components/shared/LimparExtracoesPix";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +37,7 @@ import { useAppState } from "@/lib/app-state";
 import type { PixExtracao, PixExtracaoStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatarDataHoraAbsoluta } from "@/lib/format";
+import { paraIsoDataHora } from "@/lib/dataBr";
 
 function normalizarBusca(v: unknown): string {
   return String(v ?? "")
@@ -239,7 +243,9 @@ function Pix() {
     refetch: carregar,
   } = useQuery({
     queryKey: ["pix-extracoes"],
-    queryFn: () => api.pix.listar(),
+    // per_page 5000 (máx. do backend): o padrão era 1000 e a lista cortava
+    // em silêncio o que passava disso, as mais antigas sumiam sem aviso.
+    queryFn: () => api.pix.listar({ per_page: 5000 }),
     refetchInterval: (query) => {
       const data = query.state.data;
       const pendente =
@@ -257,10 +263,32 @@ function Pix() {
   // [2026-10] Pesquisa na lista: arquivo, cliente, chave Pix (ou pedaço dela)
   // e status. Sem acento/maiúscula, vários termos = todos precisam bater.
   const [busca, setBusca] = useState("");
+  // [2026-10] Filtros pra separar o que importa numa lista de mil+ linhas:
+  // situação, vínculo com cliente e faixa de data da extração.
+  type FiltroSituacao = "todas" | "encontrado" | "problema" | "pendente";
+  const [situacao, setSituacao] = useState<FiltroSituacao>("todas");
+  const [vinculo, setVinculo] = useState<"todos" | "vinculado" | "sem_cliente">("todos");
+  const [dataDe, setDataDe] = useState("");
+  const [dataAte, setDataAte] = useState("");
+  const filtrosAtivos = situacao !== "todas" || vinculo !== "todos" || Boolean(dataDe || dataAte);
   const extracoesFiltradas = useMemo(() => {
     const termos = normalizarBusca(busca).split(" ").filter(Boolean);
-    if (termos.length === 0) return extracoes;
-    return extracoes.filter((e) => {
+    const passaFiltros = (e: PixExtracao) => {
+      if (situacao === "encontrado" && e.status !== "encontrado") return false;
+      if (situacao === "problema" && e.status !== "erro" && e.status !== "nao_encontrado") return false;
+      if (situacao === "pendente" && e.status !== "aguardando" && e.status !== "processando") return false;
+      if (vinculo === "vinculado" && !e.cliente_id) return false;
+      if (vinculo === "sem_cliente" && e.cliente_id) return false;
+      if (dataDe || dataAte) {
+        const dia = paraIsoDataHora(e.criado_em);
+        if (dataDe && dia && dia < dataDe) return false;
+        if (dataAte && dia && dia > dataAte) return false;
+      }
+      return true;
+    };
+    const base = filtrosAtivos ? extracoes.filter(passaFiltros) : extracoes;
+    if (termos.length === 0) return base;
+    return base.filter((e) => {
       const alvo = normalizarBusca(
         [
           e.arquivo,
@@ -274,7 +302,7 @@ function Pix() {
       );
       return termos.every((t) => alvo.includes(t));
     });
-  }, [extracoes, busca]);
+  }, [extracoes, busca, situacao, vinculo, dataDe, dataAte, filtrosAtivos]);
 
   // [paginação] 10 extrações por página (antes 50 -- lista longa demais).
   const TAMANHO_PAGINA = 10;
@@ -738,11 +766,78 @@ function Pix() {
                   aria-label="Pesquisar extrações de Pix"
                   className="w-full sm:max-w-sm"
                 />
-                {busca.trim() && (
+                <Seletor
+                  value={situacao}
+                  onChange={(e) => {
+                    setSituacao(e.target.value as FiltroSituacao);
+                    setPagina(1);
+                  }}
+                  aria-label="Filtrar por situação"
+                  className="w-auto"
+                >
+                  <option value="todas">Situação: todas</option>
+                  <option value="encontrado">Com chave encontrada</option>
+                  <option value="problema">Com erro / não encontrada</option>
+                  <option value="pendente">Em andamento</option>
+                </Seletor>
+                <Seletor
+                  value={vinculo}
+                  onChange={(e) => {
+                    setVinculo(e.target.value as typeof vinculo);
+                    setPagina(1);
+                  }}
+                  aria-label="Filtrar por vínculo com cliente"
+                  className="w-auto"
+                >
+                  <option value="todos">Cliente: todos</option>
+                  <option value="vinculado">Com cliente</option>
+                  <option value="sem_cliente">Sem cliente</option>
+                </Seletor>
+                <Campo
+                  type="date"
+                  value={dataDe}
+                  onChange={(e) => {
+                    setDataDe(e.target.value);
+                    setPagina(1);
+                  }}
+                  aria-label="Extraídas a partir de"
+                  title="Extraídas a partir de"
+                  className="w-auto"
+                />
+                <Campo
+                  type="date"
+                  value={dataAte}
+                  onChange={(e) => {
+                    setDataAte(e.target.value);
+                    setPagina(1);
+                  }}
+                  aria-label="Extraídas até"
+                  title="Extraídas até"
+                  className="w-auto"
+                />
+                {filtrosAtivos && (
+                  <Botao
+                    variante="ghost"
+                    tamanho="sm"
+                    onClick={() => {
+                      setSituacao("todas");
+                      setVinculo("todos");
+                      setDataDe("");
+                      setDataAte("");
+                      setPagina(1);
+                    }}
+                  >
+                    Limpar filtros
+                  </Botao>
+                )}
+                {(busca.trim() || filtrosAtivos) && (
                   <span className="text-subtle text-xs">
                     {extracoesFiltradas.length} de {extracoes.length}
                   </span>
                 )}
+                <div className="ml-auto">
+                  <LimparExtracoesPix />
+                </div>
               </div>
             )}
             {erroLista ? (
@@ -773,7 +868,7 @@ function Pix() {
               <EmptyState
                 icon={KeyRound}
                 titulo="Nenhum Pix encontrado."
-                descricao="Nada bate com a pesquisa. Tente outro nome, arquivo ou pedaço da chave."
+                descricao="Nada bate com a pesquisa ou com os filtros. Tente outro nome, arquivo ou pedaço da chave, ou limpe os filtros."
               />
             ) : (
               <TabelaWrap compact>

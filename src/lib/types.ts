@@ -117,6 +117,10 @@ export type Cliente = {
    *  pro dia local antes de comparar/filtrar (não usar `paraIso`, que é só
    *  pra colunas `date` puras como `vencimento`/`data_prazo`). */
   created_at?: string | null;
+  /** [2026-10] Data/hora da última IMPORTAÇÃO deste cliente (migration-29).
+   *  Reimportar quem já existia não muda `created_at`, só este campo -- o
+   *  filtro "Importado de/até" usa `importado_em ?? created_at`. */
+  importado_em?: string | null;
 };
 
 /** As duas campanhas que rodam em paralelo no sistema (ver CONTEXTO.md,
@@ -360,7 +364,12 @@ export type CriterioExclusao =
   | "pdfs_por_tipo_fatura"
   | "pdfs_sem_safra"
   | "clientes_por_tag"
+  | "clientes_sem_fatura"
+  | "pix_extracoes"
   | "historico_mensagens";
+
+/** Modos de limpeza em lote das extrações de Pix (backend lib/pixLimpeza.js). */
+export type ModoLimpezaPix = "todas" | "sem_cliente" | "com_erro" | "antes_de";
 
 /** Filtro aceito por cada critério -- os campos variam conforme `criterio`. */
 export type FiltroExclusao = {
@@ -369,6 +378,11 @@ export type FiltroExclusao = {
   tag_nome?: string;
   campanha?: Campanha | "todas";
   dias_mais_antigo_que?: number;
+  /** clientes_sem_fatura: exige também valor vazio (padrão true). */
+  sem_valor?: boolean;
+  /** pix_extracoes */
+  modo?: ModoLimpezaPix;
+  antes_de?: string;
 };
 
 /** Um item de GET /supervisor/exclusao/resumo -- "o que mais está ocupando

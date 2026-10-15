@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/api";
-import type { CriterioExclusao, FiltroExclusao, TipoFatura } from "@/lib/types";
+import type { CriterioExclusao, FiltroExclusao, ModoLimpezaPix, TipoFatura } from "@/lib/types";
 
 // [2026-09] PAINEL DE EXCLUSÃO -- ver
 // backend/docs/superpowers/specs/2026-09-10-painel-exclusao-design.md.
@@ -28,7 +28,16 @@ const ROTULOS_CRITERIO: Record<CriterioExclusao, string> = {
   pdfs_por_tipo_fatura: "PDFs por FPD/SPD",
   pdfs_sem_safra: "PDFs sem safra (cadastros antigos)",
   clientes_por_tag: "Clientes por tag",
+  clientes_sem_fatura: "Clientes sem fatura (sobras)",
+  pix_extracoes: "Extrações de Pix",
   historico_mensagens: "Histórico de mensagens",
+};
+
+const ROTULOS_MODO_PIX: Record<ModoLimpezaPix, string> = {
+  todas: "Todas as extrações",
+  sem_cliente: "Sem cliente vinculado",
+  com_erro: "Com erro / não encontrado",
+  antes_de: "Anteriores a",
 };
 
 function rotuloFiltro(criterio: CriterioExclusao, filtro: FiltroExclusao): string {
@@ -41,6 +50,10 @@ function rotuloFiltro(criterio: CriterioExclusao, filtro: FiltroExclusao): strin
       return "Cadastros de antes do conceito de safra existir";
     case "clientes_por_tag":
       return `Tag "${filtro.tag_nome}"`;
+    case "clientes_sem_fatura":
+      return filtro.sem_valor === false ? "Sem PDF (mesmo com valor)" : "Sem PDF e sem valor";
+    case "pix_extracoes":
+      return ROTULOS_MODO_PIX[filtro.modo ?? "todas"] + (filtro.modo === "antes_de" && filtro.antes_de ? ` ${filtro.antes_de}` : "");
     case "historico_mensagens": {
       const campanha = filtro.campanha === "chip_ativacao" ? "Ativação Chip" : filtro.campanha === "cobranca" ? "Cobrança" : "Todas as campanhas";
       const idade = filtro.dias_mais_antigo_que ? `, mais antigas que ${filtro.dias_mais_antigo_que} dias` : "";
@@ -170,6 +183,8 @@ const CAMPOS_POR_CRITERIO: CriterioExclusao[] = [
   "pdfs_por_tipo_fatura",
   "pdfs_sem_safra",
   "clientes_por_tag",
+  "clientes_sem_fatura",
+  "pix_extracoes",
   "historico_mensagens",
 ];
 
@@ -180,6 +195,9 @@ function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExc
   const [tagNome, setTagNome] = useState("");
   const [campanha, setCampanha] = useState<"cobranca" | "chip_ativacao" | "todas">("cobranca");
   const [dias, setDias] = useState("0");
+  const [semValor, setSemValor] = useState(true);
+  const [modoPix, setModoPix] = useState<ModoLimpezaPix>("sem_cliente");
+  const [antesDe, setAntesDe] = useState("");
 
   function solicitar() {
     if (criterio === "pdfs_por_safra") {
@@ -192,6 +210,11 @@ function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExc
     } else if (criterio === "clientes_por_tag") {
       if (!tagNome.trim()) return;
       onSolicitar(criterio, { tag_nome: tagNome.trim() });
+    } else if (criterio === "clientes_sem_fatura") {
+      onSolicitar(criterio, { sem_valor: semValor });
+    } else if (criterio === "pix_extracoes") {
+      if (modoPix === "antes_de" && !antesDe) return;
+      onSolicitar(criterio, modoPix === "antes_de" ? { modo: modoPix, antes_de: antesDe } : { modo: modoPix });
     } else {
       onSolicitar(criterio, { campanha, dias_mais_antigo_que: Number(dias) || 0 });
     }
@@ -243,6 +266,43 @@ function FormularioManual({ onSolicitar }: { onSolicitar: (criterio: CriterioExc
             placeholder="Pago"
             className="border-border bg-surface focus-ring w-full rounded-md border px-3 py-2 text-sm"
           />
+        </div>
+      )}
+
+      {criterio === "clientes_sem_fatura" && (
+        <label className="flex items-start gap-2 text-xs">
+          <input type="checkbox" checked={semValor} onChange={(e) => setSemValor(e.target.checked)} className="mt-0.5" />
+          <span>
+            Só quem também está sem valor (as "sobras"). Desmarque pra apagar todo cliente sem PDF, mesmo com valor
+            cadastrado. Só carteira de cobrança.
+          </span>
+        </label>
+      )}
+
+      {criterio === "pix_extracoes" && (
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <Rotulo htmlFor="exclusao-modo-pix">Quais extrações</Rotulo>
+            <Seletor id="exclusao-modo-pix" value={modoPix} onChange={(e) => setModoPix(e.target.value as ModoLimpezaPix)}>
+              {(Object.keys(ROTULOS_MODO_PIX) as ModoLimpezaPix[]).map((m) => (
+                <option key={m} value={m}>
+                  {ROTULOS_MODO_PIX[m]}
+                </option>
+              ))}
+            </Seletor>
+          </div>
+          {modoPix === "antes_de" && (
+            <div className="flex-1">
+              <Rotulo htmlFor="exclusao-antes-de">Antes do dia</Rotulo>
+              <input
+                id="exclusao-antes-de"
+                type="date"
+                value={antesDe}
+                onChange={(e) => setAntesDe(e.target.value)}
+                className="border-border bg-surface focus-ring w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </div>
+          )}
         </div>
       )}
 

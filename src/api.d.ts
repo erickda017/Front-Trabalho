@@ -13,6 +13,7 @@ declare module "@/api" {
     ItemResumoExclusao,
     Mensagem,
     PixExtracao,
+    ModoLimpezaPix,
     PixExtracaoStatus,
     PreviewExclusao,
     ResumoQualidade,
@@ -173,7 +174,15 @@ declare module "@/api" {
       listar: (params?: {
         busca?: string | undefined;
         status?: PixExtracaoStatus | "todos" | undefined;
+        per_page?: number | undefined;
       } | undefined) => Promise<PixExtracao[]>;
+      limpar: {
+        preview: (filtro: { modo: ModoLimpezaPix; antes_de?: string | undefined }) => Promise<PreviewExclusao>;
+        executar: (
+          filtro: { modo: ModoLimpezaPix; antes_de?: string | undefined },
+          confirmacao: string,
+        ) => Promise<{ apagadas: number }>;
+      };
       aplicarNoCliente: (id: string, clienteId: string) => Promise<{ ok: boolean }>;
       exportar: (
         formato: "csv" | "xlsx",

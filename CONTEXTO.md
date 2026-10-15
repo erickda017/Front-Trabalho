@@ -757,6 +757,23 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 ## Bugs corrigidos (histórico)
 
+- **[2026-10] "APAGAR" do Painel de Exclusão deixava a carteira pela metade + filtros que não funcionavam**
+  (relatado: depois de apagar tudo pelo supervisor ainda sobravam vários clientes só com o nome, Pix
+  com mais de mil linhas sem como filtrar, e o filtro por data de importação não funcionava).
+  Três causas: (1) `lib/exclusaoCriterios.js` lia com `.limit(50000)`, mas o PostgREST corta toda
+  resposta em 1000 linhas (Max rows) e o `.limit()` não passa por cima -- cada "APAGAR" processava no
+  máximo 1000 itens e dizia que tinha terminado; agora toda leitura pagina com `buscarTodos` e todo
+  `.in()` grande é fatiado em lotes de 200. (2) Os critérios de PDF preservam o cliente de propósito,
+  então sobravam clientes sem PDF e sem valor, e não existia critério pra eles -- novos critérios
+  `clientes_sem_fatura` (só campanha cobrança; `sem_valor` padrão true) e `pix_extracoes` (todas /
+  sem cliente / com erro / antes de uma data, via `lib/pixLimpeza.js`), ambos no resumo do painel.
+  (3) Importar é upsert por telefone: reimportar quem já existia não muda `created_at`, então o filtro
+  nunca achava o reimportado -- nova coluna `clientes.importado_em` (`migration-29`, atualizada a cada
+  `POST /clientes/importar-lista`; se a migration não rodou, o upsert regrava sem a coluna) e o filtro
+  da tela Clientes virou "Importado de/até" (usa `importado_em ?? created_at`). Tela Clientes ganhou
+  também o filtro "Sobras: sem fatura e sem valor". Tela Extrator de PIX: lista agora carrega até 5000
+  (antes cortava em 1000), filtros de situação / cliente / data e botão "Limpar lista"
+  (`POST /pix/extracoes/limpar/preview` e `/limpar`, escopo do operador, exige "APAGAR").
 - **[2026-10] Redesign, etapa final (telas restantes)**: marca em componente único
   (`components/shared/Marca.tsx`, usado na sidebar e no Login); `SectionCard` não mostra mais o
   "eyebrow" em linha própria (vira complemento discreto ao lado do título); Ativação Chip passou a

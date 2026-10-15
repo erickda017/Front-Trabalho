@@ -149,7 +149,7 @@ function formatarData(data: string | null): string {
   return br || data;
 }
 
-type FiltroPix = "todos" | "com_pix" | "sem_pix" | "com_fatura" | "sem_fatura";
+type FiltroPix = "todos" | "com_pix" | "sem_pix" | "com_fatura" | "sem_fatura" | "sobras";
 type FiltroDisparo = "todos" | "recebeu" | "nao_recebeu";
 
 // [layout] Vieram da ex-tela /faturas -- "nenhuma" mantém a ordem padrão
@@ -975,6 +975,7 @@ function Clientes() {
       if (filtroPix === "sem_pix" && c.pix_code) return false;
       if (filtroPix === "com_fatura" && !c.pdf_url) return false;
       if (filtroPix === "sem_fatura" && c.pdf_url) return false;
+      if (filtroPix === "sobras" && (c.pdf_url || valorNumero(c.valor) !== null)) return false;
       if (filtroDisparo === "recebeu" && !(c.disparos_recebidos && c.disparos_recebidos > 0)) return false;
       if (filtroDisparo === "nao_recebeu" && (c.disparos_recebidos ?? 0) > 0) return false;
       if (filtroSafra !== "todas" && c.safra !== filtroSafra) return false;
@@ -995,7 +996,7 @@ function Clientes() {
       // (não `paraIso`) porque `created_at` tem hora+fuso (timestamptz),
       // diferente de `vencimento` (date puro) -- ver comentário em dataBr.ts.
       if (cadastradoDe || cadastradoAte) {
-        const cadastroIso = paraIsoDataHora(c.created_at);
+        const cadastroIso = paraIsoDataHora(c.importado_em ?? c.created_at);
         if (cadastradoDe && cadastroIso && cadastroIso < cadastradoDe) return false;
         if (cadastradoAte && cadastroIso && cadastroIso > cadastradoAte) return false;
       }
@@ -1123,6 +1124,7 @@ function Clientes() {
     sem_pix: clientesAgrupados.filter((c) => !c.pix_code).length,
     com_fatura: clientesAgrupados.filter((c) => c.pdf_url).length,
     sem_fatura: clientesAgrupados.filter((c) => !c.pdf_url).length,
+    sobras: clientesAgrupados.filter((c) => !c.pdf_url && valorNumero(c.valor) === null).length,
   };
 
   const contagensDisparo = {
@@ -1245,6 +1247,7 @@ function Clientes() {
             <option value="sem_pix">Sem PIX ({contagens.sem_pix})</option>
             <option value="com_fatura">Com fatura ({contagens.com_fatura})</option>
             <option value="sem_fatura">Sem fatura ({contagens.sem_fatura})</option>
+            <option value="sobras">Sobras: sem fatura e sem valor ({contagens.sobras})</option>
           </Seletor>
           {/* [2026-08] "Quantos disparos cada cliente recebeu" -- calculado a
               partir de disparos_recebidos (ver backend GET /clientes). */}
@@ -1309,7 +1312,7 @@ function Clientes() {
               />
             </div>
             <div>
-              <Rotulo>Adicionado de</Rotulo>
+              <Rotulo>Importado de</Rotulo>
               <Campo
                 type="date"
                 value={cadastradoDe}

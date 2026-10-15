@@ -181,6 +181,14 @@ export const api = {
   },
   pix: {
     listar: (params) => request(`/pix/extracoes${qs(params)}`),
+    // [2026-10] Limpeza em lote da lista do operador -- `preview` nunca apaga;
+    // `executar` exige confirmacao:"APAGAR" (validado no backend também).
+    limpar: {
+      preview: (filtro) =>
+        request('/pix/extracoes/limpar/preview', { method: 'POST', body: JSON.stringify(filtro) }),
+      executar: (filtro, confirmacao) =>
+        request('/pix/extracoes/limpar', { method: 'POST', body: JSON.stringify({ ...filtro, confirmacao }) }),
+    },
     aplicarNoCliente: (id, clienteId) =>
       request(`/pix/extracoes/${id}/aplicar`, {
         method: 'POST',
