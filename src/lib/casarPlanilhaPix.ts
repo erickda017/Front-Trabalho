@@ -108,9 +108,11 @@ const COL_OS = [
   /^num(ero)? (da )?os$/,
   /^cod(igo)? os$/,
   /ordem( de)? servico/,
+  /^n[rm] contrato$/,
+  /^(num(ero)? )?contrato$/,
 ];
 const COL_NOME = [/^cliente$/, /^nome$/, /^nome (do )?cliente$/, /^titular$/, /razao social/];
-const COL_VENC = [/^vencimento$/, /^venc$/, /^dt venc/, /^data (de )?venc/, /^vencto$/];
+const COL_VENC = [/^vencimento$/, /^venc$/, /^dt venc/, /^data (de )?venc/, /^vencto$/, /^dat(a)? (de )?venc/];
 const COL_PIX = [/^cod pix$/, /^pix$/, /codigo.*pix/, /chave.*pix/, /pix.*copia/];
 // Cabeçalho nem sempre está na 1ª linha (planilha com título em cima).
 const LINHAS_PROCURA_CABECALHO = 15;

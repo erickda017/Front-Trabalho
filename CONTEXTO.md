@@ -721,6 +721,13 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   cabeçalho procurado nas 15 primeiras linhas; apelidos (`Nº OS`, `Nome do Cliente`,
   `Dt. Venc.`...); aba sem as 3 colunas (ex. `PROC`) é listada como ignorada; não
   sobrescreve célula PIX preenchida; cria `COD PIX` se faltar; preserva formatos.
+- **[2026-11] Cabeçalhos do formato novo da planilha mãe** (`NR_CONTRATO`, `DT_INSTALACAO`,
+  `DAT_VENCIMENTO`, `CPF`, `NOME DO CLIENTE`, `Valor`, `STATUS ENNY`, `DAT_PRAZO`, `PAGAR`,
+  `BKO FPD`): `NR_CONTRATO`/`NM_CONTRATO`/`CONTRATO` agora valem como **OS** e
+  `DAT_VENCIMENTO`/`DATA VENC…` como **VENCIMENTO** (`COL_OS`/`COL_VENC` em
+  `casarPlanilhaPix.ts` **e** no `PixPlanilha.gs` — manter os dois iguais; o script precisa
+  ser reimplantado no Google). `DAT_PRAZO` (prazo ≠ vencimento) continua **não** sendo usado
+  no casamento: o Pix é casado pelo vencimento do PDF. Teste: `casarPlanilhaPix.check.ts`.
 - **Decisão:** não casa mais só por nome — OS sozinha ou nome sozinho trazem Pix de outro
   mês/homônimo (cobrança errada). Na dúvida a célula fica vazia ("divergentes").
 - Upload solto (`/faturas/avulsas`) **não** passa pelo Worker, então não alimenta essa

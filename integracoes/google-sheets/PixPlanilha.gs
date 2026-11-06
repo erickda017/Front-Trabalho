@@ -27,9 +27,9 @@
 var LINHAS_PROCURA_CABECALHO = 15;
 var NOME_ABA_LOG = 'Log Pix';
 
-var COL_OS = [/^os$/, /^o s$/, /^n os$/, /^num(ero)? (da )?os$/, /^cod(igo)? os$/, /ordem( de)? servico/];
+var COL_OS = [/^os$/, /^o s$/, /^n os$/, /^num(ero)? (da )?os$/, /^cod(igo)? os$/, /ordem( de)? servico/, /^n[rm] contrato$/, /^(num(ero)? )?contrato$/];
 var COL_NOME = [/^cliente$/, /^nome$/, /^nome (do )?cliente$/, /^titular$/, /razao social/];
-var COL_VENC = [/^vencimento$/, /^venc$/, /^dt venc/, /^data (de )?venc/, /^vencto$/];
+var COL_VENC = [/^vencimento$/, /^venc$/, /^dt venc/, /^data (de )?venc/, /^vencto$/, /^dat(a)? (de )?venc/];
 var COL_PIX = [/^cod pix$/, /^pix$/, /codigo.*pix/, /chave.*pix/, /pix.*copia/];
 
 function normalizar(v) {

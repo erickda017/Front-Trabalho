@@ -196,4 +196,31 @@ const r5 = preencherPixNoWorkbook(wb5, [
 assert.equal(ws5["E3"]?.v, "00020101PIX-JOSE");
 assert.equal(ws5["F1"], undefined, "não cria uma 3ª coluna");
 assert.equal(r5.jaTinhamPix, 1);
+// Cabeçalhos do formato novo da planilha mãe: NR_CONTRATO = OS, DAT_VENCIMENTO =
+// VENCIMENTO, NOME DO CLIENTE; DAT_PRAZO (prazo != vencimento) é ignorada no casamento.
+const wb6 = XLSX.utils.book_new();
+const ws6 = XLSX.utils.aoa_to_sheet([
+  ["NR_CONTRATO", "DT_INSTALACAO", "DAT_VENCIMENTO", "CPF", "NOME DO CLIENTE", "Valor ", "STATUS ENNY", "DAT_PRAZO", "", "PAGAR", "BKO FPD"],
+  ["22067040", "01/07/2026", "10/08/2026", "000", "MARIA SOUZA", 100, "ok", "20/08/2026", "", "", ""],
+  ["999", "01/07/2026", "10/08/2026", "000", "JOSE LIMA", 100, "ok", "10/08/2026", "", "", ""],
+]);
+XLSX.utils.book_append_sheet(wb6, ws6, "Novo formato");
+const r6 = preencherPixNoWorkbook(wb6, [
+  { arquivo: "m.pdf", nome: "MARIA SOUZA", codigo: "010/022067040", vencimento: "10/08/2026", pix_code: "00020101PIX-MARIA" },
+]);
+assert.deepEqual(r6.abas, ["Novo formato"]);
+assert.equal(r6.preenchidas, 1);
+assert.equal(ws6["L2"]?.v, "00020101PIX-MARIA", "COD PIX criada depois da última coluna");
+assert.equal(ws6["L1"]?.v, "COD PIX");
+assert.equal(ws6["L3"]?.v, undefined);
+// NM_CONTRATO também vale como OS.
+const wb7 = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb7, XLSX.utils.aoa_to_sheet([
+  ["NM_CONTRATO", "DAT_VENCIMENTO", "NOME DO CLIENTE"],
+  ["777", "10/08/2026", "JOSE LIMA"],
+]), "NM");
+const r7 = preencherPixNoWorkbook(wb7, [
+  { arquivo: "j.pdf", nome: "JOSE LIMA", codigo: "777", vencimento: "10/08/2026", pix_code: "00020101PIX-JOSE" },
+]);
+assert.equal(r7.preenchidas, 1);
 console.log("casarPlanilhaPix: ok");
