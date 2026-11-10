@@ -762,6 +762,18 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
   tipo antes de gravar — evita CORS no bucket e um fluxo de "confirmar upload" em cada
   tela. Reavaliar se o tráfego no Render virar gargalo.
 
+### Integração EnnyChat (recebimento + extensão) — 2026-11
+
+- Spec: `HANDOFF_CLAUDE_CODE_ENNYCHAT.md` (raiz) e contrato `ENNYCHAT_CONTRATO.md`. Extensão Chrome MV3 em `Extensao-EnnyChat/` (projeto independente: `npm test`, `npm run build`, `npm run zip`).
+- Fluxo: **Tratar** → extensão confere `data.status_operador` na lista de aceitos do site → `POST /api/integracoes/ennychat/faturas/sync` cria/acha o cliente (atribuído a `req.user.id`; `data.responsavel` ignorado). Ao salvar valor + anexar PDF → extensão relê o detalhe, baixa o PDF pela URL exata e envia a `.../faturas/:id/anexo`.
+- Backend: `routes/ennychat.routes.js`, `lib/ennychat/*` (puro, testado em `ennychat.test.js`), `services/ennychatPdf.js` (texto do PDF → Worker de OCR; Pix pelo QR do extrator do servidor), `migration-30-ennychat.sql` (rodar no Supabase: `clientes.email/ennychat_fatura_id/contatos_alternativos/ennychat_status`, `ennychat_anexos`, `ennychat_config`).
+- **Vínculo estrito** (`lib/ennychat/vinculo.js`): OS (trecho depois da `/` do "Código" do boleto, zeros preservados) + nome (igualdade após normalizar caixa/acento) + vencimento (mesma data civil) + Pix válido (CRC). Qualquer falha ⇒ `pendente_revisao` com motivo; PDF pendente **não é guardado** (reabrir Tratar reprocessa). Idempotência por `(usuario, fatura, anexo_id)` e por SHA-256.
+- Cliente existente: busca por `ennychat_fatura_id` → `os_numero` → telefone (variantes 9º dígito); ambíguo = revisão; só preenche campo vazio, divergência volta em `conflitos` (nunca sobrescreve).
+- "Gestão" = `perfis.role = 'supervisor'` (não existem equipe/gestão no repo); `ennychat_config` é global. **Lista de status aceitos vazia = nada entra.**
+- **[VALIDAR]** relação `venda_os` × "Código" do PDF; significado de `status_pagamento/encerrado`; caminho completo de `/anexos`; host de download; catálogo de status. Ver `Extensao-EnnyChat/PENDENCIAS.md`.
+- **Ainda não feito**: aba `/disparo/email` (Brevo, lotes, webhook), tela de Status aceitos, validação ao vivo no Chrome. Testes de rota com Supabase falso não existem (só a lógica pura e a extração de PDF sintético foram exercitadas).
+- Decisão: sem vínculo por aproximação (a planilha do supervisor usa regra mais frouxa — `casarPlanilhaPix.ts` — de propósito não reaproveitada).
+
 ## Bugs corrigidos (histórico)
 
 - **[2026-10] Importar lista só adiciona o que é novo (sem duplicar nem regravar)**: `POST
