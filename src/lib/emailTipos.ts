@@ -72,3 +72,24 @@ export type ItemLoteEmail = {
   aceito_em: string | null;
   atualizado_em: string;
 };
+
+export type ResumoEnviosEmail = {
+  dias: number;
+  enviados: number; // aceitos pela Brevo
+  entregues: number;
+  abertos: number;
+  clicaram: number;
+  devolvidos: number;
+  falhas: number;
+  taxa_abertura: number | null; // % de abertos entre os entregues
+  recentes: {
+    nome: string | null;
+    email: string;
+    status: StatusEnvioEmail;
+    aceito_em: string;
+    abriu: boolean;
+    aberturas: number;
+    primeira_abertura_em: string | null;
+    clicou: boolean;
+  }[];
+};

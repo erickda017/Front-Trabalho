@@ -2,12 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
+  Eye,
   FileText,
   Loader2,
   Mail,
+  MailCheck,
+  MousePointerClick,
   RefreshCcw,
   Send,
   Settings2,
+  TriangleAlert,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -548,6 +552,7 @@ function DisparoEmail() {
           )}
         </SectionCard>
 
+        <ResumoEnvios ativo={emAndamento || aguardandoEntrega} />
         <Lotes lotes={lotesQ.data?.itens ?? []} carregando={lotesQ.isLoading} />
         <ConfiguracoesEmail />
       </div>
@@ -602,6 +607,120 @@ function DisparoEmail() {
         </AlertDialogContent>
       </AlertDialog>
     </AppShell>
+  );
+}
+
+function ResumoEnvios({ ativo }: { ativo: boolean }) {
+  const [dias, setDias] = useState(30);
+  const q = useQuery({
+    queryKey: ["email-resumo", dias],
+    queryFn: () => api.disparoEmail.resumo(dias),
+    staleTime: 15_000,
+    refetchInterval: ativo ? 20_000 : false,
+  });
+  const r = q.data;
+  return (
+    <SectionCard
+      titulo="Resumo dos envios"
+      descricao="Quem recebeu, abriu e clicou. Abertura e clique só aparecem se esses eventos estiverem marcados no webhook da Brevo (e o Apple Mail pode contar abertura sem o cliente ter lido)."
+      acoes={
+        <FiltroChips
+          valor={String(dias)}
+          onChange={(v) => setDias(Number(v))}
+          opcoes={[
+            { valor: "7", label: "7 dias" },
+            { valor: "30", label: "30 dias" },
+            { valor: "90", label: "90 dias" },
+          ]}
+        />
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <MetricCard
+          label="Enviados"
+          valor={r?.enviados ?? null}
+          carregando={q.isLoading}
+          icon={Send}
+        />
+        <MetricCard
+          label="Receberam"
+          valor={r?.entregues ?? null}
+          carregando={q.isLoading}
+          icon={MailCheck}
+        />
+        <MetricCard
+          label="Abriram"
+          valor={
+            r
+              ? r.taxa_abertura === null
+                ? r.abertos
+                : `${r.abertos} (${r.taxa_abertura}%)`
+              : null
+          }
+          carregando={q.isLoading}
+          icon={Eye}
+          destaque
+        />
+        <MetricCard
+          label="Clicaram"
+          valor={r?.clicaram ?? null}
+          carregando={q.isLoading}
+          icon={MousePointerClick}
+        />
+        <MetricCard
+          label="Devolvidos"
+          valor={r?.devolvidos ?? null}
+          carregando={q.isLoading}
+          icon={TriangleAlert}
+        />
+        <MetricCard
+          label="Falhas"
+          valor={r?.falhas ?? null}
+          carregando={q.isLoading}
+          icon={Ban}
+        />
+      </div>
+      {q.error && (
+        <Aviso tone="danger" className="mt-3">
+          {(q.error as Error).message}
+        </Aviso>
+      )}
+      {r && r.recentes.length > 0 && (
+        <ul className="divide-border mt-4 divide-y text-xs">
+          {r.recentes.map((e, i) => (
+            <li
+              key={`${e.email}-${i}`}
+              className="flex flex-wrap items-center gap-2 py-2"
+            >
+              <span className="font-medium">{e.nome ?? "—"}</span>
+              <span className="text-subtle">{e.email}</span>
+              <StatusPill tone={TOM_STATUS[e.status]}>
+                {ROTULO_STATUS[e.status]}
+              </StatusPill>
+              {e.abriu ? (
+                <StatusPill tone="success">
+                  Abriu{e.aberturas > 1 ? ` ${e.aberturas}x` : ""}
+                  {e.primeira_abertura_em
+                    ? ` · ${new Date(e.primeira_abertura_em).toLocaleString("pt-BR")}`
+                    : ""}
+                </StatusPill>
+              ) : (
+                <StatusPill tone="muted">Não abriu</StatusPill>
+              )}
+              {e.clicou && <StatusPill tone="info">Clicou</StatusPill>}
+              <span className="text-subtle ml-auto">
+                {new Date(e.aceito_em).toLocaleString("pt-BR")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {r && r.enviados === 0 && (
+        <p className="text-subtle mt-3 text-xs">
+          Nenhum envio nos últimos {dias} dias.
+        </p>
+      )}
+    </SectionCard>
   );
 }
 

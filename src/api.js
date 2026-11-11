@@ -443,6 +443,7 @@ export const api = {
     lotes: () => request('/disparo-email/lotes'),
     lote: (id) => request(`/disparo-email/lotes/${id}`),
     cancelarLote: (id) => request(`/disparo-email/lotes/${id}/cancelar`, { method: 'POST' }),
+    resumo: (dias) => request(`/disparo-email/resumo${qs({ dias })}`),
   },
   ennychat: {
     salvarStatusAceitos: (statusAceitos) =>

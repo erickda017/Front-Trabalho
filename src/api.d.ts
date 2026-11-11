@@ -28,7 +28,7 @@ declare module "@/api" {
     WhatsappConexao,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
-  import type { ItemLoteEmail, LinhaFaturaEmail, PainelEmail, ResumoLoteEmail } from "@/lib/emailTipos";
+  import type { ItemLoteEmail, LinhaFaturaEmail, PainelEmail, ResumoEnviosEmail, ResumoLoteEmail } from "@/lib/emailTipos";
 
   type Envio = {
     id: string;
@@ -476,6 +476,7 @@ declare module "@/api" {
       lotes: () => Promise<{ itens: ResumoLoteEmail[] }>;
       lote: (id: string) => Promise<{ lote: ResumoLoteEmail; itens: ItemLoteEmail[] }>;
       cancelarLote: (id: string) => Promise<{ ok: boolean }>;
+      resumo: (dias?: number | undefined) => Promise<ResumoEnviosEmail>;
     };
     ennychat: {
       salvarStatusAceitos: (statusAceitos: string[]) => Promise<{

@@ -778,6 +778,15 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 
 - A Vercel (plano Hobby) só publica commits cujo **autor** é o Claude (`Claude <noreply@anthropic.com>`); commits com o autor do git local (`sdk.bettin@gmail.com`) ficam bloqueados e o site publicado não atualiza. Quem for commitar mudança do front deve usar `git -c user.name=Claude -c user.email=noreply@anthropic.com commit`. O backend (Render) não tem essa restrição.
 
+### EnnyChat → sistema: dados completos, Pix na aba Extrator e upload original — 2026-11-11
+
+- A extensão passa a trazer o que o site recebia "cru" (lista colada): **contrato** (= OS do EnnyChat, gravado em `numero_contrato` e `os_numero`), **tipo da fatura** (posição 1 = FPD, 2 = SPD), **prazo** (`prazo_data` → `data_prazo`, define a safra), valor, nome, telefone e e-mail. Busca do cliente existente: fatura EnnyChat → OS → contrato → telefone. Preenche só campos vazios (nunca sobrescreve); `importado_em` marcado.
+- Boleto vinculado também grava **uma linha em `pix_extracoes`** (aparece na aba **Extrator de PIX** e alimenta a planilha do supervisor): arquivo `<cliente>.pdf`, código = "Código" do boleto, nome do PDF, vencimento, linha digitável quando lida. Idempotente por `pix_code`.
+- **Upload original tem prioridade**: a extensão captura o PDF que o operador SOBE no EnnyChat (antes da compressão do EnnyChat) e envia com `origem=upload`; o backend sempre reavalia uma pendência quando chega o original. Ao abrir Tratar com PDF já salvo, baixa e envia como antes (`origem=download`).
+- **Economia de requisições**: o `POST /faturas/sync` devolve `ultimo_anexo_id`, `pdf`, `pdf_motivo`, `pdf_atualizado_em`; a extensão só baixa/envia o PDF se aquele anexo ainda não foi vinculado (pendência recente não repete: 1 min para `extracao_falhou`, 10 min para o resto).
+- **Extensão "Voxcel Assistente"**: endereços embutidos (`src/config.ts`), sem configuração. **Código de acesso** (hash no pacote, 5 erros = bloqueio de 15 min) ativa a extensão permanentemente naquele navegador; sem ativar não lê, não envia, não mostra nada. Bolinhas: verde some em segundos, preta = processando, âmbar/vermelha ficam mais tempo; "Fatura errada: <cliente>" continua como aviso maior. Imagens de capa em `Extensao-EnnyChat/store/`.
+- E-mail: texto muda para cliente em atraso; painel "Resumo dos envios" (enviados, receberam, abriram, clicaram, devolvidos) alimentado pelos eventos opened/click do webhook (**migration-32**; marcar Opened e Click no webhook da Brevo).
+
 ### Disparo / E-mail (Brevo) — 2026-11
 
 - Tela `/disparo/email` (`src/routes/disparo.email.tsx`, menu "Disparos") e backend `Backend-Trabalho/src/routes/disparoEmail.routes.js` (`/api/disparo-email/*`), worker `services/emailDispatch.js`, regras puras em `lib/email/*` (testadas), `migration-31-disparo-email.sql` (rodar no Supabase), webhook público `POST /api/webhooks/brevo`.
