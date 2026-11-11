@@ -35,8 +35,6 @@ export type PainelEmail = {
   };
   nome_empresa: string;
   limite_por_lote: number;
-  janela_dias: number;
-  status_max_idade_horas: number;
   saldo: {
     limite_diario: number;
     usados: number;

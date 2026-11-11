@@ -304,11 +304,7 @@ function DisparoEmail() {
           />
         </div>
         {painel && (
-          <p className="text-subtle -mt-2 text-xs">
-            {painel.saldo.aviso} Envia só faturas que vencem em 1 a{" "}
-            {painel.janela_dias} dias, com status do EnnyChat verificado nas
-            últimas {painel.status_max_idade_horas}h.
-          </p>
+          <p className="text-subtle -mt-2 text-xs">{painel.saldo.aviso}</p>
         )}
 
         <SectionCard
