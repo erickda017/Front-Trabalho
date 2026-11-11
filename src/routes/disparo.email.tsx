@@ -275,7 +275,13 @@ function DisparoEmail() {
         {painelQ.error && (
           <Aviso tone="danger">{(painelQ.error as Error).message}</Aviso>
         )}
-        {painel && !disponivel && (
+        {painel && painel.disponibilidade.desativado && (
+          <Aviso tone="warning">
+            O envio de e-mail está <strong>desativado</strong> por enquanto. A
+            lista e as configurações continuam disponíveis para consulta.
+          </Aviso>
+        )}
+        {painel && !disponivel && !painel.disponibilidade.desativado && (
           <Aviso tone="warning">
             O envio de e-mail ainda não está disponível: falta configurar no
             ambiente do backend{" "}

@@ -29,6 +29,7 @@ export type StatusEnvioEmail =
 export type PainelEmail = {
   disponibilidade: {
     configurado: boolean;
+    desativado?: boolean;
     faltando: string[];
     nome_empresa_definido: boolean;
     webhook_configurado: boolean;
