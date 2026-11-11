@@ -774,6 +774,10 @@ fatura), a partir da lista crua de clientes (mesmo formato já reconhecido por
 - **Feito depois**: aba `/disparo/email` com tela de Status aceitos (ver seção abaixo); validação ao vivo no Chrome com clientes reais (OS, nome, vencimento e Pix). Testes de rota com Supabase falso não existem (só a lógica pura e a extração de PDF sintético foram exercitadas).
 - Decisão: sem vínculo por aproximação (a planilha do supervisor usa regra mais frouxa — `casarPlanilhaPix.ts` — de propósito não reaproveitada).
 
+### Deploy na Vercel — commits do Claude (2026-11)
+
+- A Vercel (plano Hobby) só publica commits cujo **autor** é o Claude (`Claude <noreply@anthropic.com>`); commits com o autor do git local (`sdk.bettin@gmail.com`) ficam bloqueados e o site publicado não atualiza. Quem for commitar mudança do front deve usar `git -c user.name=Claude -c user.email=noreply@anthropic.com commit`. O backend (Render) não tem essa restrição.
+
 ### Disparo / E-mail (Brevo) — 2026-11
 
 - Tela `/disparo/email` (`src/routes/disparo.email.tsx`, menu "Disparos") e backend `Backend-Trabalho/src/routes/disparoEmail.routes.js` (`/api/disparo-email/*`), worker `services/emailDispatch.js`, regras puras em `lib/email/*` (testadas), `migration-31-disparo-email.sql` (rodar no Supabase), webhook público `POST /api/webhooks/brevo`.
