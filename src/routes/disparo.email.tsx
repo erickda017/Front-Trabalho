@@ -48,6 +48,7 @@ import { api, abrirArquivoProtegido } from "@/api";
 import { formatoMoeda } from "@/lib/utils";
 import type {
   LinhaFaturaEmail,
+  PainelEmail,
   ResumoLoteEmail,
   StatusEnvioEmail,
 } from "@/lib/emailTipos";
@@ -99,6 +100,19 @@ const ORDEM_STATUS: StatusEnvioEmail[] = [
 
 type Filtro = "elegiveis" | "pendencias" | "todas";
 
+// Só vale ficar consultando devagar se o webhook da Brevo está ativo e o lote é recente (eventos de entrega chegam em horas).
+const JANELA_ENTREGA_MS = 48 * 3600 * 1000;
+function aguardaEntrega(lotes: ResumoLoteEmail[], webhook: boolean) {
+  return (
+    webhook &&
+    lotes.some(
+      (l) =>
+        l.contagens.aceito > 0 &&
+        Date.now() - Date.parse(l.criado_em) < JANELA_ENTREGA_MS,
+    )
+  );
+}
+
 function DisparoEmail() {
   const qc = useQueryClient();
   const [busca, setBusca] = useState("");
@@ -137,14 +151,24 @@ function DisparoEmail() {
     refetchInterval: (q) => {
       const lotes = q.state.data?.itens ?? [];
       if (lotes.some((l) => l.status === "em_andamento")) return 3000;
-      return lotes.some((l) => l.contagens.aceito > 0) ? 30_000 : false;
+      const cfg = qc.getQueryData<PainelEmail>(["email-config"]);
+      return aguardaEntrega(
+        lotes,
+        cfg?.disponibilidade.webhook_configurado === true,
+      )
+        ? 30_000
+        : false;
     },
   });
   const emAndamento = (lotesQ.data?.itens ?? []).some(
     (l) => l.status === "em_andamento",
   );
-  const aguardandoEntrega = (lotesQ.data?.itens ?? []).some(
-    (l) => l.contagens.aceito > 0,
+  const webhookAtivo =
+    qc.getQueryData<PainelEmail>(["email-config"])?.disponibilidade
+      .webhook_configurado === true;
+  const aguardandoEntrega = aguardaEntrega(
+    lotesQ.data?.itens ?? [],
+    webhookAtivo,
   );
   const intervalo = emAndamento ? 4000 : aguardandoEntrega ? 30_000 : false;
 
@@ -737,7 +761,11 @@ function Lotes({
     queryKey: ["email-lote", aberto],
     queryFn: () => api.disparoEmail.lote(aberto as string),
     enabled: Boolean(aberto),
-    refetchInterval: 4000,
+    refetchInterval: (q) =>
+      lotes.find((l) => l.id === aberto)?.status === "em_andamento" ||
+      q.state.data?.lote?.status === "em_andamento"
+        ? 4000
+        : false,
   });
   const cancelar = useMutation({
     mutationFn: (id: string) => api.disparoEmail.cancelarLote(id),
