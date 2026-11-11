@@ -26,6 +26,7 @@ import { Route as SupervisorRouteImport } from './routes/supervisor'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as AtivacaoChipIndexRouteImport } from './routes/ativacao-chip.index'
 import { Route as AtivacaoChipChatRouteImport } from './routes/ativacao-chip.chat'
+import { Route as DisparoEmailRouteImport } from './routes/disparo.email'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -112,6 +113,11 @@ const AtivacaoChipChatRoute = AtivacaoChipChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => AtivacaoChipRoute,
 } as any)
+const DisparoEmailRoute = DisparoEmailRouteImport.update({
+  id: '/disparo/email',
+  path: '/disparo/email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
   '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
+  '/disparo/email': typeof DisparoEmailRoute
   '/ativacao-chip/': typeof AtivacaoChipIndexRoute
 }
 export interface FileRoutesByTo {
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
   '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
+  '/disparo/email': typeof DisparoEmailRoute
   '/ativacao-chip': typeof AtivacaoChipIndexRoute
 }
 export interface FileRoutesById {
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/supervisor': typeof SupervisorRoute
   '/tags': typeof TagsRoute
   '/ativacao-chip/chat': typeof AtivacaoChipChatRoute
+  '/disparo/email': typeof DisparoEmailRoute
   '/ativacao-chip/': typeof AtivacaoChipIndexRoute
 }
 export interface FileRouteTypes {
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/supervisor'
     | '/tags'
     | '/ativacao-chip/chat'
+    | '/disparo/email'
     | '/ativacao-chip/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/supervisor'
     | '/tags'
     | '/ativacao-chip/chat'
+    | '/disparo/email'
     | '/ativacao-chip'
   id:
     | '__root__'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/supervisor'
     | '/tags'
     | '/ativacao-chip/chat'
+    | '/disparo/email'
     | '/ativacao-chip/'
   fileRoutesById: FileRoutesById
 }
@@ -245,6 +257,7 @@ export interface RootRouteChildren {
   SafrasRoute: typeof SafrasRoute
   SupervisorRoute: typeof SupervisorRoute
   TagsRoute: typeof TagsRoute
+  DisparoEmailRoute: typeof DisparoEmailRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -368,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtivacaoChipChatRouteImport
       parentRoute: typeof AtivacaoChipRoute
     }
+    '/disparo/email': {
+      id: '/disparo/email'
+      path: '/disparo/email'
+      fullPath: '/disparo/email'
+      preLoaderRoute: typeof DisparoEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -401,6 +421,7 @@ const rootRouteChildren: RootRouteChildren = {
   SafrasRoute: SafrasRoute,
   SupervisorRoute: SupervisorRoute,
   TagsRoute: TagsRoute,
+  DisparoEmailRoute: DisparoEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

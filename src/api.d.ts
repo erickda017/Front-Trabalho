@@ -28,6 +28,7 @@ declare module "@/api" {
     WhatsappConexao,
   } from "@/lib/types";
   import type { DadosPix } from "@/lib/pixWorkerClient";
+  import type { ItemLoteEmail, LinhaFaturaEmail, PainelEmail, ResumoLoteEmail } from "@/lib/emailTipos";
 
   type Envio = {
     id: string;
@@ -456,6 +457,31 @@ declare module "@/api" {
       resumo: () => Promise<ResumoQualidade>;
       registrarTratativa: (clienteId: string, payload: { status: StatusOperador; observacao?: string | undefined }) => Promise<Tratativa>;
       historico: (clienteId: string) => Promise<Tratativa[]>;
+    };
+    disparoEmail: {
+      config: () => Promise<PainelEmail>;
+      salvarConfig: (payload: { nome_empresa: string }) => Promise<{ nome_empresa: string }>;
+      preview: (payload: { nome_empresa?: string | undefined }) => Promise<{ html: string }>;
+      faturas: (params?: {
+        busca?: string | undefined;
+        filtro?: "elegiveis" | "pendencias" | "todas" | undefined;
+        limit?: number | undefined;
+        offset?: number | undefined;
+      } | undefined) => Promise<{ total: number; total_elegiveis: number; itens: LinhaFaturaEmail[] }>;
+      criarLote: (
+        payload:
+          | { modo: "todos"; busca?: string | undefined }
+          | { modo: "ids"; ids: string[]; reenvio?: boolean | undefined },
+      ) => Promise<{ lote_id: string; total: number; truncado: boolean; total_filtrado: number }>;
+      lotes: () => Promise<{ itens: ResumoLoteEmail[] }>;
+      lote: (id: string) => Promise<{ lote: ResumoLoteEmail; itens: ItemLoteEmail[] }>;
+      cancelarLote: (id: string) => Promise<{ ok: boolean }>;
+    };
+    ennychat: {
+      salvarStatusAceitos: (statusAceitos: string[]) => Promise<{
+        status_aceitos: string[];
+        catalogo: { codigo: string; rotulo: string }[];
+      }>;
     };
     tags: {
       listar: () => Promise<Tag[]>;

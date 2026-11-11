@@ -433,6 +433,21 @@ export const api = {
       request(`/qualidade/${clienteId}/tratativa`, { method: 'POST', body: JSON.stringify(payload) }),
     historico: (clienteId) => request(`/qualidade/${clienteId}/historico`),
   },
+  // [2026-11] Aba Disparo / E-mail (Brevo) e status aceitos do EnnyChat -- ver CONTEXTO.md "Disparo / E-mail".
+  disparoEmail: {
+    config: () => request('/disparo-email/config'),
+    salvarConfig: (payload) => request('/disparo-email/config', { method: 'PUT', body: JSON.stringify(payload) }),
+    preview: (payload) => request('/disparo-email/preview', { method: 'POST', body: JSON.stringify(payload) }),
+    faturas: (params) => request(`/disparo-email/faturas${qs(params)}`),
+    criarLote: (payload) => request('/disparo-email/lotes', { method: 'POST', body: JSON.stringify(payload) }),
+    lotes: () => request('/disparo-email/lotes'),
+    lote: (id) => request(`/disparo-email/lotes/${id}`),
+    cancelarLote: (id) => request(`/disparo-email/lotes/${id}/cancelar`, { method: 'POST' }),
+  },
+  ennychat: {
+    salvarStatusAceitos: (statusAceitos) =>
+      request('/integracoes/ennychat/config', { method: 'PUT', body: JSON.stringify({ status_aceitos: statusAceitos }) }),
+  },
   tags: {
     listar: () => request('/tags'),
     criar: (payload) => request('/tags', { method: 'POST', body: JSON.stringify(payload) }),
