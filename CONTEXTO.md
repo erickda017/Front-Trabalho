@@ -289,6 +289,17 @@ Duas formas de gerar um disparo:
     haves de qualidade de código (duplicações menores, acessibilidade,
     testes automatizados, naming `created_at`/`criado_em` no banco).
 
+- **[2026-11] "Upar planilha para disparo" + modo Livre por padrão (aba
+  Novo disparo, `routes/disparos.tsx`).** Ao lado de "Baixar planilha
+  exemplo": o operador sobe .xlsx/.xls/.csv (colunas `nome` + `numero`;
+  aceita também telefone/celular/whatsapp e `valor`), o navegador lê com
+  `xlsx`, mostra prévia (válidos/repetidos/inválidos) e, ao confirmar,
+  cadastra só quem ainda não existe (`POST /clientes/importar-lista`, que
+  nunca duplica por telefone/contrato), recarrega a carteira e seleciona
+  todos como destinatários do lote (limpa "números colados", pois lote é OU
+  clientes OU números). Sem mudança de backend. Além disso, "Configurações
+  avançadas" agora abre em **Livre** (antes "com PDF").
+
 ## [2026-08] Safras (FPD/SPD) e histórico consolidado
 
 Pedido: acompanhar clientes por "safra" mensal de 60 dias (primeira fatura + segunda

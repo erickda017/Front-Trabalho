@@ -16,6 +16,7 @@ import {
   Search,
   Send,
   StopCircle,
+  Upload,
   Users,
   Wifi,
   X,
@@ -43,7 +44,9 @@ import { useAppState } from "@/lib/app-state";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import { statusDoItem, VARIAVEIS_MENSAGEM, type ConfigDisparo } from "@/lib/types";
+import * as XLSX from "xlsx";
 import { formatarTelefone, normalizarListaTelefones } from "@/lib/telefonesAvulsos";
+import { listarTodosClientes } from "@/lib/clientesPaginados";
 
 export const Route = createFileRoute("/disparos")({
   head: () => ({
@@ -344,6 +347,205 @@ function ColarListaDialog({
             </DialogFooter>
           </>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Upar planilha para disparo                                                 */
+/* -------------------------------------------------------------------------- */
+
+// Planilha (.xlsx/.xls/.csv) com colunas nome + numero (mesmo layout do
+// "Baixar planilha exemplo"; também aceita telefone/celular/whatsapp e valor).
+// Lê no navegador, cadastra quem ainda não existe (POST /clientes/importar-lista,
+// que nunca duplica por telefone/contrato) e já seleciona todos como
+// destinatários do lote.
+type LinhaPlanilha = { nome: string; numero: string; valor: number | null };
+
+function semAcento(t: string) {
+  return t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function lerPlanilhaDisparo(buffer: ArrayBuffer): { linhas: LinhaPlanilha[]; invalidos: number; repetidos: number } {
+  const wb = XLSX.read(buffer, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("A planilha está vazia.");
+  const brutas = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
+  if (!brutas.length) throw new Error("A planilha não tem nenhuma linha de dados.");
+
+  const achar = (linha: Record<string, unknown>, chaves: string[]) => {
+    for (const k of Object.keys(linha)) {
+      if (chaves.includes(semAcento(k))) return String(linha[k] ?? "").trim();
+    }
+    return "";
+  };
+
+  const linhas: LinhaPlanilha[] = [];
+  const vistos = new Set<string>();
+  let invalidos = 0;
+  let repetidos = 0;
+  let temColunaNumero = false;
+
+  for (const linha of brutas) {
+    const chaves = Object.keys(linha).map(semAcento);
+    if (chaves.some((k) => ["numero", "telefone", "celular", "whatsapp", "fone"].includes(k))) temColunaNumero = true;
+    const numeroBruto = achar(linha, ["numero", "telefone", "celular", "whatsapp", "fone"]);
+    // Uma célula pode ter mais de um telefone ("11999999999 / 11988887777").
+    const candidatos = numeroBruto.split(/[\n\r,;/]+/).map((x) => x.trim()).filter(Boolean);
+    if (!candidatos.length) {
+      invalidos++;
+      continue;
+    }
+    const nome = achar(linha, ["nome", "cliente", "name"]);
+    const valorTxt = achar(linha, ["valor", "valor total"]).replace(/[^\d.,-]/g, "");
+    const valorNum = valorTxt
+      ? Number(valorTxt.includes(",") ? valorTxt.replace(/\./g, "").replace(",", ".") : valorTxt)
+      : NaN;
+
+    for (const cand of candidatos) {
+      const { validos } = normalizarListaTelefones(cand);
+      if (!validos.length) {
+        invalidos++;
+        continue;
+      }
+      const tel = validos[0];
+      if (vistos.has(tel)) {
+        repetidos++;
+        continue;
+      }
+      vistos.add(tel);
+      linhas.push({ nome: nome || `Cliente ${formatarTelefone(tel)}`, numero: tel, valor: Number.isFinite(valorNum) ? valorNum : null });
+    }
+  }
+
+  if (!temColunaNumero) {
+    throw new Error('Não achei a coluna de telefone. Use o cabeçalho "numero" (veja a planilha exemplo).');
+  }
+  return { linhas, invalidos, repetidos };
+}
+
+function UparPlanilhaDialog({
+  aberto,
+  onOpenChange,
+  onConcluir,
+}: {
+  aberto: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConcluir: () => void;
+}) {
+  const { clientes, setSelecionados, refreshClientes } = useAppState();
+  const [arquivoNome, setArquivoNome] = useState<string | null>(null);
+  const [lido, setLido] = useState<ReturnType<typeof lerPlanilhaDisparo> | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [processando, setProcessando] = useState(false);
+
+  function fechar() {
+    setArquivoNome(null);
+    setLido(null);
+    setErro(null);
+    onOpenChange(false);
+  }
+
+  async function aoEscolherArquivo(file: File | undefined) {
+    if (!file) return;
+    setErro(null);
+    setLido(null);
+    setArquivoNome(file.name);
+    try {
+      setLido(lerPlanilhaDisparo(await file.arrayBuffer()));
+    } catch (e) {
+      setErro((e as Error).message || "Não consegui ler essa planilha.");
+    }
+  }
+
+  async function criarLista() {
+    if (!lido || !lido.linhas.length) return;
+    setProcessando(true);
+    setErro(null);
+    try {
+      const jaCadastrados = new Set(clientes.map((c) => c.telefone));
+      const novos = lido.linhas.filter((l) => !jaCadastrados.has(l.numero));
+      let cadastrados = 0;
+      // O backend aceita até 1000 linhas por chamada.
+      for (let i = 0; i < novos.length; i += 1000) {
+        const r = await api.clientes.importarLista(
+          novos.slice(i, i + 1000).map((l) => ({ nome: l.nome, numero: l.numero, valor: l.valor, arquivo: "" })),
+        );
+        cadastrados += r.criados;
+      }
+      // Recarrega a carteira pra pegar os ids (importar-lista só devolve contagem).
+      const todos = novos.length ? await listarTodosClientes() : clientes;
+      if (novos.length) await refreshClientes();
+      const porTelefone = new Map(todos.map((c) => [c.telefone, c.id]));
+      const ids = lido.linhas.map((l) => porTelefone.get(l.numero)).filter((x): x is string => !!x);
+      if (!ids.length) throw new Error("Nenhum cliente da planilha ficou disponível pra disparo.");
+      setSelecionados([...new Set(ids)]);
+      toast.success(
+        `${ids.length} cliente(s) na lista de disparo` + (cadastrados ? ` (${cadastrados} novo(s) cadastrado(s)).` : "."),
+      );
+      onConcluir();
+      fechar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && !processando && fechar()}>
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Upar planilha para disparo</DialogTitle>
+          <DialogDescription>
+            Envie uma planilha (.xlsx, .xls ou .csv) com as colunas <b>nome</b> e <b>numero</b> (veja &quot;Baixar
+            planilha exemplo&quot;). Quem ainda não está cadastrado é cadastrado, e todos viram a lista de
+            destinatários deste disparo.
+          </DialogDescription>
+        </DialogHeader>
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={(e) => aoEscolherArquivo(e.target.files?.[0])}
+          className="bg-surface text-foreground border-border w-full rounded-md border px-3 py-2 text-sm"
+        />
+        {erro && <Aviso tone="danger">{erro}</Aviso>}
+        {lido && (
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto text-sm">
+            <p className="text-success font-medium">
+              {lido.linhas.length} cliente(s) válido(s) em {arquivoNome}
+            </p>
+            {(lido.repetidos > 0 || lido.invalidos > 0) && (
+              <p className="text-subtle text-xs">
+                {lido.repetidos > 0 && `${lido.repetidos} repetido(s) ignorado(s). `}
+                {lido.invalidos > 0 && `${lido.invalidos} linha(s)/número(s) inválido(s) ficaram de fora.`}
+              </p>
+            )}
+            <ul className="border-border max-h-48 space-y-1 overflow-y-auto rounded-md border p-2 text-xs">
+              {lido.linhas.slice(0, 200).map((l) => (
+                <li key={l.numero} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate">{l.nome}</span>
+                  <span className="text-subtle shrink-0 font-mono">{formatarTelefone(l.numero)}</span>
+                </li>
+              ))}
+              {lido.linhas.length > 200 && <li className="text-subtle">… e mais {lido.linhas.length - 200}</li>}
+            </ul>
+          </div>
+        )}
+        <DialogFooter>
+          <Botao variante="outline" onClick={fechar} disabled={processando}>
+            Cancelar
+          </Botao>
+          <Botao variante="primary" onClick={criarLista} disabled={!lido?.linhas.length || processando}>
+            {processando ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            Criar lista de disparo
+          </Botao>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1359,7 +1561,8 @@ function Disparo() {
   const [templates, setTemplates] = useState<string[]>([
     "Olá {{nome}}, tudo bem? Segue em anexo sua fatura no valor de {{valor}}, com vencimento em {{vencimento}}. Qualquer dúvida estou à disposição!",
   ]);
-  const [modo, setModo] = useState<ModoDisparo>("pdf");
+  // Configurações avançadas fica em "Livre" por padrão (não exige PDF nem Pix).
+  const [modo, setModo] = useState<ModoDisparo>("livre");
   const [janelaHoras, setJanelaHoras] = useState("");
   const [janelaMinutos, setJanelaMinutos] = useState("");
   const [agendarPara, setAgendarPara] = useState("");
@@ -1370,6 +1573,7 @@ function Disparo() {
   // [2026-10] "Colar números": lote só com telefones, sem cliente cadastrado.
   const [telefonesAvulsos, setTelefonesAvulsos] = useState<string[]>([]);
   const modoNumeros = telefonesAvulsos.length > 0;
+  const [uparPlanilhaAberto, setUparPlanilhaAberto] = useState(false);
 
   // Se não há um lote "ativo" guardado nesta aba (sessionStorage perdido --
   // aba nova, outro navegador, ou o servidor caiu e voltou), pergunta pro
@@ -1461,16 +1665,27 @@ function Disparo() {
       title="Novo disparo"
       subtitle="Escolha quem recebe, escreva a mensagem e dispare"
       actions={
-        <Botao
-          variante="secondary"
-          tamanho="sm"
-          onClick={() => api.importacao.baixarModelo().catch((e) => toast.error((e as Error).message))}
-        >
-          <Download className="size-3.5" />
-          Baixar planilha exemplo
-        </Botao>
+        <div className="flex items-center gap-2">
+          <Botao
+            variante="secondary"
+            tamanho="sm"
+            onClick={() => api.importacao.baixarModelo().catch((e) => toast.error((e as Error).message))}
+          >
+            <Download className="size-3.5" />
+            Baixar planilha exemplo
+          </Botao>
+          <Botao variante="secondary" tamanho="sm" onClick={() => setUparPlanilhaAberto(true)}>
+            <Upload className="size-3.5" />
+            Upar planilha para disparo
+          </Botao>
+        </div>
       }
     >
+      <UparPlanilhaDialog
+        aberto={uparPlanilhaAberto}
+        onOpenChange={setUparPlanilhaAberto}
+        onConcluir={() => setTelefonesAvulsos([])}
+      />
       <div className="space-y-6">
         {erro && <Aviso tone="danger">{erro}</Aviso>}
         <AvisoForaDoDisparo itens={foraDoDisparo} onFechar={() => setForaDoDisparo([])} />
